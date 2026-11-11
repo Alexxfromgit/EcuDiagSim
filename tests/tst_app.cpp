@@ -47,6 +47,7 @@ private slots:
     void pollingStaysOutOfTheLog();
     void sessionStateFollowsTheEcu();
     void traceModelIsConsistent();
+    void updatesInADevelopmentBuild();
 };
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
@@ -199,6 +200,31 @@ void tst_App::traceModelIsConsistent()
     trace->setFilter(QStringLiteral("ABS"));
     r.app.step(200);
     QCOMPARE(trace->rowCount(), 2);
+}
+
+// A test binary is not installed by Velopack, exactly like a development build of the app.
+void tst_App::updatesInADevelopmentBuild()
+{
+    UpdateService updates;
+    QCOMPARE(updates.currentVersion(), QStringLiteral(ECUSIM_VERSION));
+    QVERIFY(!updates.canUpdate());
+    QVERIFY(!updates.autoCheck()); // shown unticked where nothing would check
+    updates.setAutoCheck(true);
+    QVERIFY(!updates.autoCheck());
+
+    QSignalSpy changed(&updates, &UpdateService::stateChanged);
+    updates.check();
+    QCOMPARE(changed.size(), 1);
+    QVERIFY(updates.statusText().contains(QStringLiteral("installed app")));
+    QVERIFY(!updates.busy());
+    QVERIFY(!updates.updateReady());
+    updates.checkOnStartup(); // does nothing, schedules nothing
+    updates.restartToUpdate();
+    updates.dismiss();
+    QVERIFY(updates.statusText().isEmpty());
+
+    QCOMPARE(updates.releaseNotesUrl(),
+        QStringLiteral("https://github.com/Alexxfromgit/EcuDiagSim/releases/tag/v" ECUSIM_VERSION));
 }
 
 QTEST_GUILESS_MAIN(tst_App)

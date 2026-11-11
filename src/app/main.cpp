@@ -2,18 +2,29 @@
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QTimer>
 
+#ifdef ECUSIM_HAS_VELOPACK
+#include "Velopack.hpp"
+#endif
+
 int main(int argc, char *argv[])
 {
+#ifdef ECUSIM_HAS_VELOPACK
+    // First thing, before any window: Velopack's install / update / uninstall hooks run here and
+    // may exit the process, and an update downloaded earlier is installed on this start.
+    Velopack::VelopackApp::Build().Run();
+#endif
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("EcuDiagSim"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("ECU Diagnostics Simulator"));
     QGuiApplication::setApplicationVersion(QStringLiteral(ECUSIM_VERSION));
     QGuiApplication::setOrganizationName(QStringLiteral("EcuDiagSim"));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/ecusim/icons/ecudiagsim.png")));
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 
     QCommandLineParser parser;

@@ -9,13 +9,17 @@ You need CMake ≥ 3.24, Ninja, a C++20 compiler and Qt ≥ 6.8 with the *Qt Ser
 - **Windows:** Visual Studio 2022 or newer with *Desktop development with C++*, Qt for MSVC 2022 x64.
 - **Linux:** for example `sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libxkbcommon-dev`,
   Qt for `linux_gcc_64`.
+- **macOS 12+:** Xcode (or its command line tools), `brew install cmake ninja`, Qt for `macos`
+  (`aqt install-qt mac desktop 6.8.3 clang_64 -m qtserialbus qtserialport -O ~/Qt`). Homebrew's Qt
+  builds and tests fine but cannot be packed: its QML plugins are symlinks into the Homebrew cellar,
+  which end up in the `.app` and `vpk` rejects.
 
 Qt can be installed without an account with [aqtinstall](https://github.com/miurahr/aqtinstall), see the
 [README](README.md#build-and-run). Then:
 
 ```bash
 ./scripts/build.ps1 -Test          # Windows
-./scripts/build.sh --test          # Linux
+./scripts/build.sh --test          # Linux, macOS
 ```
 
 See [docs/architecture.md](docs/architecture.md) for how the simulator is put together.
@@ -31,8 +35,8 @@ See [docs/architecture.md](docs/architecture.md) for how the simulator is put to
   - `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:` → no release on their own, not in the notes
 
   Write the subject for users: it shows up as-is in the changelog.
-- Add or update tests in `tests/` (Qt Test). CI runs them on Windows (MSVC) and Linux
-  (GCC with AddressSanitizer and UndefinedBehaviorSanitizer). Builds must stay warning-free:
+- Add or update tests in `tests/` (Qt Test). CI runs them on Windows (MSVC), macOS (Clang) and
+  Linux (GCC with AddressSanitizer and UndefinedBehaviorSanitizer). Builds must stay warning-free:
   the `ci` preset treats warnings as errors.
 - Follow the existing style; `.clang-format` and `.editorconfig` cover formatting.
 
@@ -49,22 +53,52 @@ This is a teaching tool, so what it shows has to be right:
 - **Lessons are tests.** Every scenario in `resources/scenarios/` runs in `tst_scenarios`; a new lesson
   needs a guide in `docs/lessons/`.
 
-## Releases
+## Packaging and releases
 
-[Release Please](https://github.com/googleapis/release-please) keeps a release PR open on `main`
-that bumps the version in `CMakeLists.txt` and updates `CHANGELOG.md` from the PR titles. Merging it
-tags `vX.Y.Z`; the *Release* workflow then builds and tests the Windows package, attaches it with a
-checksum and build provenance, and publishes the release.
-
-To build the assets for a tag by hand (for example the very first release), push the tag, create a
-draft release for it and run the *Release* workflow with that tag (a draft release alone does not
-create the tag, and the workflow checks the tag out):
+Installers, portable builds and updates come from [Velopack](https://velopack.io). The app links
+its C library (downloaded by CMake, see `cmake/Velopack.cmake`); `vpk`, its packaging tool, is a
+.NET tool pinned in `.config/dotnet-tools.json` (needs the .NET SDK 8 or newer). To pack a build:
 
 ```bash
-git tag v0.1.0 && git push origin v0.1.0
-gh release create v0.1.0 --draft --verify-tag --title v0.1.0 --notes-file CHANGELOG.md
-gh workflow run release.yml -f tag=v0.1.0
+cmake --preset release && cmake --build --preset release
+python scripts/package.py --version 0.2.0          # → dist/velopack: installer, portable, update packages
 ```
+
+`package.py` runs `cmake --install` (Qt's deployment collects Qt, its plugins and QML modules;
+the Velopack library and the C++ runtime come along) and then `vpk pack` for the current platform.
+On Linux, `vpk` also needs `squashfs-tools` and `zstd`.
+
+**Trying an update locally:** build and pack two versions into the same folder, then start the older
+one with `ECUSIM_UPDATE_FEED` pointing at that folder (instead of GitHub Releases):
+
+```bash
+cmake --preset release -DECUSIM_VERSION=0.9.0 && cmake --build --preset release
+python scripts/package.py --version 0.9.0 --out /tmp/feed     # keep the portable build of this one
+cmake --preset release -DECUSIM_VERSION=0.9.1 && cmake --build --preset release
+python scripts/package.py --version 0.9.1 --out /tmp/feed     # also builds a delta 0.9.0 → 0.9.1
+ECUSIM_UPDATE_FEED=/tmp/feed <portable 0.9.0>/current/EcuDiagSim   # Windows; AppImage / .app likewise
+```
+
+About ten seconds after start the banner offers 0.9.1. A development build (not packed) cannot
+update and says so. `ECUSIM_GITHUB_TOKEN` lets a copy read the releases of a private fork.
+
+**Checking the Windows installer** (CI packs it on every PR but does not install it):
+
+```powershell
+dist\velopack\EcuDiagSim-win-x64-Setup.exe --silent --installto C:\Temp\ecusim   # Start menu entry + uninstall entry
+C:\Temp\ecusim\current\EcuDiagSim.exe                                            # the installed app
+C:\Temp\ecusim\Update.exe --uninstall --silent                                   # removes all of it
+```
+
+Don't pass app arguments to Setup.exe (`-- <args>`): Velopack 1.2.161's Setup.exe crashes on them
+and never exits.
+
+**Releases:** [Release Please](https://github.com/googleapis/release-please) keeps a release PR open
+on `main` that bumps the version in `CMakeLists.txt` and updates `CHANGELOG.md` from the PR titles.
+Merging it tags `vX.Y.Z`; the *Release* workflow then builds, tests and packs Windows, Linux and
+macOS (with a delta update from the previous release), installs or starts each package once, and
+publishes the release with `SHA256SUMS.txt` and build provenance. Installed copies pick it up from
+there. To rebuild the files of an existing release, run the *Release* workflow by hand with its tag.
 
 ## Reporting bugs
 

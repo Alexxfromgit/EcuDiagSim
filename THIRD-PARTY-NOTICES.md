@@ -15,11 +15,18 @@ used under the terms of the **GNU Lesser General Public License version 3** (LGP
 - Source code of Qt: <https://download.qt.io/official_releases/qt/> — the release packages are
   built with the Qt version named in `.github/workflows/release.yml`.
 
-The Qt libraries in the Windows package are unmodified and shipped as separate DLLs, so you can
-replace them with your own build of the same Qt version.
+The Qt libraries in the packages are unmodified and shipped as separate shared libraries (DLLs,
+`.so` files, macOS frameworks), so you can replace them with your own build of the same Qt version.
 
 Qt itself contains third-party code under various permissive licenses; see
 <https://doc.qt.io/qt-6/licenses-used-in-qt.html>.
+
+## Velopack
+
+Installers, portable builds and in-app updates use [Velopack](https://github.com/velopack/velopack)
+(the `velopack_libc` library shipped with the app and the `vpk` packaging tool),
+© 2021 Caelan Sayler, © 2024 Velopack Ltd., under the **MIT License**:
+<https://github.com/velopack/velopack/blob/develop/LICENSE>.
 
 ## Standards
 

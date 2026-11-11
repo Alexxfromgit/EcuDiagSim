@@ -1,0 +1,2 @@
+// Windows: icon of EcuDiagSim.exe in Explorer, the taskbar and the Start menu.
+IDI_ICON1 ICON "../../resources/icons/ecudiagsim.ico"

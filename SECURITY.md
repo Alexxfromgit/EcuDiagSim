@@ -24,6 +24,8 @@ Of particular interest:
 - Crashes or memory corruption from malformed input files: scenarios (`src/core/sim/ScenarioRunner.cpp`),
   candump / Vector ASC logs (`src/core/trace/TraceRecorder.cpp`), DBC files.
 - Anything that makes the application write outside the file a user chose when saving a trace.
+- The installers and the update mechanism: updates are downloaded from this repository's GitHub
+  Releases (Velopack's GitHub source) and verified against the checksums in the release feed.
 
 The security access algorithm of the simulated ECUs (UDS service 0x27) is deliberately trivial and
 documented; it is not a vulnerability.

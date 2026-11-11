@@ -2,6 +2,7 @@
 
 #include "ScannerViewModel.h"
 #include "TraceModel.h"
+#include "UpdateService.h"
 #include "sim/Simulation.h"
 
 #include <QElapsedTimer>
@@ -66,6 +67,7 @@ class AppController : public QObject
 
     Q_PROPERTY(TraceModel *trace READ trace CONSTANT)
     Q_PROPERTY(ScannerViewModel *scanner READ scanner CONSTANT)
+    Q_PROPERTY(UpdateService *updates READ updates CONSTANT)
 
 public:
     explicit AppController(QObject *parent = nullptr);
@@ -122,6 +124,7 @@ public:
 
     TraceModel *trace() { return m_trace; }
     ScannerViewModel *scanner() { return m_scanner; }
+    UpdateService *updates() { return m_updates; }
 
     Q_INVOKABLE void step(int milliseconds);
     Q_INVOKABLE void reset();
@@ -161,6 +164,7 @@ private:
     std::unique_ptr<ecusim::Simulation> m_sim;
     TraceModel *m_trace;
     ScannerViewModel *m_scanner;
+    UpdateService *m_updates;
     QTimer m_timer;
     QElapsedTimer m_clock;
     double m_debtMs = 0.0;
