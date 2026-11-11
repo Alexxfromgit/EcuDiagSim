@@ -14,8 +14,8 @@ ecusim_add_test(tst_vehicle)
 ecusim_add_test(tst_trace)
 ecusim_add_test(tst_scenarios)
 
-# The UI's view models, built from the app sources and driven without QML.
-if(ECUSIM_BUILD_APP)
+# The UI's view models, built from the app sources and driven without QML or any GUI module.
+if(TARGET Qt6::Qml)
     set(app_dir "${CMAKE_SOURCE_DIR}/src/app")
     qt_add_executable(tst_app tst_app.cpp
         ${app_dir}/AppController.h ${app_dir}/AppController.cpp

@@ -43,7 +43,8 @@ if(ECUSIM_BUILD_APP)
 endif()
 
 if(ECUSIM_BUILD_TESTS)
-    find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+    # Qml (no GUI modules) for the view-model tests, so they also build with ECUSIM_BUILD_APP=OFF.
+    find_package(Qt6 6.8 REQUIRED COMPONENTS Test Qml)
     enable_testing()
     add_subdirectory(tests)
 endif()
