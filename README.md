@@ -29,12 +29,27 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 
 ## Download
 
-Get the latest Windows build from [Releases](https://github.com/Alexxfromgit/EcuDiagSim/releases/latest):
-`EcuDiagSim-<version>-win-x64.zip` runs as is (Windows 10/11, x64) — unzip and start `EcuDiagSim.exe`.
-Each release lists a SHA-256 checksum, and its build provenance can be checked with
-`gh attestation verify EcuDiagSim-<version>-win-x64.zip -R Alexxfromgit/EcuDiagSim`.
+Get the latest version from [Releases](https://github.com/Alexxfromgit/EcuDiagSim/releases/latest):
 
-On Linux, build from source (below).
+| Platform | Installer | Portable |
+|---|---|---|
+| Windows 10/11 (x64) | `EcuDiagSim-win-x64-Setup.exe` | `EcuDiagSim-win-x64-Portable.zip` |
+| macOS 12+ (Apple silicon) | `EcuDiagSim-osx-arm64-Setup.pkg` | `EcuDiagSim-osx-arm64-Portable.zip` |
+| macOS 12+ (Intel) | `EcuDiagSim-osx-x64-Setup.pkg` | `EcuDiagSim-osx-x64-Portable.zip` |
+| Linux (x64, glibc 2.39+: Ubuntu 24.04, Debian 13, Fedora 40 or newer) | `EcuDiagSim-linux-x64.AppImage` (runs as is: `chmod +x`, then start it) | |
+
+The installer needs no administrator rights (Windows installs into your user profile, with a
+Start menu entry). The portable builds run from any folder.
+
+**Updates:** installed and portable copies check for a new release about ten seconds after they
+start, download it in the background and offer to restart into it; otherwise it installs at the
+next start. Turn the automatic check off, or check by hand, in the version menu at the top right.
+Version 0.1.0 predates this and has to be replaced by hand once.
+
+`SHA256SUMS.txt` on each release lists the checksums of every file, and every file's build
+provenance can be checked with `gh attestation verify <file> -R Alexxfromgit/EcuDiagSim`. The
+builds are not code-signed yet: Windows SmartScreen asks you to confirm ("More info" → "Run
+anyway"), and macOS needs right-click → Open the first time.
 
 ## Build and run
 
@@ -67,6 +82,9 @@ ctest --preset debug
 ```
 
 In Visual Studio use *File → Open → Folder*; Qt Creator opens `CMakeLists.txt` directly.
+
+The build downloads the [Velopack](https://velopack.io) C library (for in-app updates) on the first
+configure; `-DECUSIM_UPDATES=OFF` builds without it.
 
 ### Linux
 

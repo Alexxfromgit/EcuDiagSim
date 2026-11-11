@@ -2,17 +2,18 @@ name: Release
 
 # Every push to main updates the Release Please PR (version bump + CHANGELOG.md, from Conventional
 # Commit PR titles). Merging that PR creates the vX.Y.Z tag and a draft GitHub release; the same run
-# then builds and tests the Windows package, uploads it with a checksum and publishes the release.
+# then builds, tests and packs every platform with Velopack (installer, portable build, full and
+# delta update packages, update feed), uploads them with checksums and build provenance, and
+# publishes the release. Installed copies find it through the feed and update themselves.
 #
-# Run it by hand with an existing tag to (re)build that release's assets, e.g. for the first
-# release: create a draft release v0.1.0 on main, then run this workflow with tag v0.1.0.
+# Run it by hand with an existing tag to rebuild and replace that release's files (no delta packages).
 on:
   push:
     branches: [main]
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build, e.g. v0.1.0
+        description: Existing release tag to rebuild, e.g. v0.2.0
         required: true
 
 permissions: {}
@@ -46,62 +47,218 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  windows:
-    name: Windows package
+  prepare:
     needs: release-please
     if: >-
       ${{ !cancelled() && github.repository == 'Alexxfromgit/EcuDiagSim' &&
           (needs.release-please.outputs.created == 'true' || github.event_name == 'workflow_dispatch') }}
-    runs-on: windows-latest
-    timeout-minutes: 45
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
-      contents: write # upload assets, publish the draft release
-      id-token: write # build provenance attestations
-      attestations: write
-    env:
-      TAG: ${{ needs.release-please.outputs.tag || inputs.tag }}
+      contents: write # draft releases are only visible with write access
+    outputs:
+      tag: ${{ steps.info.outputs.tag }}
+      version: ${{ steps.info.outputs.version }}
+      notes: ${{ steps.info.outputs.notes }}
     steps:
-      - name: Check tag
-        shell: bash
+      - id: info
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.tag || inputs.tag }}
         run: |
           if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::'$TAG' is not a vX.Y.Z tag"; exit 1
           fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          delim="NOTES_$(openssl rand -hex 8)"
+          {
+            echo "tag=$TAG"
+            echo "version=${TAG#v}"
+            echo "notes<<$delim"; cat notes.md; echo; echo "$delim"
+          } >> "$GITHUB_OUTPUT"
 
+  build:
+    name: build (${{ matrix.name }})
+    needs: prepare
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { name: Windows, os: windows-latest, channels: win-x64 }
+          - { name: Linux, os: ubuntu-24.04, channels: linux-x64 }
+          # One universal (arm64 + x86_64) build, packed once per architecture channel.
+          - { name: macOS, os: macos-latest, channels: osx-arm64 osx-x64 }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      CHANNELS: ${{ matrix.channels }}
+    steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.TAG }}
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          apt_opts=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_opts[@]}" update
+          # squashfs-tools builds the AppImage, zstd the delta update packages.
+          sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends \
+            ninja-build libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3 squashfs-tools zstd
+
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja || true
 
       - uses: jurplel/install-qt-action@v4
+        timeout-minutes: 10
         with:
           version: ${{ env.QT_VERSION }}
-          arch: win64_msvc2022_64
+          arch: ${{ runner.os == 'Windows' && 'win64_msvc2022_64' || '' }}
           modules: qtserialbus qtserialport
           cache: true
+          install-deps: 'false'
 
       - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
 
-      - name: Build and test
+      - name: Configure
+        shell: bash
         run: |
-          cmake --preset release
-          cmake --build --preset release
-          ctest --preset release
+          extra=()
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            extra=("-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64" "-DCMAKE_OSX_DEPLOYMENT_TARGET=12.0")
+          fi
+          cmake --preset release "-DECUSIM_VERSION=$VERSION" "${extra[@]}"
 
-      - name: Package
+      - name: Build
+        run: cmake --build --preset release
+
+      - name: Test
+        run: ctest --preset release
+
+      - name: Pack with Velopack
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ needs.prepare.outputs.notes }}
+          REBUILD: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          set -euo pipefail
+          py=python3; [ "$RUNNER_OS" = "Windows" ] && py=python # Windows' python3 may be a Store stub
+          notes="$RUNNER_TEMP/release-notes.md"
+          printf '%s\n' "$NOTES" > "$notes"
+          dotnet tool restore
+          for ch in $CHANNELS; do
+            out="dist/velopack-$ch"
+            # The previous release lets vpk build a delta package. There is none before the first
+            # Velopack release, and a rebuild of an existing tag skips it.
+            if [ "$REBUILD" != "true" ]; then
+              dotnet vpk download github --repoUrl "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" --token "$GH_TOKEN" \
+                --channel "$ch" -o "$out" || echo "::warning::No previous $ch release to build a delta from"
+            fi
+            "$py" scripts/package.py --version "$VERSION" --channel "$ch" --out "$out" --notes "$notes"
+            "$py" scripts/stage-release.py --pack-dir "$out" --channel "$ch" --version "$VERSION" --out dist/stage
+          done
+
+      # Install / start the packages the way users get them, before anything is published.
+      - name: Smoke test (Windows installer)
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/package-windows.ps1 -Preset release -Version $env:TAG.TrimStart('v') -OutDir dist
+        env:
+          QT_QUICK_BACKEND: software
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'ecusim'
+          $shot = Join-Path $env:RUNNER_TEMP 'installed.png'
+          $setup = Start-Process dist/stage/EcuDiagSim-win-x64-Setup.exe -PassThru -Wait `
+                     -ArgumentList '--silent', '--installto', $dir, '--', '--after', '4000', '--screenshot', $shot
+          if ($setup.ExitCode -ne 0) { throw "Setup.exe exited with $($setup.ExitCode)" }
+          for ($i = 0; $i -lt 60 -and -not (Test-Path $shot); $i++) { Start-Sleep 1 }
+          if (-not (Test-Path $shot)) { throw 'the installed app did not start' }
+          Get-ChildItem $dir | Select-Object Name
+
+      - name: Smoke test (Linux AppImage)
+        if: runner.os == 'Linux'
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          chmod +x dist/stage/EcuDiagSim-linux-x64.AppImage
+          timeout 120 dist/stage/EcuDiagSim-linux-x64.AppImage --after 4000 --screenshot "$RUNNER_TEMP/appimage.png"
+          test -s "$RUNNER_TEMP/appimage.png"
+
+      - name: Smoke test (macOS bundle)
+        if: runner.os == 'macOS'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          rm -rf "$RUNNER_TEMP/app" && mkdir -p "$RUNNER_TEMP/app"
+          ditto -x -k dist/stage/EcuDiagSim-osx-arm64-Portable.zip "$RUNNER_TEMP/app"
+          app=$(find "$RUNNER_TEMP/app" -maxdepth 1 -name '*.app' | head -1)
+          codesign --verify --verbose "$app/Contents/MacOS/EcuDiagSim"
+          timeout 120 "$app/Contents/MacOS/EcuDiagSim" --after 4000 --screenshot "$RUNNER_TEMP/macos.png"
+          test -s "$RUNNER_TEMP/macos.png"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.name }}
+          path: dist/stage
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: [prepare, build]
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write # build provenance attestations
+      attestations: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: assets
+          merge-multiple: true
+
+      - name: Checksums
+        working-directory: assets
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
       # Signed provenance for every download (verify with `gh attestation verify <file> -R <repo>`).
       - name: Attest build provenance
         if: ${{ !github.event.repository.private }}
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: dist/*
+          subject-path: assets/*
 
-      - name: Upload and publish
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Upload assets
         run: |
-          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
-          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            # A rebuild replaces everything, so no stale file from the earlier build is left behind.
+            gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' |
+              while read -r name; do gh release delete-asset "$TAG" "$name" -R "$GITHUB_REPOSITORY" --yes; done
+          fi
+          gh release upload "$TAG" assets/* --clobber -R "$GITHUB_REPOSITORY"
+
+      - name: Publish release
+        run: |
+          if [ "$(gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = "true" ]; then
+            gh release edit "$TAG" -R "$GITHUB_REPOSITORY" --draft=false --latest
+          fi
+          echo "### Released $TAG" >> "$GITHUB_STEP_SUMMARY"
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"

@@ -103,6 +103,42 @@ Rectangle {
             text: "LESSON RUNNING"
             tone: Theme.accent
         }
+        ToolButton {
+            id: versionButton
+            text: "v" + App.updates.currentVersion + (App.updates.updateReady ? "  ●" : "")
+            font.pixelSize: 12
+            onClicked: versionMenu.open()
+            ToolTip.visible: hovered
+            ToolTip.text: App.updates.updateReady ? "Version " + App.updates.readyVersion + " is ready to install"
+                                                  : "Version and updates"
+            Menu {
+                id: versionMenu
+                y: versionButton.height
+                MenuItem {
+                    text: App.updates.busy ? "Checking for updates…" : "Check for updates"
+                    enabled: !App.updates.busy
+                    onTriggered: App.updates.check()
+                }
+                MenuItem {
+                    text: "Check automatically at start"
+                    checkable: true
+                    checked: App.updates.autoCheck
+                    enabled: App.updates.canUpdate
+                    onToggled: App.updates.autoCheck = checked
+                }
+                MenuItem {
+                    text: "Restart to update to " + App.updates.readyVersion
+                    visible: App.updates.readyVersion !== ""
+                    height: visible ? implicitHeight : 0
+                    onTriggered: App.updates.restartToUpdate()
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: "Release notes"
+                    onTriggered: Qt.openUrlExternally(App.updates.releaseNotesUrl)
+                }
+            }
+        }
         Button {
             text: "Reset"
             onClicked: App.reset()

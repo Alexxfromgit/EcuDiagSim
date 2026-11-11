@@ -20,9 +20,15 @@ if(TARGET Qt6::Qml)
     qt_add_executable(tst_app tst_app.cpp
         ${app_dir}/AppController.h ${app_dir}/AppController.cpp
         ${app_dir}/TraceModel.h ${app_dir}/TraceModel.cpp
-        ${app_dir}/ScannerViewModel.h ${app_dir}/ScannerViewModel.cpp)
+        ${app_dir}/ScannerViewModel.h ${app_dir}/ScannerViewModel.cpp
+        ${app_dir}/UpdateService.h ${app_dir}/UpdateService.cpp)
     target_include_directories(tst_app PRIVATE ${app_dir})
+    target_compile_definitions(tst_app PRIVATE ECUSIM_VERSION="${ECUSIM_VERSION}")
     target_link_libraries(tst_app PRIVATE ecusim_core ecusim_options Qt6::Qml Qt6::Test)
+    if(TARGET velopack)
+        target_link_libraries(tst_app PRIVATE velopack)
+        ecusim_copy_velopack(tst_app)
+    endif()
     add_test(NAME tst_app COMMAND tst_app)
     set_tests_properties(tst_app PROPERTIES TIMEOUT 300)
 endif()

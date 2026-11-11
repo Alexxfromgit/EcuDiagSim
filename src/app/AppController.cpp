@@ -41,6 +41,7 @@ AppController::AppController(QObject *parent)
     : QObject(parent)
     , m_trace(new TraceModel(this))
     , m_scanner(new ScannerViewModel(this))
+    , m_updates(new UpdateService(this))
 {
     createSimulation();
 
@@ -62,6 +63,7 @@ AppController::AppController(QObject *parent)
     connect(&m_timer, &QTimer::timeout, this, &AppController::onTimer);
     m_clock.start();
     m_timer.start();
+    m_updates->checkOnStartup();
 }
 
 AppController::~AppController() = default;

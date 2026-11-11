@@ -50,6 +50,54 @@ ApplicationWindow {
 
         SimBar { Layout.fillWidth: true }
 
+        // Update ready / result of "Check for updates".
+        Rectangle {
+            readonly property bool ready: App.updates.updateReady
+            visible: ready || App.updates.statusText !== ""
+            Layout.fillWidth: true
+            implicitHeight: 40
+            radius: Theme.radius
+            color: ready ? Qt.rgba(0.29, 0.66, 1, 0.14) : Theme.panel
+            border.color: ready ? Theme.accent : Theme.border
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 6
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: parent.parent.ready ? App.updates.readyText : App.updates.statusText
+                    color: Theme.text
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                }
+                ProgressBar {
+                    visible: App.updates.busy && App.updates.progress > 0
+                    Layout.preferredWidth: 120
+                    from: 0; to: 100
+                    value: App.updates.progress
+                }
+                Button {
+                    visible: parent.parent.ready
+                    text: "Restart now"
+                    highlighted: true
+                    onClicked: App.updates.restartToUpdate()
+                }
+                Button {
+                    visible: parent.parent.ready
+                    text: "What's new"
+                    onClicked: Qt.openUrlExternally(App.updates.releaseNotesUrl)
+                }
+                ToolButton {
+                    text: "✕"
+                    visible: !App.updates.busy
+                    onClicked: App.updates.dismiss()
+                    ToolTip.visible: hovered
+                    ToolTip.text: parent.parent.ready ? "Later" : "Close"
+                }
+            }
+        }
+
         Rectangle {
             visible: App.errorText !== ""
             Layout.fillWidth: true
