@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.0](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.1.0...v0.2.0) (2026-11-11)
+
+
+### Features
+
+* installers and automatic updates for Windows, macOS and Linux ([#1](https://github.com/Alexxfromgit/EcuDiagSim/issues/1)) ([ceeb0b3](https://github.com/Alexxfromgit/EcuDiagSim/commit/ceeb0b32df6f379ecbb8ad35d10b304b2d981ffe))
+
 ## 0.1.0
 
 
