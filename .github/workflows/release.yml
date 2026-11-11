@@ -203,7 +203,7 @@ jobs:
           rm -rf "$RUNNER_TEMP/app" && mkdir -p "$RUNNER_TEMP/app"
           ditto -x -k dist/stage/EcuDiagSim-osx-arm64-Portable.zip "$RUNNER_TEMP/app"
           app=$(find "$RUNNER_TEMP/app" -maxdepth 1 -name '*.app' | head -1)
-          codesign --verify --verbose "$app/Contents/MacOS/EcuDiagSim"
+          codesign --verify --deep --strict --verbose=2 "$app"
           timeout 120 "$app/Contents/MacOS/EcuDiagSim" --after 4000 --screenshot "$RUNNER_TEMP/macos.png"
           test -s "$RUNNER_TEMP/macos.png"
 

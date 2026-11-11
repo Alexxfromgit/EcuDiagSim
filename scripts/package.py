@@ -15,6 +15,7 @@ holds the previous version) and the release feed releases.<channel>.json that in
 read to find updates. Needs the .NET SDK (vpk is restored from .config/dotnet-tools.json).
 """
 import argparse
+import os
 import pathlib
 import platform
 import shutil
@@ -65,11 +66,6 @@ def main() -> int:
     if not pack_dir.exists():
         print(f"nothing installed at {pack_dir}", file=sys.stderr)
         return 1
-    if sys.platform == "darwin":
-        # macdeployqt rewrote library paths, which breaks the linker's ad-hoc signatures, and
-        # Apple silicon refuses to run unsigned code. Until the app is signed with a Developer ID,
-        # sign it ad hoc (users still confirm the first start with right-click > Open).
-        run(["codesign", "--force", "--deep", "--sign", "-", pack_dir])
 
     run(["dotnet", "tool", "restore"])
     out = a.out.resolve()
@@ -88,7 +84,13 @@ def main() -> int:
     if sys.platform == "win32":
         cmd += ["--mainExe", "EcuDiagSim.exe", "--icon", ICONS / "ecudiagsim.ico"]
     elif sys.platform == "darwin":
-        cmd += ["--mainExe", "EcuDiagSim", "--icon", ICONS / "ecudiagsim.icns"]
+        # vpk adds its updater to the bundle and then signs everything (--deep, hardened runtime,
+        # Velopack's entitlements). Without a Developer ID that signature is ad hoc ("-"): Apple
+        # silicon needs a valid signature to run at all, and a seal broken by files added after
+        # signing makes macOS call the downloaded app "damaged". With an ad-hoc signature users
+        # confirm the first start once (right-click > Open).
+        identity = os.environ.get("ECUSIM_MAC_SIGN_IDENTITY", "-")
+        cmd += ["--mainExe", "EcuDiagSim", "--icon", ICONS / "ecudiagsim.icns", "--signAppIdentity", identity]
     else:
         cmd += ["--mainExe", "EcuDiagSim", "--icon", ICONS / "ecudiagsim.png", "--categories", "Education"]
     run(cmd)
