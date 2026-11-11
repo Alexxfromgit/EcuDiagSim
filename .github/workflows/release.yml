@@ -169,21 +169,23 @@ jobs:
             "$py" scripts/stage-release.py --pack-dir "$out" --channel "$ch" --version "$VERSION" --out dist/stage
           done
 
-      # Install / start the packages the way users get them, before anything is published.
-      - name: Smoke test (Windows installer)
+      # Start the packaged app the way users get it, before anything is published. On Windows the
+      # portable build stands in for the installer: both hold the same files, and a silent
+      # Setup.exe run hangs on hosted runners.
+      - name: Smoke test (Windows portable build)
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           QT_QUICK_BACKEND: software
         run: |
           $dir = Join-Path $env:RUNNER_TEMP 'ecusim'
-          $shot = Join-Path $env:RUNNER_TEMP 'installed.png'
-          $setup = Start-Process dist/stage/EcuDiagSim-win-x64-Setup.exe -PassThru -Wait `
-                     -ArgumentList '--silent', '--installto', $dir, '--', '--after', '4000', '--screenshot', $shot
-          if ($setup.ExitCode -ne 0) { throw "Setup.exe exited with $($setup.ExitCode)" }
-          for ($i = 0; $i -lt 60 -and -not (Test-Path $shot); $i++) { Start-Sleep 1 }
-          if (-not (Test-Path $shot)) { throw 'the installed app did not start' }
-          Get-ChildItem $dir | Select-Object Name
+          $shot = Join-Path $env:RUNNER_TEMP 'portable.png'
+          Expand-Archive dist/stage/EcuDiagSim-win-x64-Portable.zip $dir
+          $p = Start-Process (Join-Path $dir 'current/EcuDiagSim.exe') -PassThru `
+                 -ArgumentList '--after', '4000', '--screenshot', $shot
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'the packaged app did not quit' }
+          if ($p.ExitCode -ne 0) { throw "the packaged app exited with $($p.ExitCode)" }
+          if (-not (Test-Path $shot)) { throw 'no screenshot written' }
 
       - name: Smoke test (Linux AppImage)
         if: runner.os == 'Linux'

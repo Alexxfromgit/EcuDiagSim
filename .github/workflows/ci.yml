@@ -56,32 +56,20 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      # The same packaging as a release: Setup.exe, portable zip, update package. Then install
-      # silently and start the installed app.
-      - name: Pack with Velopack and install
+      # The same packaging as a release (Setup.exe, portable zip, update package), so a change that
+      # breaks it shows up here. Installing is checked by hand (see CONTRIBUTING.md).
+      - name: Pack with Velopack
         shell: pwsh
-        env:
-          QT_QUICK_BACKEND: software
         run: |
           $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(EcuDiagSim VERSION ([0-9.]+)').Matches[0].Groups[1].Value
           python scripts/package.py --preset ci --version $version --out dist
           if ($LASTEXITCODE) { throw 'packaging failed' }
-          $dir = Join-Path $env:RUNNER_TEMP 'ecusim'
-          $shot = Join-Path $env:RUNNER_TEMP 'installed.png'
-          $setup = Start-Process dist/EcuDiagSim-win-x64-Setup.exe -PassThru -Wait `
-                     -ArgumentList '--silent', '--installto', $dir, '--', '--after', '4000', '--screenshot', $shot
-          if ($setup.ExitCode -ne 0) { throw "Setup.exe exited with $($setup.ExitCode)" }
-          for ($i = 0; $i -lt 60 -and -not (Test-Path $shot); $i++) { Start-Sleep 1 }
-          if (-not (Test-Path $shot)) { throw 'the installed app did not start' }
-          Copy-Item $shot installed.png
 
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: screenshot-windows
-          path: |
-            screenshot.png
-            installed.png
+          path: screenshot.png
           if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v7

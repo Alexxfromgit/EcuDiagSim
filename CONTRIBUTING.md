@@ -82,6 +82,17 @@ ECUSIM_UPDATE_FEED=/tmp/feed <portable 0.9.0>/current/EcuDiagSim   # Windows; Ap
 About ten seconds after start the banner offers 0.9.1. A development build (not packed) cannot
 update and says so. `ECUSIM_GITHUB_TOKEN` lets a copy read the releases of a private fork.
 
+**Checking the Windows installer** (CI packs it on every PR but does not install it):
+
+```powershell
+dist\velopack\EcuDiagSim-win-x64-Setup.exe --silent --installto C:\Temp\ecusim   # Start menu entry + uninstall entry
+C:\Temp\ecusim\current\EcuDiagSim.exe                                            # the installed app
+C:\Temp\ecusim\Update.exe --uninstall --silent                                   # removes all of it
+```
+
+Don't pass app arguments to Setup.exe (`-- <args>`): Velopack 1.2.161's Setup.exe crashes on them
+and never exits.
+
 **Releases:** [Release Please](https://github.com/googleapis/release-please) keeps a release PR open
 on `main` that bumps the version in `CMakeLists.txt` and updates `CHANGELOG.md` from the PR titles.
 Merging it tags `vX.Y.Z`; the *Release* workflow then builds, tests and packs Windows, Linux and
