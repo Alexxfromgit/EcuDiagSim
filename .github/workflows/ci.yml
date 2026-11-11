@@ -62,20 +62,30 @@ jobs:
   linux:
     name: Linux / GCC (ASan + UBSan)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
+      # Only what the build and the tests need (the same set as in the README's Linux section).
+      # Short timeouts and retries: when the runner's Ubuntu mirror is unreachable, fail in
+      # minutes instead of retrying every package until the job times out.
       - name: Install build tools
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev
+          apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          sudo apt-get "${apt_opts[@]}" update
+          sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends \
+            ninja-build libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3
 
       - uses: jurplel/install-qt-action@v4
+        timeout-minutes: 10
         with:
           version: ${{ env.QT_VERSION }}
           modules: qtserialbus qtserialport
           cache: true
+          # Its own dependency install pulls ~40 multimedia packages we do not need and is
+          # what hung for 18 minutes when the apt mirror was down. Ours above is enough.
+          install-deps: 'false'
 
       - name: Configure
         run: cmake --preset asan

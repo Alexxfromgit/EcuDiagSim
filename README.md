@@ -73,7 +73,7 @@ In Visual Studio use *File → Open → Folder*; Qt Creator opens `CMakeLists.tx
 Tested on Ubuntu 24.04 with GCC 13 and Qt 6.8:
 
 ```bash
-sudo apt-get install -y build-essential cmake ninja-build python3-venv libgl1-mesa-dev libxkbcommon-dev
+sudo apt-get install -y build-essential cmake ninja-build python3-venv libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3
 python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
 ~/.venv/aqt/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtserialbus qtserialport -O ~/Qt
 ./scripts/build.sh --test        # configure, build, run the tests
