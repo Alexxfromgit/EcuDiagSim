@@ -1,0 +1,47 @@
+{
+  "name": "Wheel speed sensor - open circuit",
+  "description": "Drive at 50 km/h, unplug the front-left wheel speed sensor and follow the fault from the sensor to the CAN frame, the DTC, the ABS lamp and the scan tool.",
+  "lesson": "docs/lessons/01-wheel-speed-sensor.md",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 50, "timeout": 40000 },
+    { "action": "throttle", "value": 15 },
+
+    { "action": "inject", "target": "wss_fl", "fault": "open", "note": "Unplugging the front-left wheel speed sensor" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "signal": "WheelSpeed_FL", "op": "==", "value": 0, "note": "1. The CAN signal: ABS_WheelSpeeds (0x0B0) now carries 0 km/h and the invalid flag for FL" },
+    { "action": "expect", "signal": "WheelSpeed_FL_Valid", "op": "==", "value": 0 },
+    { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1, "note": "Three good wheels are enough for a valid vehicle speed" },
+    { "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed", "note": "2. The fault memory: C0035-13 after 200 ms of debouncing" },
+    { "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1, "note": "3. The lamp request on ABS_Status (0x0B1) and the lamp in the cluster" },
+    { "action": "expect", "lamp": "abs", "value": true },
+
+    { "action": "uds", "ecu": "ABS", "request": "19 02 08", "expectContains": "40 35 13 AF", "note": "4. The scan tool: read confirmed DTCs. Status 0xAF = failed, pending, confirmed, lamp requested" },
+    { "action": "uds", "ecu": "ABS", "request": "19 04 40 35 13 01", "expect": "59 04 40 35 13", "note": "Snapshot data captured when the fault was first detected" },
+    { "action": "uds", "ecu": "ABS", "request": "14 FF FF FF", "expect": "54", "note": "5. Clearing with the fault still present: the DTC comes straight back" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" },
+
+    { "action": "clearFault", "target": "wss_fl", "note": "6. Repair: plug the sensor back in" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "signal": "WheelSpeed_FL_Valid", "op": "==", "value": 1 },
+    { "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed", "note": "The DTC stays stored and the lamp stays on for this ignition cycle" },
+    { "action": "expect", "lamp": "abs", "value": true },
+    { "action": "uds", "ecu": "ABS", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "C0035", "ecu": "ABS", "status": "absent", "note": "After the repair the cleared DTC does not return" },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<=", "value": 0.5, "timeout": 20000 },
+    { "action": "brake", "value": 0 },
+    { "action": "selector", "value": "P" }
+  ]
+}

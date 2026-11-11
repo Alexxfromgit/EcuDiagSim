@@ -1,0 +1,88 @@
+VERSION "EcuDiagSim 1.0"
+
+NS_ :
+
+BS_:
+
+BU_: ABS ECM TCM BCM IPC
+
+BO_ 176 ABS_WheelSpeeds: 8 ABS
+ SG_ WheelSpeed_FL : 0|12@1+ (0.1,0) [0|409.5] "km/h" ECM,IPC
+ SG_ WheelSpeed_FR : 12|12@1+ (0.1,0) [0|409.5] "km/h" ECM,IPC
+ SG_ WheelSpeed_RL : 24|12@1+ (0.1,0) [0|409.5] "km/h" ECM,IPC
+ SG_ WheelSpeed_RR : 36|12@1+ (0.1,0) [0|409.5] "km/h" ECM,IPC
+ SG_ WheelSpeed_FL_Valid : 48|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ WheelSpeed_FR_Valid : 49|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ WheelSpeed_RL_Valid : 50|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ WheelSpeed_RR_Valid : 51|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ ABS_AliveCounter : 52|4@1+ (1,0) [0|15] "" ECM,IPC
+ SG_ ABS_Checksum : 56|8@1+ (1,0) [0|255] "" ECM,IPC
+
+BO_ 177 ABS_Status: 8 ABS
+ SG_ VehicleSpeed : 0|16@1+ (0.01,0) [0|655.35] "km/h" ECM,TCM,BCM,IPC
+ SG_ BrakePressure : 16|8@1+ (1,0) [0|255] "bar" ECM,TCM
+ SG_ VehicleSpeedValid : 24|1@1+ (1,0) [0|1] "" ECM,TCM,BCM,IPC
+ SG_ AbsActive : 25|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ AbsLampReq : 26|1@1+ (1,0) [0|1] "" IPC
+ SG_ TcsLampReq : 27|1@1+ (1,0) [0|1] "" IPC
+
+BO_ 256 ECM_Engine: 8 ECM
+ SG_ EngineRPM : 0|16@1+ (0.25,0) [0|16383.75] "rpm" TCM,ABS,IPC
+ SG_ ThrottlePos : 16|8@1+ (0.4,0) [0|100] "%" TCM
+ SG_ PedalPos : 24|8@1+ (0.4,0) [0|100] "%" TCM,ABS
+ SG_ EngineTorque : 32|12@1+ (0.5,-500) [-500|1547.5] "Nm" TCM,ABS
+
+BO_ 768 ECM_Status: 8 ECM
+ SG_ CoolantTemp : 0|8@1+ (1,-40) [-40|215] "degC" TCM,IPC
+ SG_ MilReq : 8|1@1+ (1,0) [0|1] "" IPC
+ SG_ CoolantWarnReq : 9|1@1+ (1,0) [0|1] "" IPC
+ SG_ EngineRunning : 10|1@1+ (1,0) [0|1] "" TCM,ABS,BCM,IPC
+ SG_ EngineLimp : 11|1@1+ (1,0) [0|1] "" IPC
+
+BO_ 416 TCM_Status: 8 TCM
+ SG_ CurrentGear : 0|4@1+ (1,0) [0|7] "" ECM,IPC
+ SG_ TargetGear : 4|4@1+ (1,0) [0|7] "" ECM
+ SG_ GearSelector : 8|2@1+ (1,0) [0|3] "" ECM,BCM,IPC
+ SG_ ShiftInProgress : 10|1@1+ (1,0) [0|1] "" ECM
+ SG_ LimpMode : 11|1@1+ (1,0) [0|1] "" ECM,IPC
+ SG_ TcmMilReq : 12|1@1+ (1,0) [0|1] "" ECM
+ SG_ TransTemp : 16|8@1+ (1,-40) [-40|215] "degC" ECM,IPC
+
+BO_ 848 BCM_Status: 8 BCM
+ SG_ IgnitionState : 0|2@1+ (1,0) [0|2] "" ECM,TCM,ABS,IPC
+ SG_ Headlamps : 2|2@1+ (1,0) [0|2] "" IPC
+ SG_ HighBeam : 4|1@1+ (1,0) [0|1] "" IPC
+ SG_ TurnLeft : 5|1@1+ (1,0) [0|1] "" IPC
+ SG_ TurnRight : 6|1@1+ (1,0) [0|1] "" IPC
+ SG_ DoorLock : 7|1@1+ (1,0) [0|1] "" IPC
+ SG_ DoorAjar_FL : 8|1@1+ (1,0) [0|1] "" IPC
+ SG_ DoorAjar_FR : 9|1@1+ (1,0) [0|1] "" IPC
+ SG_ DoorAjar_RL : 10|1@1+ (1,0) [0|1] "" IPC
+ SG_ DoorAjar_RR : 11|1@1+ (1,0) [0|1] "" IPC
+ SG_ LampFault : 12|1@1+ (1,0) [0|1] "" IPC
+ SG_ BatteryVoltage : 16|8@1+ (0.1,0) [0|25.5] "V" ECM,IPC
+
+CM_ BO_ 176 "Wheel speeds, 10 ms. Protected end-to-end by an alive counter and a CRC-8 (SAE J1850) over bytes 0..6.";
+CM_ BO_ 177 "ABS vehicle speed and lamp requests, 20 ms.";
+CM_ BO_ 256 "Fast engine data, 10 ms.";
+CM_ BO_ 768 "Slow engine data and lamp requests, 100 ms.";
+CM_ BO_ 416 "Transmission status, 20 ms.";
+CM_ BO_ 848 "Body status, 100 ms. Sent permanently (BCM is on terminal 30).";
+CM_ SG_ 416 CurrentGear "0 = no drive (P/N), 1..6 = forward gear, 7 = reverse";
+CM_ SG_ 416 GearSelector "0 = P, 1 = R, 2 = N, 3 = D";
+CM_ SG_ 848 IgnitionState "0 = off, 1 = on, 2 = start";
+CM_ SG_ 848 Headlamps "0 = off, 1 = parking lights, 2 = low beam";
+
+BA_DEF_ BO_ "GenMsgCycleTime" INT 0 10000;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_ "GenMsgCycleTime" BO_ 176 10;
+BA_ "GenMsgCycleTime" BO_ 177 20;
+BA_ "GenMsgCycleTime" BO_ 256 10;
+BA_ "GenMsgCycleTime" BO_ 768 100;
+BA_ "GenMsgCycleTime" BO_ 416 20;
+BA_ "GenMsgCycleTime" BO_ 848 100;
+
+VAL_ 416 CurrentGear 0 "None" 1 "1" 2 "2" 3 "3" 4 "4" 5 "5" 6 "6" 7 "R";
+VAL_ 416 GearSelector 0 "P" 1 "R" 2 "N" 3 "D";
+VAL_ 848 IgnitionState 0 "Off" 1 "On" 2 "Start";
+VAL_ 848 Headlamps 0 "Off" 1 "Park" 2 "Low";

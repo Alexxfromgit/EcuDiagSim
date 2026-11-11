@@ -1,0 +1,34 @@
+{
+  "name": "Coolant temperature sensor - open circuit",
+  "description": "An unplugged NTC sensor reads -40 degC because the ECU pull-up drives the input to 5 V. The ECM stores P0118, substitutes a default temperature and lights the MIL. Diagnosed with the legislated OBD-II services.",
+  "lesson": "docs/lessons/02-coolant-sensor.md",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "signal": "CoolantTemp", "op": ">=", "value": 80 },
+    { "action": "expect", "lamp": "mil", "value": false },
+
+    { "action": "inject", "target": "ect", "fault": "open", "note": "Unplugging the coolant temperature sensor" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 01", "expect": "62 10 01 13 88", "note": "Sensor voltage read with UDS: 0x1388 = 5000 mV, the pull-up level" },
+    { "action": "expect", "dtc": "P0118", "ecu": "ECM", "status": "confirmed" },
+    { "action": "expect", "signal": "CoolantTemp", "op": "==", "value": 80, "note": "The ECM sends its substitute value, not -40 degC" },
+    { "action": "expect", "lamp": "mil", "value": true },
+
+    { "action": "uds", "ecu": "ALL", "request": "03", "expectContains": "01 18", "note": "OBD Mode 03, functional request to 0x7DF: ECM and TCM both answer" },
+    { "action": "uds", "ecu": "ALL", "request": "02 02 00", "expect": "42 02 00 01 18", "note": "Mode 02: the DTC that stored the freeze frame" },
+    { "action": "uds", "ecu": "ALL", "request": "02 0C 00", "expect": "42 0C 00", "note": "Freeze frame engine speed" },
+    { "action": "uds", "ecu": "ALL", "request": "09 02", "expect": "49 02 01", "note": "Mode 09: the VIN needs a multi-frame ISO-TP response" },
+
+    { "action": "clearFault", "target": "ect", "note": "Repair: plug the sensor back in" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "The MIL stays on: it needs three fault-free trips or a scan tool to go out" },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44", "note": "Mode 04: clear emission related diagnostic information" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "P0118", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

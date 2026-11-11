@@ -1,0 +1,39 @@
+{
+  "name": "ABS control module offline",
+  "description": "A blown fuse takes the ABS module off the bus. It cannot store a DTC about itself - the other ECUs notice the missing messages: U0121 everywhere, the TCM loses its speed signal (P0500) and asks the ECM for the MIL (P0700).",
+  "lesson": "docs/lessons/04-abs-node-offline.md",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 30 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 30, "timeout": 40000 },
+
+    { "action": "inject", "target": "abs", "fault": "power_loss", "note": "Pulling the ABS fuse" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "ABS", "request": "3E 00", "expectNoResponse": true, "note": "The module itself no longer answers the scan tool" },
+    { "action": "expect", "lamp": "abs", "value": true, "note": "The cluster lights the ABS lamp on its own when the ABS messages are missing" },
+    { "action": "expect", "dtc": "U0121", "ecu": "ECM", "status": "confirmed", "note": "Every receiver of ABS messages stores a lost communication DTC" },
+    { "action": "expect", "dtc": "U0121", "ecu": "TCM", "status": "confirmed" },
+    { "action": "expect", "dtc": "U0121", "ecu": "BCM", "status": "confirmed" },
+    { "action": "expect", "dtc": "P0500", "ecu": "TCM", "status": "confirmed", "note": "Knock-on effect: the TCM falls back to an estimated speed" },
+    { "action": "expect", "dtc": "P0700", "ecu": "ECM", "status": "confirmed", "note": "... and requests the MIL from the ECM" },
+    { "action": "expect", "lamp": "mil", "value": true },
+    { "action": "uds", "ecu": "ECM", "request": "19 02 08", "expectContains": "C1 21 87" },
+
+    { "action": "clearFault", "target": "abs", "note": "Repair: new fuse" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "ABS", "request": "3E 00", "expect": "7E 00" },
+    { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1 },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "uds", "ecu": "ABS", "request": "19 02 09", "expect": "59 02 FF", "expectNotContains": "40 35", "note": "The ABS module has nothing stored: it was simply not there" },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<=", "value": 0.5, "timeout": 20000 },
+    { "action": "brake", "value": 0 },
+    { "action": "selector", "value": "P" }
+  ]
+}

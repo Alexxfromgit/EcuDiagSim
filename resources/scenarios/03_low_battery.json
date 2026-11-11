@@ -1,0 +1,32 @@
+{
+  "name": "Alternator failure - low system voltage",
+  "description": "One root cause, several ECUs: with a dead alternator the battery drains, the charge lamp comes on and both ECM (P0562) and BCM (B1318) log a low-voltage DTC.",
+  "lesson": "docs/lessons/03-low-battery.md",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "signal": "BatteryVoltage", "op": ">=", "value": 13.5, "note": "Alternator charging: about 14 V" },
+    { "action": "expect", "lamp": "battery", "value": false },
+
+    { "action": "inject", "target": "alternator", "fault": "failure", "note": "The alternator stops charging; the battery now supplies the car alone" },
+    { "action": "waitFor", "signal": "BatteryVoltage", "op": "<", "value": 12, "timeout": 30000 },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "battery", "value": true, "note": "The cluster lights the charge lamp below 12 V" },
+    { "action": "waitFor", "signal": "BatteryVoltage", "op": "<", "value": 10.9, "timeout": 60000 },
+    { "action": "wait", "ms": 4000, "note": "Both ECUs debounce the low voltage for 3 s" },
+    { "action": "expect", "dtc": "P0562", "ecu": "ECM", "status": "confirmed" },
+    { "action": "expect", "dtc": "B1318", "ecu": "BCM", "status": "confirmed" },
+    { "action": "expect", "lamp": "mil", "value": true },
+    { "action": "uds", "ecu": "ALL", "request": "01 42", "expect": "41 42", "note": "OBD PID 0x42: control module voltage" },
+    { "action": "uds", "ecu": "BCM", "request": "19 02 08", "expectContains": "93 18 16" },
+
+    { "action": "clearFault", "target": "alternator", "note": "Repair: new alternator" },
+    { "action": "waitFor", "signal": "BatteryVoltage", "op": ">=", "value": 13.5, "timeout": 5000 },
+    { "action": "wait", "ms": 4000 },
+    { "action": "expect", "lamp": "battery", "value": false },
+    { "action": "expect", "dtc": "P0562", "ecu": "ECM", "status": "confirmed", "note": "The history stays in the fault memory until it is cleared or aged out" }
+  ]
+}
