@@ -30,8 +30,16 @@ New-Item -ItemType Directory -Force $stage | Out-Null
 
 Copy-Item $exe $stage
 & $windeployqt.Source --release --qmldir (Join-Path $root 'src\app\qml') --no-translations `
-    --no-system-d3d-compiler --no-opengl-sw (Join-Path $stage 'EcuDiagSim.exe')
+    --no-system-d3d-compiler --no-opengl-sw --no-compiler-runtime (Join-Path $stage 'EcuDiagSim.exe')
 if ($LASTEXITCODE) { throw 'windeployqt failed' }
+
+# The Visual C++ runtime as DLLs next to the exe (app-local deployment), so the zip runs on a PC
+# without the runtime installed. windeployqt would otherwise add the vc_redist installer instead.
+if (-not $env:VCToolsRedistDir) { . "$PSScriptRoot\env.ps1" }
+$crt = Get-ChildItem (Join-Path $env:VCToolsRedistDir 'x64') -Directory -Filter 'Microsoft.VC*.CRT' |
+    Sort-Object Name -Descending | Select-Object -First 1
+if (-not $crt) { throw "Visual C++ runtime not found under $env:VCToolsRedistDir" }
+Copy-Item (Join-Path $crt.FullName '*.dll') $stage
 
 Copy-Item (Join-Path $root 'LICENSE') (Join-Path $stage 'LICENSE.txt')
 Copy-Item (Join-Path $root 'THIRD-PARTY-NOTICES.md') $stage
@@ -44,5 +52,6 @@ Compress-Archive -Path $stage -DestinationPath $zip
 Remove-Item -Recurse -Force $stage
 
 $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLower()
-"$hash  $name.zip" | Set-Content -Encoding ascii (Join-Path $out "$name.zip.sha256")
+# LF line ending, so `sha256sum -c` works on Linux, macOS and Git Bash as well.
+[IO.File]::WriteAllText((Join-Path $out "$name.zip.sha256"), "$hash  $name.zip`n", [Text.Encoding]::ASCII)
 Write-Host "$zip`n$hash"
