@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(EcuDiagSim VERSION 0.1.0 LANGUAGES CXX)
+project(EcuDiagSim VERSION 0.1.0 LANGUAGES CXX) # x-release-please-version
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,6 +13,9 @@ option(ECUSIM_SANITIZE "Enable ASan + UBSan (GCC/Clang)" OFF)
 
 find_package(Qt6 6.8 REQUIRED COMPONENTS Core SerialBus)
 qt_standard_project_setup(REQUIRES 6.8)
+# Executables go to the build root on every platform. This also keeps the app binary
+# (src/app/EcuDiagSim on Linux) from colliding with its QML module folder of the same name.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 
 # Shared warning / sanitizer settings for our own targets.
 add_library(ecusim_options INTERFACE)

@@ -44,12 +44,14 @@ Rectangle {
             implicitWidth: 86
             model: root.speeds.map(s => s + "×")
             currentIndex: {
-                let best = 2
+                let best = -1
                 for (let i = 0; i < root.speeds.length; ++i)
                     if (Math.abs(root.speeds[i] - App.speedFactor) < 0.01)
                         best = i
                 return best
             }
+            // Also shows factors set from the command line that are not in the list (e.g. --speed 4).
+            displayText: App.speedFactor + "×"
             onActivated: index => App.speedFactor = root.speeds[index]
         }
 
