@@ -22,7 +22,7 @@ public:
         TimeoutConsecutive, ///< N_Cr: sender stopped in the middle of a message
         WrongSequence,      ///< consecutive frame with an unexpected sequence number
         Overflow,           ///< receiver reported a buffer overflow
-        UnexpectedFrame,
+        InvalidFlowStatus,  ///< flow control with a reserved flow status (3..F)
     };
 
     struct Config

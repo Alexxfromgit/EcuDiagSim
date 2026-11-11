@@ -25,6 +25,7 @@ private slots:
     void plausibilityCatchesWrongWheelSpeed();
     void bulbCheckAndBodyFunctions();
     void lampCircuitFault();
+    void reverseWhileRollingForwardBrakes();
     void deterministic();
 };
 
@@ -250,6 +251,9 @@ void tst_Vehicle::engineStartAndIdle()
     sim.requestEngineStart();
     sim.run(3500);
     QVERIFY(!sim.vehicle().engineRunning());
+    // The starter interlock is not a crankshaft sensor fault.
+    QCOMPARE(sim.ecm().dtcs().storedCount(), 0);
+    QVERIFY(!sim.ipc().state().mil);
 }
 
 void tst_Vehicle::accelerateShiftAndBrake()
@@ -294,7 +298,9 @@ void tst_Vehicle::accelerateShiftAndBrake()
     sim.driver().brakePedal = 0.0;
     sim.run(3000);
     QCOMPARE(sim.signal(QStringLiteral("CurrentGear")), 7.0);
-    QVERIFY(sim.vehicle().speedKph() > 1.0);
+    QVERIFY(sim.vehicle().velocityKph() < -1.0); // backwards
+    QCOMPARE(sim.vehicle().speedKph(), -sim.vehicle().velocityKph());
+    QVERIFY(qAbs(sim.signal(QStringLiteral("VehicleSpeed")) - sim.vehicle().speedKph()) < 1.0);
     for (Ecu *e : sim.ecus())
         QCOMPARE(e->dtcs().storedCount(), 0);
 }
@@ -486,6 +492,20 @@ void tst_Vehicle::lampCircuitFault()
     QVERIFY(sim.ipc().state().lampFault);
 }
 
+void tst_Vehicle::reverseWhileRollingForwardBrakes()
+{
+    Simulation sim;
+    startEngine(sim);
+    driveTo(sim, 60.0);
+    sim.driver().throttlePedal = 0.5;
+    sim.driver().selector = Selector::R; // abuse: reverse at speed
+    const double before = sim.vehicle().velocityKph();
+    sim.run(2000);
+    QVERIFY2(sim.vehicle().velocityKph() < before - 5.0, qPrintable(QString::number(sim.vehicle().velocityKph())));
+    // The converter slips: the engine is not dragged up to the limiter by the wheels.
+    QVERIFY2(sim.vehicle().engineRpm() < 4000.0, qPrintable(QString::number(sim.vehicle().engineRpm())));
+}
+
 void tst_Vehicle::deterministic()
 {
     // Same inputs, same trace - byte for byte.
@@ -498,6 +518,9 @@ void tst_Vehicle::deterministic()
         sim.driver().throttlePedal = 0.6;
         sim.injectFault(QStringLiteral("wss_fl"), {FaultType::Noise, 3.0, 0.0, true});
         sim.tester().request(DiagId::Functional, hex("09 02"));
+        // Several keep-alive targets: their order must not depend on hashing.
+        for (quint32 id : {DiagId::BcmRequest, DiagId::EcmRequest, DiagId::AbsRequest, DiagId::TcmRequest})
+            sim.tester().setKeepAlive(id, true);
         sim.run(5000);
         QStringList lines;
         for (const BusFrame &f : sim.trace().frames())
@@ -508,6 +531,13 @@ void tst_Vehicle::deterministic()
     const QStringList second = runOnce();
     QVERIFY(first.size() > 2000);
     QCOMPARE(first, second);
+    // TesterPresent goes out in ascending ID order.
+    QStringList testerPresent;
+    for (const QString &line : first)
+        if (line.contains(QStringLiteral("#023E80")))
+            testerPresent << line.section(u' ', 2).left(3);
+    QVERIFY(testerPresent.size() >= 4);
+    QCOMPARE(testerPresent.mid(0, 4), QStringList({"7E0", "7E1", "7E2", "7E3"}));
 }
 
 QTEST_GUILESS_MAIN(tst_Vehicle)

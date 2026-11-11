@@ -161,6 +161,7 @@ void AppController::onTimer()
     emit frameUpdated();
 
     if (m_slowCounter % 12 == 0) {
+        m_scanner->updateSessionState();
         const qint64 nowMs = m_sim->nowMs();
         if (nowMs > m_lastRateSimMs) {
             m_frameRate = static_cast<double>(m_sim->bus().frameCount() - m_lastFrameCount) * 1000.0

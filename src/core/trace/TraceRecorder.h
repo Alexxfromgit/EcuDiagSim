@@ -54,7 +54,6 @@ public:
     void tick(qint64 nowUs);
 
     bool active() const { return m_active; }
-    bool finished() const { return m_active && m_index >= m_frames.size(); }
     double progress() const;
 
 private:

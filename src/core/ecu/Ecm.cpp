@@ -124,7 +124,9 @@ void Ecm::task10ms()
     // --- crankshaft sensor / engine state -----------------------------------
     m_rpm = sensors.ckp.value();
     const bool noSignal = m_rpm < 50.0;
-    const bool cranking = driver.ignition == Ignition::Start && !m_running;
+    // The ECM drives the starter relay, so it knows whether the engine is really being cranked
+    // (the starter is inhibited outside P/N and with a flat battery).
+    const bool cranking = v.starterEngaged() && !m_running;
     m_crankMs = cranking ? m_crankMs + 10 : 0;
     // The engine must be turning while it runs or while the starter has had time to spin it.
     if (m_running || m_crankMs > 300)
@@ -132,8 +134,10 @@ void Ecm::task10ms()
     m_noSignalMs = noSignal ? std::min(m_noSignalMs + 10, 1000) : 0;
     if (m_running && m_noSignalMs >= 200)
         m_running = false;
-    else if (!m_running && m_rpm > 400.0)
+    else if (!m_running && m_rpm > 400.0) {
         m_running = true;
+        m_runMs = 0; // PID 0x1F counts from engine start
+    }
     // No crank signal -> no injection/ignition timing -> the engine cannot run.
     v.fuelEnable = m_noSignalMs < 100;
     if (m_running)

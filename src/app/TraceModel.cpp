@@ -1,5 +1,7 @@
 #include "TraceModel.h"
 
+#include <QSet>
+
 #include "dbc/DbcDatabase.h"
 #include "diag/UdsDefs.h"
 #include "tester/DiagnosticTester.h"
@@ -148,7 +150,7 @@ void TraceModel::flush()
     const int before = count();
 
     if (m_fixed) {
-        int firstChanged = INT_MAX, lastChanged = -1;
+        QSet<quint32> changed; // resolved to rows at the end: inserts shift the row numbers
         for (const BusFrame &f : incoming) {
             if (!accepts(f))
                 continue;
@@ -170,9 +172,14 @@ void TraceModel::flush()
                 row.cycleUs = f.timeUs - row.frame.timeUs;
                 row.frame = f;
                 ++row.count;
-                firstChanged = std::min(firstChanged, it.value());
-                lastChanged = std::max(lastChanged, it.value());
+                changed.insert(id);
             }
+        }
+        int firstChanged = INT_MAX, lastChanged = -1;
+        for (quint32 id : std::as_const(changed)) {
+            const int row = m_rowOfId.value(id, -1);
+            firstChanged = std::min(firstChanged, row);
+            lastChanged = std::max(lastChanged, row);
         }
         if (lastChanged >= 0)
             emit dataChanged(index(firstChanged), index(lastChanged));

@@ -92,6 +92,8 @@ public:
     /// Latest value of a DBC signal seen on the bus.
     double signal(const QString &name, double fallback = 0.0) const;
     bool hasSignal(const QString &name) const { return m_signals.contains(name); }
+    /// Milliseconds since the signal was last seen on the bus, -1 if never.
+    qint64 signalAgeMs(const QString &name) const;
 
     // --- fault injection ---
     const QList<FaultTarget> &faultTargets() const { return m_targets; }
@@ -122,6 +124,7 @@ private:
     SensorSet m_sensors;
     TraceRecorder m_trace;
     QHash<QString, double> m_signals;
+    QHash<QString, qint64> m_signalTimeUs;
 
     std::unique_ptr<SimContext> m_ctx;
     std::unique_ptr<Ecm> m_ecm;

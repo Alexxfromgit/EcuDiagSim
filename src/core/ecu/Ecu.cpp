@@ -61,8 +61,10 @@ Ecu::Ecu(SimContext &ctx, Identity identity)
         m_isotp->sendFrame = [this](const QCanBusFrame &frame) { sendRaw(frame); };
         m_isotp->onMessage = [this](const QByteArray &request, bool functional) {
             const QByteArray response = m_server.handleRequest(request, functional);
-            if (!response.isEmpty())
-                m_isotp->send(response);
+            // A request that arrives while the previous response is still being segmented:
+            // hold the new response back until the link is free instead of dropping it.
+            if (!response.isEmpty() && !m_isotp->send(response))
+                m_pendingResponse = response;
         };
     }
 
@@ -81,6 +83,16 @@ Ecu::Ecu(SimContext &ctx, Identity identity)
     });
 
     every(100, [this] { checkTimeouts(); });
+}
+
+void Ecu::setSnapshotDids(const QList<quint16> &dids)
+{
+    m_snapshotDids = dids;
+    QList<quint8> pids;
+    for (quint16 did : dids)
+        if ((did & 0xFF00) == 0xF400)
+            pids.append(static_cast<quint8>(did & 0xFF));
+    m_server.setFreezeFramePids(pids);
 }
 
 Ecu::~Ecu()
@@ -189,6 +201,7 @@ void Ecu::tick(qint64 nowMs)
             m_server.powerOnReset();
             if (m_isotp)
                 m_isotp->reset();
+            m_pendingResponse.clear();
             m_dtcs.resetDebounce();
             onWake();
         } else {
@@ -198,8 +211,11 @@ void Ecu::tick(qint64 nowMs)
     if (!m_awake)
         return;
 
-    if (m_isotp)
+    if (m_isotp) {
         m_isotp->tick(nowMs);
+        if (!m_pendingResponse.isEmpty() && !m_isotp->isSending() && m_isotp->send(m_pendingResponse))
+            m_pendingResponse.clear();
+    }
     m_server.tick(nowMs);
 
     const qint64 elapsed = nowMs - m_wakeTime;

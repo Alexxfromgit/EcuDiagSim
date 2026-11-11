@@ -19,8 +19,9 @@ One step, in order:
 2. `SensorSet::update` — every sensor samples the plant and applies its injected fault.
 3. `Ecu::tick` for ECM, TCM, ABS, BCM, IPC — each runs its cyclic tasks that are due.
 4. `DiagnosticTester::tick` — scan tool timing (P2, tester present).
-5. `VirtualCanBus::tick` — arbitration; frames are delivered to the other nodes.
-6. `ScenarioRunner::tick` — the running lesson, if any.
+5. `TraceReplayer::tick` — frames from a log being replayed, if any.
+6. `VirtualCanBus::tick` — arbitration; frames are delivered to the other nodes.
+7. `ScenarioRunner::tick` — the running lesson, if any.
 
 ```
 Simulation

@@ -11,6 +11,7 @@ QString nrcName(quint8 nrc)
     case Nrc::ServiceNotSupported: return QStringLiteral("serviceNotSupported");
     case Nrc::SubFunctionNotSupported: return QStringLiteral("subFunctionNotSupported");
     case Nrc::IncorrectMessageLength: return QStringLiteral("incorrectMessageLengthOrInvalidFormat");
+    case Nrc::ResponseTooLong: return QStringLiteral("responseTooLong");
     case Nrc::ConditionsNotCorrect: return QStringLiteral("conditionsNotCorrect");
     case Nrc::RequestSequenceError: return QStringLiteral("requestSequenceError");
     case Nrc::RequestOutOfRange: return QStringLiteral("requestOutOfRange");

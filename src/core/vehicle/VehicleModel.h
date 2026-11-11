@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 
 namespace ecusim {
 
@@ -48,8 +49,12 @@ public:
     void step(double dt, const DriverInputs &driver);
 
     // --- true physical state (sensors sample these) ---
-    double speedKph() const { return m_speed * 3.6; }
-    double wheelSpeedKph(int) const { return m_speed * 3.6; }
+    /// Road speed, always positive (what a speedometer shows).
+    double speedKph() const { return std::abs(m_speed) * 3.6; }
+    /// Signed velocity: negative while rolling backwards.
+    double velocityKph() const { return m_speed * 3.6; }
+    /// Passive wheel speed sensors measure the magnitude only, not the direction.
+    double wheelSpeedKph(int) const { return std::abs(m_speed) * 3.6; }
     double engineRpm() const { return m_rpm; }
     bool engineRunning() const { return m_running; }
     bool starterEngaged() const { return m_starter; }
@@ -70,7 +75,7 @@ public:
     static double speedKphFor(double rpm, int gear);
 
 private:
-    double m_speed = 0.0; ///< m/s
+    double m_speed = 0.0; ///< m/s, signed
     double m_rpm = 0.0;
     double m_torque = 0.0;
     double m_throttle = 0.0;

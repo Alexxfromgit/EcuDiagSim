@@ -72,6 +72,8 @@ public:
     /// Hooked up to DiagnosticTester::onResult; also called by poll().
     void onResult(const ecusim::DiagResult &result);
     void poll();
+    /// Mirrors what the ECUs do on their own: S3 timeout and power cycles end a session.
+    void updateSessionState();
     void simulationReset();
 
 signals:
@@ -86,6 +88,7 @@ private:
     quint32 targetId() const { return 0x7E0 + static_cast<quint32>(m_target); }
     ecusim::DiagnosticTester &tester() const;
     void send(quint32 id, const QByteArray &request, ecusim::DiagnosticTester::Callback callback = {});
+    void resetTargetState(int index);
     void addLog(const QString &kind, const QString &text);
     void setDtcs(const QString &title, const QVariantList &list);
     void setValues(const QString &title, const QVariantList &list);
@@ -94,13 +97,13 @@ private:
     AppController *m_app;
     int m_target = 0;
     int m_pollMode = 0;
-    int m_quietJobs = 0; ///< polling requests still in the queue; they are not logged
+    bool m_background = false; ///< set while poll() queues requests: they stay out of the log
     QVariantList m_log;
     QVariantList m_dtcs;
     QVariantList m_values;
-    QVariantList m_collect;
     QString m_dtcTitle;
     QString m_valuesTitle;
     int m_session[4] = {1, 1, 1, 1};
     bool m_unlocked[4] = {false, false, false, false};
+    qint64 m_lastRequestMs[4] = {0, 0, 0, 0};
 };

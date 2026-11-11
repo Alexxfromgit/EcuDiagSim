@@ -2,6 +2,8 @@
 
 #include "sim/ScenarioRunner.h"
 
+#include <algorithm>
+
 namespace ecusim {
 
 Simulation::Simulation()
@@ -24,8 +26,10 @@ Simulation::Simulation()
         if (DiagId::isDiagnostic(frame.frame.frameId()))
             return;
         const QVariantMap values = m_dbc.decode(frame.frame);
-        for (auto it = values.cbegin(); it != values.cend(); ++it)
+        for (auto it = values.cbegin(); it != values.cend(); ++it) {
             m_signals.insert(it.key(), it.value().toDouble());
+            m_signalTimeUs.insert(it.key(), frame.timeUs);
+        }
     });
 
     buildFaultTargets();
@@ -90,6 +94,12 @@ void Simulation::run(int milliseconds)
 double Simulation::signal(const QString &name, double fallback) const
 {
     return m_signals.value(name, fallback);
+}
+
+qint64 Simulation::signalAgeMs(const QString &name) const
+{
+    auto it = m_signalTimeUs.constFind(name);
+    return it == m_signalTimeUs.cend() ? -1 : std::max<qint64>(0, (m_timeUs - it.value()) / 1000);
 }
 
 // --- fault injection ----------------------------------------------------------

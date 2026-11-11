@@ -6,3 +6,5 @@ out/
 CMakeUserPresets.json
 *.user
 *.asc.tmp
+*.log
+!resources/**/*.log

@@ -87,8 +87,11 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     m_throttle = approach(m_throttle, throttleTarget, dt, 0.05);
 
     const double ratio = gearRatio(m_gear);
-    const double wheelRps = m_speed / (2.0 * std::numbers::pi * kWheelRadius);
-    const double coupledRpm = wheelRps * 60.0 * ratio * kFinalDrive;
+    // m_speed is signed (negative = rolling backwards). When the car rolls against the
+    // engaged direction the converter slips and the engine is not dragged along.
+    const double travel = m_gear < 0 ? -m_speed : m_speed;
+    const double wheelRps = travel / (2.0 * std::numbers::pi * kWheelRadius);
+    const double coupledRpm = std::max(0.0, wheelRps * 60.0 * ratio * kFinalDrive);
 
     if (m_running) {
         double target;
@@ -118,14 +121,19 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     m_brake = std::clamp(driver.brakePedal, 0.0, 1.0);
     double drive = ratio > 0.0 ? m_torque * ratio * kFinalDrive * kDrivelineEff / kWheelRadius : 0.0;
     drive = std::clamp(drive, -kMaxTraction, kMaxTraction);
-    const double drag = 0.5 * kAirDensity * kCdA * m_speed * m_speed;
-    const double roll = m_speed > 0.05 ? kRollCoeff * kMass * kGravity : 0.0;
-    const double brake = m_brake * kMass * kGravity;
-    double force = drive - drag - roll - brake;
-    if (m_speed <= 0.0 && force < 0.0)
-        force = 0.0;
-    m_speed = std::max(0.0, m_speed + force / kMass * dt);
-    if (driver.selector == Selector::P && m_speed < 1.0)
+    if (m_gear < 0)
+        drive = -drive; // reverse gear pushes the car backwards
+    const double drag = 0.5 * kAirDensity * kCdA * m_speed * std::abs(m_speed);
+    double v = m_speed + (drive - drag) / kMass * dt;
+    // Rolling resistance and brakes always act against the motion and can only stop the
+    // car, never push it the other way; at standstill they hold it against a weak drive.
+    const double resistDv = (kRollCoeff * kMass * kGravity + m_brake * kMass * kGravity) / kMass * dt;
+    if (v > 0.0)
+        v = std::max(0.0, v - resistDv);
+    else if (v < 0.0)
+        v = std::min(0.0, v + resistDv);
+    m_speed = v;
+    if (driver.selector == Selector::P && std::abs(m_speed) < 1.0)
         m_speed = 0.0; // parking pawl
 
     // --- thermal ---------------------------------------------------------

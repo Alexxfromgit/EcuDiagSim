@@ -61,7 +61,7 @@ Panel {
                     clip: true
                     model: root.targets
                     currentIndex: root.selectedIndex
-                    section.property: "modelData.kind"
+                    section.property: "kind"
                     section.delegate: Rectangle {
                         required property string section
                         width: ListView.view.width

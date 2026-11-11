@@ -49,6 +49,8 @@ public:
     std::function<void(const ScenarioLogEntry &)> onLog;
 
     static bool compare(double actual, const QString &op, double expected);
+    /// Signals older than this count as missing in expect / waitFor (override per step with "maxAgeMs").
+    static constexpr int kDefaultMaxSignalAgeMs = 1000;
 
 private:
     enum class Wait { None, Time, Signal, Diag };
@@ -62,6 +64,7 @@ private:
     void pass(const QString &text) { add(ScenarioLogEntry::Level::Pass, text); }
     void fail(const QString &text);
     void diagDone();
+    bool signalFresh(const QString &name, int maxAgeMs) const;
 
     Simulation &m_sim;
     QString m_name;
@@ -79,6 +82,7 @@ private:
     QString m_waitSignal;
     QString m_waitOp;
     double m_waitValue = 0.0;
+    int m_waitMaxAgeMs = kDefaultMaxSignalAgeMs;
 };
 
 } // namespace ecusim

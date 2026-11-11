@@ -81,6 +81,12 @@ void ScenarioRunner::fail(const QString &text)
     add(ScenarioLogEntry::Level::Fail, text);
 }
 
+bool ScenarioRunner::signalFresh(const QString &name, int maxAgeMs) const
+{
+    const qint64 age = m_sim.signalAgeMs(name);
+    return age >= 0 && age <= maxAgeMs;
+}
+
 bool ScenarioRunner::compare(double actual, const QString &op, double expected)
 {
     if (op == QLatin1String("==") || op.isEmpty())
@@ -112,7 +118,7 @@ void ScenarioRunner::tick(qint64 nowMs)
             break;
         case Wait::Signal: {
             const double actual = m_sim.signal(m_waitSignal);
-            if (m_sim.hasSignal(m_waitSignal) && compare(actual, m_waitOp, m_waitValue))
+            if (signalFresh(m_waitSignal, m_waitMaxAgeMs) && compare(actual, m_waitOp, m_waitValue))
                 pass(QStringLiteral("%1 %2 %3 reached (%4)").arg(m_waitSignal, m_waitOp).arg(m_waitValue).arg(actual));
             else if (nowMs >= m_waitUntil)
                 fail(QStringLiteral("Timeout waiting for %1 %2 %3 (is %4)")
@@ -208,6 +214,7 @@ void ScenarioRunner::execute(const QJsonObject &step)
         m_waitSignal = step.value(QLatin1String("signal")).toString();
         m_waitOp = step.value(QLatin1String("op")).toString(QStringLiteral("=="));
         m_waitValue = value.toDouble();
+        m_waitMaxAgeMs = step.value(QLatin1String("maxAgeMs")).toInt(kDefaultMaxSignalAgeMs);
         m_waitUntil = m_now + step.value(QLatin1String("timeout")).toInt(10000);
     } else if (action == QLatin1String("inject")) {
         const QString target = step.value(QLatin1String("target")).toString();
@@ -246,8 +253,15 @@ void ScenarioRunner::expect(const QJsonObject &step)
         const QString op = step.value(QLatin1String("op")).toString(QStringLiteral("=="));
         const double expected = step.value(QLatin1String("value")).toDouble();
         const double actual = m_sim.signal(name);
+        const int maxAge = step.value(QLatin1String("maxAgeMs")).toInt(kDefaultMaxSignalAgeMs);
+        if (!signalFresh(name, maxAge)) {
+            const qint64 age = m_sim.signalAgeMs(name);
+            fail(age < 0 ? QStringLiteral("%1 was never received").arg(name)
+                         : QStringLiteral("%1 is stale: last received %2 ms ago").arg(name).arg(age));
+            return;
+        }
         const QString text = QStringLiteral("%1 %2 %3 (is %4)").arg(name, op).arg(expected).arg(actual);
-        if (m_sim.hasSignal(name) && compare(actual, op, expected))
+        if (compare(actual, op, expected))
             pass(text);
         else
             fail(text);
@@ -361,9 +375,21 @@ void ScenarioRunner::checkUds(const QJsonObject &step, const DiagResult &result)
         all << QStringLiteral("%1 -> %2").arg(r.ecu, toHex(r.data));
     const QString received = all.join(QStringLiteral(" | "));
 
-    const QString prefix = toHex(fromHex(step.value(QLatin1String("expect")).toString()));
-    const QString contains = toHex(fromHex(step.value(QLatin1String("expectContains")).toString()));
-    const QString notContains = toHex(fromHex(step.value(QLatin1String("expectNotContains")).toString()));
+    // A typo in an expectation must not turn into "matches anything".
+    QString prefix, contains, notContains;
+    const std::pair<const char *, QString *> fields[] = {
+        {"expect", &prefix}, {"expectContains", &contains}, {"expectNotContains", &notContains}};
+    for (const auto &[key, target] : fields) {
+        const QString text = step.value(QLatin1String(key)).toString();
+        if (text.trimmed().isEmpty())
+            continue;
+        const QByteArray bytes = fromHex(text);
+        if (bytes.isEmpty()) {
+            fail(QStringLiteral("Invalid hex in \"%1\": '%2'").arg(QLatin1String(key), text));
+            return;
+        }
+        *target = toHex(bytes);
+    }
     bool ok = true;
     bool anyPrefix = prefix.isEmpty();
     bool anyContains = contains.isEmpty();

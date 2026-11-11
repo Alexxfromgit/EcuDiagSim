@@ -16,7 +16,7 @@ QString IsoTpLink::errorText(Error error)
     case Error::TimeoutConsecutive: return QStringLiteral("N_Cr timeout: consecutive frame missing");
     case Error::WrongSequence: return QStringLiteral("wrong consecutive frame sequence number");
     case Error::Overflow: return QStringLiteral("receiver reported buffer overflow");
-    case Error::UnexpectedFrame: return QStringLiteral("unexpected frame");
+    case Error::InvalidFlowStatus: return QStringLiteral("invalid flow status in flow control frame");
     }
     return {};
 }
@@ -93,8 +93,14 @@ void IsoTpLink::handleFlowControl(const QByteArray &d)
     case 0: { // continue to send
         m_txBlockRemaining = static_cast<quint8>(d[1]);
         const quint8 st = static_cast<quint8>(d[2]);
-        // 0x00..0x7F = milliseconds, 0xF1..0xF9 = 100..900 us (rounded up to our 1 ms tick)
-        m_txStMin = st <= 0x7F ? st : 1;
+        // 0x00..0x7F = milliseconds, 0xF1..0xF9 = 100..900 us (rounded up to our 1 ms tick).
+        // Reserved values must be treated as the longest separation time, 0x7F = 127 ms.
+        if (st <= 0x7F)
+            m_txStMin = st;
+        else if (st >= 0xF1 && st <= 0xF9)
+            m_txStMin = 1;
+        else
+            m_txStMin = 0x7F;
         m_tx = TxState::SendConsecutive;
         m_txNextCf = m_now;
         break;
@@ -102,8 +108,11 @@ void IsoTpLink::handleFlowControl(const QByteArray &d)
     case 1: // wait
         m_txDeadline = m_now + m_config.nBsMs;
         break;
-    default:
+    case 2: // overflow
         fail(Error::Overflow);
+        break;
+    default:
+        fail(Error::InvalidFlowStatus);
         break;
     }
 }

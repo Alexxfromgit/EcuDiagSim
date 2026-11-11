@@ -16,10 +16,10 @@ Reading the VIN shows all of them (`09 02` to 0x7DF):
 
 ```
 7DF  02 09 02 55 55 55 55 55     tester: single frame, 2 bytes
-7E8  10 14 49 02 01 57 53 49     ECM: first frame, 20 bytes in total
+7E8  10 14 49 02 01 57 53 4D     ECM: first frame, 20 bytes in total
 7E0  30 00 00 55 55 55 55 55     tester: flow control - send everything, no delay
-7E8  21 4D 30 45 43 55 30 44     ECM: consecutive frame 1
-7E8  22 49 41 47 32 30 32 36     ECM: consecutive frame 2
+7E8  21 45 43 55 44 47 38 54     ECM: consecutive frame 1
+7E8  22 53 30 30 30 30 34 32     ECM: consecutive frame 2
 ```
 
 Unused bytes are padded (tester 0x55, ECUs 0xCC). Timeouts: 1 s for the flow control (N_Bs) and
@@ -62,7 +62,7 @@ All four ECUs. A positive response is the service + 0x40; a negative one is `7F 
 | 0x11 ECUReset | `11 01` hard, `11 03` soft | the ECU is off the bus for 300 ms |
 | 0x14 ClearDiagnosticInformation | `14 FF FF FF` all, or one DTC | |
 | 0x19 ReadDTCInformation | `19 01 mask` count, `19 02 mask` list, `19 0A` all supported, `19 04 DTC 01` snapshot, `19 06 DTC 01` extended data | extended data = occurrence counter, aging counter |
-| 0x22 ReadDataByIdentifier | `22 DID [DID…]` | |
+| 0x22 ReadDataByIdentifier | `22 DID [DID…]` | unsupported identifiers are left out; 0x31 only if none is supported |
 | 0x27 SecurityAccess | `27 01` request seed, `27 02 key` | extended session only |
 | 0x2F InputOutputControlByIdentifier | `2F DID 03 state` force, `2F DID 00` release | extended session and unlocked |
 | 0x3E TesterPresent | `3E 00`, or `3E 80` without response | |
@@ -73,7 +73,8 @@ Bit 7 of a sub-function suppresses the positive response (`10 83`, `3E 80`).
 when no request arrives for 5 s (S3 timeout) — send TesterPresent to keep it. Leaving the session
 locks the ECU again and releases all forced outputs.
 
-**Security access.** Three wrong keys cause a 10 s lock-out. The algorithm is intentionally simple:
+**Security access.** Three wrong keys cause a 10 s lock-out. The attempt counter and the delay
+survive an ECU reset, so resetting is no way around it. The algorithm is intentionally simple:
 
 ```
 key = rotl32(seed XOR 0x5EC0DE5A, 5) + 0x1234ABCD
@@ -86,6 +87,7 @@ key = rotl32(seed XOR 0x5EC0DE5A, 5) + 0x1234ABCD
 | 0x11 | serviceNotSupported | unknown service; OBD mode sent to ABS or BCM |
 | 0x12 | subFunctionNotSupported | `10 02`, `19 55` |
 | 0x13 | incorrectMessageLengthOrInvalidFormat | bytes missing or too many |
+| 0x14 | responseTooLong | the answer would exceed 4095 bytes, the ISO-TP limit |
 | 0x24 | requestSequenceError | key sent without requesting a seed |
 | 0x31 | requestOutOfRange | unknown identifier or DTC |
 | 0x33 | securityAccessDenied | IO control while locked |

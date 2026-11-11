@@ -16,6 +16,10 @@ if (-not (Get-Command cl.exe -ErrorAction SilentlyContinue)) {
     $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
     if (-not $vs) { throw 'No Visual Studio installation with the C++ toolset found.' }
+    # VsDevCmd.bat calls vswhere.exe by bare name; make it findable even when the
+    # current directory is not searched (NoDefaultCurrentDirectoryInExePath).
+    $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer"
+    if ($env:PATH -notlike "*$installer*") { $env:PATH = "$installer;$env:PATH" }
     Import-Module "$vs\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
     Enter-VsDevShell -VsInstallPath $vs -SkipAutomaticLocation -DevCmdArguments '-arch=x64 -host_arch=x64' 2>$null | Out-Null
 }

@@ -47,7 +47,7 @@ public:
 
     static constexpr int kStartupGraceMs = 1000; ///< no timeout monitoring right after wake-up
     static constexpr int kResetDurationMs = 300;
-    static constexpr const char *kVin = "WSIM0ECU0DIAG2026";
+    static constexpr const char *kVin = "WSMECUDG8TS000042";
 
     Ecu(SimContext &ctx, Identity identity);
     ~Ecu() override;
@@ -86,7 +86,9 @@ protected:
     qint64 now() const { return m_now; }
     qint64 awakeForMs() const { return m_now - m_wakeTime; }
 
-    void setSnapshotDids(const QList<quint16> &dids) { m_snapshotDids = dids; }
+    /// Identifiers captured in a DTC snapshot. Those in the OBD range 0xF4xx also form the
+    /// OBD-II freeze frame (Mode 02).
+    void setSnapshotDids(const QList<quint16> &dids);
 
     virtual void onWake() {}
     virtual void onSleep() {}
@@ -119,6 +121,7 @@ private:
     std::vector<Task> m_tasks;
     QHash<quint32, Subscription> m_subs;
     QList<quint16> m_snapshotDids;
+    QByteArray m_pendingResponse;
 
     qint64 m_now = 0;
     qint64 m_wakeTime = 0;

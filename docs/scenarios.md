@@ -32,6 +32,7 @@ as *failed* if at least one expectation was not met.
 | `selector` | `value`: `"P"`, `"R"`, `"N"`, `"D"` |
 | `throttle`, `brake` | `value`: 0…100 % |
 | `headlamps` | `value`: `"off"`, `"park"`, `"low"` |
+| `log` | `text`: a line for the lesson log, nothing else happens |
 | `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`; `value`: true / false |
 
 ## Time
@@ -41,7 +42,9 @@ as *failed* if at least one expectation was not met.
 | `wait` | `ms` of simulation time |
 | `waitFor` | `signal`, `op` (`==` `!=` `<` `<=` `>` `>=`), `value`, `timeout` in ms (default 10000). Fails on timeout. |
 
-Signal names are the DBC signal names; the value is the latest one seen on the bus.
+Signal names are the DBC signal names; the value is the latest one seen on the bus. A signal
+that has not been received for more than 1000 ms counts as missing (its sender went silent), so the
+check fails; set `"maxAgeMs"` on the step to allow older values.
 
 ## Faults
 
@@ -62,7 +65,7 @@ Signal names are the DBC signal names; the value is the latest one seen on the b
 
 | Form | Meaning |
 |---|---|
-| `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal |
+| `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
 | `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `absent` |
 | `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault` |
 
@@ -70,7 +73,7 @@ Signal names are the DBC signal names; the value is the latest one seen on the b
 
 | Action | Fields |
 |---|---|
-| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM` or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes), `expectContains`, `expectNotContains`, `expectNoResponse` |
+| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM` or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes), `expectContains`, `expectNotContains`, `expectNoResponse`. A check that is not valid hex fails the step. |
 | `unlock` | `ecu` — extended session plus security access with the correct key |
 
 OBD-II modes go through `uds` as well: `{ "action": "uds", "ecu": "ALL", "request": "03" }`.

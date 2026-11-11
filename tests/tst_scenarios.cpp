@@ -19,6 +19,7 @@ private slots:
     void bundledScenarios_data();
     void bundledScenarios();
     void failingExpectationFailsScenario();
+    void staleSignalsAndBadHexFail();
     void endToEndProtection();
     void busShortSilencesEverything();
     void busOffNodeIsReportedByOthers();
@@ -144,6 +145,31 @@ void tst_Scenarios::failingExpectationFailsScenario()
     QString error;
     QVERIFY(!sim.scenario().loadJson("{ \"steps\": 5 }", &error));
     QVERIFY(!error.isEmpty());
+}
+
+void tst_Scenarios::staleSignalsAndBadHexFail()
+{
+    Simulation sim;
+    const QByteArray json = R"({ "name": "t", "steps": [
+        { "action": "ignition", "value": "on" },
+        { "action": "wait", "ms": 1500 },
+        { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1 },
+        { "action": "inject", "target": "abs", "fault": "power_loss" },
+        { "action": "wait", "ms": 1500 },
+        { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1 },
+        { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1, "maxAgeMs": 5000 },
+        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": "7E GG" } ] })";
+    QVERIFY(sim.scenario().loadJson(json));
+    sim.scenario().start();
+    QVERIFY(sim.runUntil([&] { return sim.scenario().finished(); }, 20000));
+    QStringList failures;
+    for (const ScenarioLogEntry &e : sim.scenario().log())
+        if (e.level == ScenarioLogEntry::Level::Fail && !e.text.startsWith(QStringLiteral("Scenario failed")))
+            failures << e.text;
+    // The cached value from before the ABS went silent must not count, nor a broken hex string.
+    QCOMPARE(failures.size(), 2);
+    QVERIFY2(failures.at(0).contains(QStringLiteral("stale")), qPrintable(failures.join(u'\n')));
+    QVERIFY2(failures.at(1).contains(QStringLiteral("Invalid hex")), qPrintable(failures.join(u'\n')));
 }
 
 void tst_Scenarios::endToEndProtection()

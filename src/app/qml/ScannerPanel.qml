@@ -9,6 +9,8 @@ Panel {
     readonly property var scanner: App.scanner
     readonly property bool uds: modeTabs.currentIndex === 1
 
+    function showUds() { modeTabs.currentIndex = 1 }
+
     function logColor(kind) {
         switch (kind) {
         case "tx": return Theme.accent

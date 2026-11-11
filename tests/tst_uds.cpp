@@ -41,7 +41,7 @@ struct Fixture
         });
         dtcs.startOperationCycle();
 
-        server.addDid(0xF190, [] { return QByteArray("WSIM0ECU0DIAG2026"); });
+        server.addDid(0xF190, [] { return QByteArray("WSMECUDG8TS000042"); });
         server.addDid(0x1234, [] { return hex("AB CD"); });
         server.addIoControl(
             0x3010,
@@ -110,6 +110,7 @@ private slots:
     void clearDiagnosticInformation();
     void ecuReset();
     void obdServicesDisabledByDefault();
+    void responseTooLong();
     void helperFunctions();
 };
 
@@ -186,10 +187,13 @@ void tst_Uds::s3Timeout()
 void tst_Uds::readDataByIdentifier()
 {
     Fixture f;
-    QCOMPARE(f.ask("22 F1 90"), hex("62 F1 90") + QByteArray("WSIM0ECU0DIAG2026"));
+    QCOMPARE(f.ask("22 F1 90"), hex("62 F1 90") + QByteArray("WSMECUDG8TS000042"));
     QCOMPARE(f.ask("22 12 34"), hex("62 12 34 AB CD"));
     QCOMPARE(f.ask("22 12 34 F1 86"), hex("62 12 34 AB CD F1 86 01"));
-    QCOMPARE(f.ask("22 12 34 99 99"), hex("7F 22 31"));
+    // Unsupported identifiers are skipped; 0x31 only when none is supported.
+    QCOMPARE(f.ask("22 12 34 99 99"), hex("62 12 34 AB CD"));
+    QCOMPARE(f.ask("22 99 99 12 34"), hex("62 12 34 AB CD"));
+    QCOMPARE(f.ask("22 99 99 88 88"), hex("7F 22 31"));
     QCOMPARE(f.ask("22"), hex("7F 22 13"));
     QCOMPARE(f.ask("22 12"), hex("7F 22 13"));
     QCOMPARE(f.ask("22 12 34 F1"), hex("7F 22 13"));
@@ -236,6 +240,11 @@ void tst_Uds::securityAccessLockout()
         QCOMPARE(rsp, attempt < DiagnosticServer::kMaxKeyAttempts ? hex("7F 27 35") : hex("7F 27 36"));
     }
     QCOMPARE(f.ask("27 01"), hex("7F 27 37")); // requiredTimeDelayNotExpired
+
+    // Resetting the ECU must not be a way around the delay.
+    f.server.powerOnReset();
+    f.ask("10 03");
+    QCOMPARE(f.ask("27 01"), hex("7F 27 37"));
 
     for (int i = 0; i < 6; ++i) { // keep the session alive while the delay runs
         f.advance(2000);
@@ -385,6 +394,17 @@ void tst_Uds::obdServicesDisabledByDefault()
     QCOMPARE(f.ask("03", true), hex("43 00"));
     QVERIFY(f.ask("01 0C", true).isEmpty()); // unsupported PID: no answer
     QVERIFY(f.ask("08 00", true).isEmpty()); // unsupported mode: no answer
+}
+
+void tst_Uds::responseTooLong()
+{
+    Fixture f;
+    // 300 x F190 needs a 5701 byte response, more than ISO-TP can carry.
+    QByteArray request = hex("22");
+    for (int i = 0; i < 300; ++i)
+        request += hex("F1 90");
+    QCOMPARE(f.server.handleRequest(request, false), hex("7F 22 14"));
+    QCOMPARE(nrcName(0x14), QStringLiteral("responseTooLong"));
 }
 
 void tst_Uds::helperFunctions()

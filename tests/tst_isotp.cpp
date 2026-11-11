@@ -104,6 +104,7 @@ private slots:
     void wrongSequenceNumber();
     void overflowIsRejected();
     void flowControlWait();
+    void reservedFlowControlValues();
     void functionalAddressing();
     void busyAndInvalidRequests();
     void foreignFramesAreIgnored();
@@ -283,6 +284,30 @@ void tst_IsoTp::flowControlWait()
     w.run(5);
     QVERIFY(!w.a.isSending());
     QCOMPARE(w.count(2), 2);
+}
+
+void tst_IsoTp::reservedFlowControlValues()
+{
+    // Reserved STmin (0x80..0xF0, 0xFA..0xFF) must be treated as 127 ms.
+    Wire w;
+    w.dropToB = true;
+    QVERIFY(w.a.send(pattern(20)));
+    w.run(1);
+    w.a.handleFrame(QCanBusFrame(0x7E8, QByteArray::fromHex("300080")));
+    w.run(1);
+    QCOMPARE(w.count(2), 1); // first consecutive frame right away
+    w.run(120);
+    QCOMPARE(w.count(2), 1); // ... the second one only after 127 ms
+    w.run(10);
+    QCOMPARE(w.count(2), 2);
+
+    // A reserved flow status aborts the transmission with its own error.
+    Wire v;
+    v.dropToB = true;
+    QVERIFY(v.a.send(pattern(20)));
+    v.a.handleFrame(QCanBusFrame(0x7E8, QByteArray::fromHex("350000")));
+    QVERIFY(!v.a.isSending());
+    QCOMPARE(v.errorA, std::optional(IsoTpLink::Error::InvalidFlowStatus));
 }
 
 void tst_IsoTp::functionalAddressing()

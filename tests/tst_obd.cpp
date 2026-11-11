@@ -29,6 +29,7 @@ private slots:
     void multiplePidsInOneRequest();
     void vehicleInformation();
     void storedCodesAndFreezeFrame();
+    void runTimeCountsFromEngineStart();
     void pendingBeforeConfirmed();
     void noAnswerWithIgnitionOff();
     void decodeHelpers();
@@ -141,6 +142,12 @@ void tst_Obd::storedCodesAndFreezeFrame()
     startEngine(sim);
     QCOMPARE(ask(sim, DiagId::EcmRequest, "03"), hex("43 00"));
     QCOMPARE(ask(sim, DiagId::EcmRequest, "02 02 00"), hex("42 02 00 00 00"));
+    // Freeze frame support masks list exactly the stored PIDs (02 04 05 0C 0D 11 | 42).
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "02 00 00"), hex("42 00 00 58 18 80 01"));
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "02 20 00"), hex("42 20 00 00 00 00 01"));
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "02 40 00"), hex("42 40 00 40 00 00 00"));
+    QVERIFY(exchange(sim, DiagId::EcmRequest, hex("02 60 00")).timedOut());
+    QVERIFY(exchange(sim, DiagId::EcmRequest, hex("02 01 00")).timedOut()); // PID 01 is not a freeze frame PID
     QVERIFY(exchange(sim, DiagId::EcmRequest, hex("02 0C 00")).timedOut()); // no freeze frame yet
 
     sim.driver().throttlePedal = 0.3; // rev the engine in P so the freeze frame is recognisable
@@ -179,6 +186,20 @@ void tst_Obd::storedCodesAndFreezeFrame()
     sim.run(1500);
     QCOMPARE(ask(sim, DiagId::EcmRequest, "03"), hex("43 00"));
     QVERIFY(!sim.ipc().state().mil);
+}
+
+void tst_Obd::runTimeCountsFromEngineStart()
+{
+    Simulation sim;
+    startEngine(sim);
+    sim.run(20000);
+    // Stall by switching off, then restart.
+    sim.driver().ignition = Ignition::Off;
+    sim.run(300);
+    startEngine(sim); // includes 3.5 s of running
+    const QByteArray rsp = ask(sim, DiagId::EcmRequest, "01 1F");
+    const int runtime = (u8(rsp, 2) << 8) | u8(rsp, 3);
+    QVERIFY2(runtime >= 3 && runtime <= 5, qPrintable(QString::number(runtime)));
 }
 
 void tst_Obd::pendingBeforeConfirmed()

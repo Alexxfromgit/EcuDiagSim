@@ -31,6 +31,7 @@ public:
     static constexpr int kMaxKeyAttempts = 3;
     static constexpr int kLockoutMs = 10000;
     static constexpr quint16 kDidActiveSession = 0xF186;
+    static constexpr int kMaxResponseLength = 4095; ///< largest ISO-TP message on classic CAN
 
     explicit DiagnosticServer(DtcManager &dtcs, quint32 seedInit = 0x1234567);
 
@@ -40,6 +41,8 @@ public:
     void enableObd(bool enabled) { m_obd = enabled; }
     void addObdPid(quint8 pid, ReadFn read);           ///< Mode 01; also readable as DID 0xF400 + pid
     void addObdInfoType(quint8 infoType, ReadFn read); ///< Mode 09
+    /// PIDs that the freeze frame (DTC snapshot) contains; announced by Mode 02 PID 00.
+    void setFreezeFramePids(const QList<quint8> &pids) { m_freezeFramePids = pids; }
     std::function<void()> onReset;
 
     // --- runtime ---
@@ -85,6 +88,7 @@ private:
     QSet<quint16> m_activeIo;
     QMap<quint8, ReadFn> m_obdPids;
     QMap<quint8, ReadFn> m_obdInfo;
+    QList<quint8> m_freezeFramePids;
     bool m_obd = false;
 
     Session m_session = Session::Default;

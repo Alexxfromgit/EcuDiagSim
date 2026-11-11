@@ -75,6 +75,7 @@ ApplicationWindow {
                 }
                 onEcuPicked: index => {
                     App.scanner.target = index
+                    scannerPanel.showUds()
                     window.currentTab = 2
                 }
             }
@@ -120,7 +121,7 @@ ApplicationWindow {
                     currentIndex: window.currentTab
                     FaultsPanel { id: faults }
                     TracePanel {}
-                    ScannerPanel {}
+                    ScannerPanel { id: scannerPanel }
                     ScenariosPanel {}
                 }
             }

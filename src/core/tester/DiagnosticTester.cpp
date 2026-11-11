@@ -86,17 +86,10 @@ void DiagnosticTester::onFrame(const QCanBusFrame &frame)
         link->handleFrame(frame);
 }
 
-void DiagnosticTester::request(quint32 requestId, const QByteArray &data, Callback callback, bool expectResponse)
+void DiagnosticTester::request(quint32 requestId, const QByteArray &data, Callback callback, bool expectResponse,
+    bool background)
 {
-    m_queue.push_back({requestId, data, std::move(callback), expectResponse});
-}
-
-void DiagnosticTester::cancelAll()
-{
-    m_queue.clear();
-    m_active = false;
-    for (auto &link : m_links)
-        link->reset();
+    m_queue.push_back({requestId, data, std::move(callback), expectResponse, background});
 }
 
 void DiagnosticTester::setKeepAlive(quint32 requestId, bool enabled)
@@ -104,7 +97,7 @@ void DiagnosticTester::setKeepAlive(quint32 requestId, bool enabled)
     if (enabled)
         m_keepAlive.insert(requestId);
     else
-        m_keepAlive.remove(requestId);
+        m_keepAlive.erase(requestId);
 }
 
 void DiagnosticTester::start(Job job)
@@ -114,6 +107,7 @@ void DiagnosticTester::start(Job job)
     m_result.requestId = m_job.requestId;
     m_result.request = m_job.data;
     m_result.responseExpected = m_job.expectResponse;
+    m_result.background = m_job.background;
     m_active = true;
     m_deadline = m_now + kP2Ms;
 
@@ -168,10 +162,10 @@ void DiagnosticTester::tick(qint64 nowMs)
             finish();
     }
 
-    if (!m_active && m_queue.empty() && !m_keepAlive.isEmpty() && nowMs - m_lastKeepAlive >= kTesterPresentMs) {
+    if (!m_active && m_queue.empty() && !m_keepAlive.empty() && nowMs - m_lastKeepAlive >= kTesterPresentMs) {
         m_lastKeepAlive = nowMs;
-        for (quint32 id : std::as_const(m_keepAlive))
-            m_queue.push_back({id, QByteArray::fromHex("3E80"), {}, false});
+        for (quint32 id : m_keepAlive)
+            m_queue.push_back({id, QByteArray::fromHex("3E80"), {}, false, true});
     }
 
     if (!m_active && !m_queue.empty()) {

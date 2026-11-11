@@ -1,5 +1,7 @@
 #include "diag/DiagnosticServer.h"
 
+#include <algorithm>
+
 namespace ecusim {
 
 namespace {
@@ -83,9 +85,9 @@ void DiagnosticServer::enterSession(Session session)
 
 void DiagnosticServer::powerOnReset()
 {
+    // The failed-attempt counter and a running delay survive a reset (they live in
+    // non-volatile memory on a real ECU); otherwise resetting would defeat the lockout.
     enterSession(Session::Default);
-    m_failedAttempts = 0;
-    m_lockedUntilMs = 0;
 }
 
 void DiagnosticServer::tick(qint64 nowMs)
@@ -103,9 +105,11 @@ QByteArray DiagnosticServer::handleRequest(const QByteArray &request, bool funct
     m_lastRequestMs = m_nowMs;
 
     bool suppress = false;
-    const QByteArray response = dispatch(request, suppress);
+    QByteArray response = dispatch(request, suppress);
     if (response.isEmpty())
         return {};
+    if (response.size() > kMaxResponseLength && u8(response, 0) != Sid::NegativeResponse)
+        response = negative(u8(request, 0), Nrc::ResponseTooLong);
 
     if (u8(response, 0) == Sid::NegativeResponse) {
         // With functional addressing "not supported" style answers are not sent,
@@ -262,14 +266,18 @@ QByteArray DiagnosticServer::readDataById(const QByteArray &req)
 {
     if (req.size() < 3 || (req.size() - 1) % 2 != 0)
         return negative(Sid::ReadDataByIdentifier, Nrc::IncorrectMessageLength);
+    // Unsupported identifiers are left out of the response; only if none of the
+    // requested identifiers is supported does the server answer requestOutOfRange.
     QByteArray rsp = bytes({0x62});
     for (qsizetype i = 1; i + 1 < req.size(); i += 2) {
         const quint16 did = static_cast<quint16>((u8(req, i) << 8) | u8(req, i + 1));
         if (!m_dids.contains(did))
-            return negative(Sid::ReadDataByIdentifier, Nrc::RequestOutOfRange);
+            continue;
         put16(rsp, did);
         rsp.append(readDid(did));
     }
+    if (rsp.size() == 1)
+        return negative(Sid::ReadDataByIdentifier, Nrc::RequestOutOfRange);
     return rsp;
 }
 
@@ -434,10 +442,14 @@ QByteArray DiagnosticServer::obd(const QByteArray &req)
         const quint8 pid = u8(req, 1);
         const DtcEntry *ff = m_dtcs.freezeFrameDtc();
         QByteArray rsp = bytes({0x42, pid, 0x00});
-        if (pid == 0x00) {
-            QList<quint8> pids = m_obdPids.keys();
+        if (pid % 0x20 == 0) {
+            // Only the PIDs that are actually stored in a freeze frame (plus PID 02).
+            QList<quint8> pids = m_freezeFramePids;
             pids.append(0x02);
-            rsp.append(obdSupportMask(pids, 0));
+            std::sort(pids.begin(), pids.end());
+            if (pid != 0 && pids.last() <= pid)
+                return {};
+            rsp.append(obdSupportMask(pids, pid));
         } else if (pid == 0x02) {
             put16(rsp, ff ? ff->def.code >> 8 : 0); // DTC that caused the freeze frame
         } else {

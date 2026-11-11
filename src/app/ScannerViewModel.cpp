@@ -5,6 +5,8 @@
 #include "diag/DtcManager.h"
 #include "tester/Decode.h"
 
+#include <memory>
+
 using namespace ecusim;
 
 namespace {
@@ -116,7 +118,9 @@ void ScannerViewModel::simulationReset()
     for (int i = 0; i < 4; ++i) {
         m_session[i] = 1;
         m_unlocked[i] = false;
+        m_lastRequestMs[i] = 0;
     }
+    m_background = false;
     setDtcs({}, {});
     setValues({}, {});
     emit stateChanged();
@@ -161,18 +165,41 @@ QVariantMap ScannerViewModel::valueRow(const QString &ecu, const QString &name, 
 
 void ScannerViewModel::send(quint32 id, const QByteArray &request, DiagnosticTester::Callback callback)
 {
-    tester().request(id, request, std::move(callback));
+    tester().request(id, request, std::move(callback), true, m_background);
+}
+
+void ScannerViewModel::resetTargetState(int index)
+{
+    if (m_session[index] == 1 && !m_unlocked[index])
+        return;
+    m_session[index] = 1;
+    m_unlocked[index] = false;
+    emit stateChanged();
+}
+
+void ScannerViewModel::updateSessionState()
+{
+    const QList<Ecu *> ecus = m_app->sim().ecus(); // ECM, TCM, ABS, BCM, ...
+    const qint64 now = m_app->sim().nowMs();
+    for (int i = 0; i < 4 && i < ecus.size(); ++i) {
+        const bool kept = tester().keepAlive(0x7E0 + static_cast<quint32>(i));
+        if (!ecus.at(i)->awake())
+            resetTargetState(i); // power cycle: back to the default session, locked
+        else if (m_session[i] != 1 && !kept && now - m_lastRequestMs[i] > DiagnosticServer::kS3TimeoutMs)
+            resetTargetState(i); // S3 timeout
+    }
 }
 
 /// Every finished exchange passes through here: log it and track session/security state.
 void ScannerViewModel::onResult(const DiagResult &result)
 {
     if (!result.responseExpected)
-        return; // background TesterPresent
-    // Requests queued by poll() come first in the FIFO; they are not written to the log.
-    const bool quiet = m_quietJobs > 0;
-    if (quiet)
-        --m_quietJobs;
+        return; // TesterPresent without response
+    const int target = static_cast<int>(result.requestId) - 0x7E0;
+    if (target >= 0 && target < 4)
+        m_lastRequestMs[target] = m_app->sim().nowMs(); // any request restarts the ECU's S3 timer
+    // Polling traffic is not written to the log.
+    const bool quiet = result.background;
     if (!quiet) {
         addLog(QStringLiteral("tx"),
             QStringLiteral("%1  %2   %3")
@@ -192,8 +219,19 @@ void ScannerViewModel::onResult(const DiagResult &result)
             addLog(QStringLiteral("info"), QStringLiteral("%1: %2").arg(r.ecu, explainResponse(result.request, r.data)));
         }
         const int index = static_cast<int>(r.canId) - 0x7E8;
-        if (index < 0 || index > 3 || r.isNegative() || r.data.isEmpty())
+        if (index < 0 || index > 3 || r.data.isEmpty())
             continue;
+        if (r.isNegative()) {
+            // The ECU says it is not in a session that allows this, or not unlocked.
+            const quint8 nrc = r.nrc();
+            if (nrc == Nrc::ServiceNotSupportedInActiveSession || nrc == Nrc::SubFunctionNotSupportedInActiveSession)
+                resetTargetState(index);
+            else if (nrc == Nrc::SecurityAccessDenied && m_unlocked[index]) {
+                m_unlocked[index] = false;
+                emit stateChanged();
+            }
+            continue;
+        }
         const quint8 sid = static_cast<quint8>(r.data[0]);
         if (sid == 0x50 && r.data.size() >= 2) {
             m_session[index] = static_cast<quint8>(r.data[1]);
@@ -217,48 +255,52 @@ void ScannerViewModel::onResult(const DiagResult &result)
 
 // --- OBD-II -----------------------------------------------------------------
 
+// Functions that need several requests collect their rows in a buffer owned by that one
+// operation, so a second click or a poll running at the same time cannot mix into it.
+using Rows = std::shared_ptr<QVariantList>;
+
 void ScannerViewModel::obdLiveData()
 {
-    m_collect.clear();
-    auto collect = [this](const DiagResult &r) {
+    const Rows rows = std::make_shared<QVariantList>();
+    auto collect = [rows](const DiagResult &r) {
         for (const DiagResponse &rsp : r.responses)
             for (const DecodedValue &v : parseDataResponse(rsp.data))
-                m_collect.append(valueRow(rsp.ecu, v.name, v.value, v.unit));
+                rows->append(valueRow(rsp.ecu, v.name, v.value, v.unit));
     };
     send(DiagId::Functional, hex("01 01 04 05 0C 0D 11"), collect);
-    send(DiagId::Functional, hex("01 1F 42"), [this, collect](const DiagResult &r) {
+    send(DiagId::Functional, hex("01 1F 42"), [this, rows, collect](const DiagResult &r) {
         collect(r);
-        setValues(QStringLiteral("OBD-II live data (Mode 01)"), m_collect);
+        setValues(QStringLiteral("OBD-II live data (Mode 01)"), *rows);
     });
 }
 
 void ScannerViewModel::obdReadCodes()
 {
-    m_collect.clear();
-    send(DiagId::Functional, hex("03"), [this](const DiagResult &r) {
+    const Rows rows = std::make_shared<QVariantList>();
+    send(DiagId::Functional, hex("03"), [rows](const DiagResult &r) {
         for (const DiagResponse &rsp : r.responses)
             for (const DtcInfo &d : parseObdDtcList(rsp.data))
-                m_collect.append(dtcRow(d, rsp.ecu, true));
+                rows->append(dtcRow(d, rsp.ecu, true));
     });
-    send(DiagId::Functional, hex("07"), [this](const DiagResult &r) {
+    send(DiagId::Functional, hex("07"), [this, rows](const DiagResult &r) {
         for (const DiagResponse &rsp : r.responses) {
             for (const DtcInfo &d : parseObdDtcList(rsp.data)) {
                 // A confirmed DTC is usually pending as well; list it once.
                 bool known = false;
-                for (qsizetype i = 0; i < m_collect.size(); ++i) {
-                    QVariantMap row = m_collect.at(i).toMap();
+                for (qsizetype i = 0; i < rows->size(); ++i) {
+                    QVariantMap row = rows->at(i).toMap();
                     if (row.value(QStringLiteral("code")) == dtcToString(d.code, false)
                         && row.value(QStringLiteral("ecu")) == rsp.ecu) {
                         row[QStringLiteral("pending")] = true;
-                        m_collect[i] = row;
+                        (*rows)[i] = row;
                         known = true;
                     }
                 }
                 if (!known)
-                    m_collect.append(dtcRow(d, rsp.ecu, true));
+                    rows->append(dtcRow(d, rsp.ecu, true));
             }
         }
-        setDtcs(QStringLiteral("OBD-II: stored (Mode 03) and pending (Mode 07) codes"), m_collect);
+        setDtcs(QStringLiteral("OBD-II: stored (Mode 03) and pending (Mode 07) codes"), *rows);
     });
 }
 
@@ -269,13 +311,13 @@ void ScannerViewModel::obdClearCodes()
 
 void ScannerViewModel::obdFreezeFrame()
 {
-    m_collect.clear();
-    send(DiagId::Functional, hex("02 02 00"), [this](const DiagResult &r) {
+    const Rows rows = std::make_shared<QVariantList>();
+    send(DiagId::Functional, hex("02 02 00"), [rows](const DiagResult &r) {
         for (const DiagResponse &rsp : r.responses) {
             if (rsp.data.size() < 5)
                 continue;
             const quint32 code = ((quint32{static_cast<quint8>(rsp.data[3])} << 8) | static_cast<quint8>(rsp.data[4])) << 8;
-            m_collect.append(valueRow(rsp.ecu, QStringLiteral("DTC that stored the freeze frame"),
+            rows->append(valueRow(rsp.ecu, QStringLiteral("DTC that stored the freeze frame"),
                 code ? dtcToString(code, false) + QStringLiteral("  ") + dtcDescription(code)
                      : QStringLiteral("none"),
                 {}));
@@ -286,22 +328,22 @@ void ScannerViewModel::obdFreezeFrame()
         QByteArray request = hex("02 00 00");
         request[1] = static_cast<char>(pid);
         const bool last = pid == 0x42;
-        send(DiagId::Functional, request, [this, pid, last](const DiagResult &r) {
+        send(DiagId::Functional, request, [this, rows, pid, last](const DiagResult &r) {
             for (const DiagResponse &rsp : r.responses) {
                 if (rsp.data.size() < 4)
                     continue;
                 const DecodedValue v = decodeDid(static_cast<quint16>(0xF400 | pid), rsp.data.mid(3));
-                m_collect.append(valueRow(rsp.ecu, v.name, v.value, v.unit));
+                rows->append(valueRow(rsp.ecu, v.name, v.value, v.unit));
             }
             if (last)
-                setValues(QStringLiteral("OBD-II freeze frame (Mode 02)"), m_collect);
+                setValues(QStringLiteral("OBD-II freeze frame (Mode 02)"), *rows);
         });
     }
 }
 
 void ScannerViewModel::obdVehicleInfo()
 {
-    m_collect.clear();
+    const Rows rows = std::make_shared<QVariantList>();
     struct Item
     {
         const char *request;
@@ -311,14 +353,14 @@ void ScannerViewModel::obdVehicleInfo()
     for (const Item &item : kItems) {
         const QString name = QString::fromLatin1(item.name);
         const bool last = &item == &kItems[2];
-        send(DiagId::Functional, hex(item.request), [this, name, last](const DiagResult &r) {
+        send(DiagId::Functional, hex(item.request), [this, rows, name, last](const DiagResult &r) {
             for (const DiagResponse &rsp : r.responses) {
                 QByteArray text = rsp.data.mid(3);
                 text.replace('\0', ' ');
-                m_collect.append(valueRow(rsp.ecu, name, QString::fromLatin1(text).trimmed(), {}));
+                rows->append(valueRow(rsp.ecu, name, QString::fromLatin1(text).trimmed(), {}));
             }
             if (last)
-                setValues(QStringLiteral("OBD-II vehicle information (Mode 09)"), m_collect);
+                setValues(QStringLiteral("OBD-II vehicle information (Mode 09)"), *rows);
         });
     }
 }
@@ -405,22 +447,22 @@ void ScannerViewModel::udsSnapshot(const QString &dtcText)
     dtcBytes.append(static_cast<char>(code >> 8));
     dtcBytes.append(static_cast<char>(code));
     const QString ecu = DiagnosticTester::ecuName(targetId());
-    m_collect.clear();
-    send(targetId(), hex("19 04") + dtcBytes + hex("01"), [this, ecu](const DiagResult &r) {
+    const Rows rows = std::make_shared<QVariantList>();
+    send(targetId(), hex("19 04") + dtcBytes + hex("01"), [rows, ecu](const DiagResult &r) {
         if (const DiagResponse *rsp = r.positive())
             for (const DecodedValue &v : parseSnapshot(rsp->data))
-                m_collect.append(valueRow(ecu, v.name, v.value, v.unit));
+                rows->append(valueRow(ecu, v.name, v.value, v.unit));
     });
-    send(targetId(), hex("19 06") + dtcBytes + hex("01"), [this, ecu, dtcText](const DiagResult &r) {
+    send(targetId(), hex("19 06") + dtcBytes + hex("01"), [this, rows, ecu, dtcText](const DiagResult &r) {
         const DiagResponse *rsp = r.positive();
         if (rsp && rsp->data.size() >= 9) {
-            m_collect.append(valueRow(ecu, QStringLiteral("Occurrence counter"),
+            rows->append(valueRow(ecu, QStringLiteral("Occurrence counter"),
                 QString::number(static_cast<quint8>(rsp->data[7])), {}));
-            m_collect.append(valueRow(ecu, QStringLiteral("Aging counter (fault-free cycles)"),
+            rows->append(valueRow(ecu, QStringLiteral("Aging counter (fault-free cycles)"),
                 QString::number(static_cast<quint8>(rsp->data[8])), {}));
         }
         setValues(QStringLiteral("%1 %2: snapshot and extended data (UDS 19 04 / 19 06)").arg(ecu, dtcText),
-            m_collect);
+            *rows);
     });
 }
 
@@ -483,11 +525,10 @@ void ScannerViewModel::poll()
 {
     if (m_pollMode == 0 || tester().busy())
         return;
-    if (m_pollMode == 1) {
-        m_quietJobs = 2;
+    m_background = true;
+    if (m_pollMode == 1)
         obdLiveData();
-    } else {
-        m_quietJobs = 1;
+    else
         udsLiveData();
-    }
+    m_background = false;
 }

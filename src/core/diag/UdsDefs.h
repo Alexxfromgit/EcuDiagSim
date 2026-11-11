@@ -12,6 +12,7 @@ enum : quint8 {
     ServiceNotSupported = 0x11,
     SubFunctionNotSupported = 0x12,
     IncorrectMessageLength = 0x13,
+    ResponseTooLong = 0x14,
     ConditionsNotCorrect = 0x22,
     RequestSequenceError = 0x24,
     RequestOutOfRange = 0x31,

@@ -5,11 +5,11 @@
 #include "diag/UdsDefs.h"
 
 #include <QList>
-#include <QSet>
 
 #include <deque>
 #include <functional>
 #include <memory>
+#include <set>
 #include <vector>
 
 namespace ecusim {
@@ -31,6 +31,7 @@ struct DiagResult
     QList<DiagResponse> responses;
     QString transportError;
     bool responseExpected = true;
+    bool background = false; ///< polling / keep-alive traffic a UI may leave out of its log
 
     bool timedOut() const { return responseExpected && responses.isEmpty(); }
     /// The first positive response, or nullptr.
@@ -58,13 +59,13 @@ public:
     void tick(qint64 nowMs);
 
     /// Queues a request. requestId is DiagId::Functional or a physical request ID.
-    void request(quint32 requestId, const QByteArray &data, Callback callback = {}, bool expectResponse = true);
+    void request(quint32 requestId, const QByteArray &data, Callback callback = {}, bool expectResponse = true,
+        bool background = false);
     bool busy() const { return m_active || !m_queue.empty(); }
-    void cancelAll();
 
     /// Sends TesterPresent (3E 80, no response) periodically to keep a session alive.
     void setKeepAlive(quint32 requestId, bool enabled);
-    bool keepAlive(quint32 requestId) const { return m_keepAlive.contains(requestId); }
+    bool keepAlive(quint32 requestId) const { return m_keepAlive.count(requestId) > 0; }
 
     /// Observer for every completed exchange (the UI log hooks in here).
     std::function<void(const DiagResult &)> onResult;
@@ -79,6 +80,7 @@ private:
         QByteArray data;
         Callback callback;
         bool expectResponse = true;
+        bool background = false;
     };
 
     IsoTpLink *linkForResponse(quint32 responseId);
@@ -94,7 +96,7 @@ private:
     qint64 m_now = 0;
     qint64 m_deadline = 0;
     qint64 m_lastKeepAlive = 0;
-    QSet<quint32> m_keepAlive;
+    std::set<quint32> m_keepAlive; ///< ordered: TesterPresent goes out in ID order, every run
 };
 
 } // namespace ecusim
