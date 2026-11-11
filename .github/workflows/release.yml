@@ -1,0 +1,107 @@
+name: Release
+
+# Every push to main updates the Release Please PR (version bump + CHANGELOG.md, from Conventional
+# Commit PR titles). Merging that PR creates the vX.Y.Z tag and a draft GitHub release; the same run
+# then builds and tests the Windows package, uploads it with a checksum and publishes the release.
+#
+# Run it by hand with an existing tag to (re)build that release's assets, e.g. for the first
+# release: create a draft release v0.1.0 on main, then run this workflow with tag v0.1.0.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build, e.g. v0.1.0
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  release-please:
+    # Forks run CI but never cut releases.
+    if: github.event_name == 'push' && github.repository == 'Alexxfromgit/EcuDiagSim'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      created: ${{ steps.rp.outputs.release_created }}
+      tag: ${{ steps.rp.outputs.tag_name }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          # A PAT or GitHub App token, so CI runs on the release PR (PRs opened with GITHUB_TOKEN
+          # trigger no workflows). Falls back to GITHUB_TOKEN, which works apart from that.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  windows:
+    name: Windows package
+    needs: release-please
+    if: >-
+      ${{ !cancelled() && github.repository == 'Alexxfromgit/EcuDiagSim' &&
+          (needs.release-please.outputs.created == 'true' || github.event_name == 'workflow_dispatch') }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write # upload assets, publish the draft release
+      id-token: write # build provenance attestations
+      attestations: write
+    env:
+      TAG: ${{ needs.release-please.outputs.tag || inputs.tag }}
+    steps:
+      - name: Check tag
+        shell: bash
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::'$TAG' is not a vX.Y.Z tag"; exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtserialbus qtserialport
+          cache: true
+
+      - uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build and test
+        run: |
+          cmake --preset release
+          cmake --build --preset release
+          ctest --preset release
+
+      - name: Package
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -Preset release -Version $env:TAG.TrimStart('v') -OutDir dist
+
+      # Signed provenance for every download (verify with `gh attestation verify <file> -R <repo>`).
+      - name: Attest build provenance
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/*
+
+      - name: Upload and publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$TAG" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --draft=false --repo "$GITHUB_REPOSITORY"

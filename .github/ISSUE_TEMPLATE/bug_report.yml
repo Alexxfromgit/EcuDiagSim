@@ -1,0 +1,57 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Ignition on, start engine, drive at 50 km/h
+        2. Inject "Open circuit" on wheel speed sensor FL
+        3. Scan tool → UDS → ABS → Read DTCs
+        4. ...
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Vehicle / sensors / faults
+        - ECU behaviour or DTCs
+        - Scan tool (OBD-II / UDS)
+        - CAN trace, export or replay
+        - Lessons / scenarios
+        - Build or installation
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows 11, Windows 10, Linux, macOS, Other]
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else?
+      description: >
+        Screenshots, the scan tool's communication log, a saved CAN trace (candump or ASC), or the
+        scenario file that shows the problem. If something disagrees with a standard
+        (ISO 14229, ISO 15765, SAE J1979 …), please name the clause.

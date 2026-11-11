@@ -1,5 +1,9 @@
 # ECU Diagnostics Simulator
 
+[![CI](https://github.com/Alexxfromgit/EcuDiagSim/actions/workflows/ci.yml/badge.svg)](https://github.com/Alexxfromgit/EcuDiagSim/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Alexxfromgit/EcuDiagSim?sort=semver)](https://github.com/Alexxfromgit/EcuDiagSim/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A virtual car for learning automotive electronics. Five control units (ECM, TCM, ABS, BCM and the
 instrument cluster) talk over a simulated 500 kbit/s CAN bus. You break a component — unplug a wheel
 speed sensor, short a temperature sensor, pull a fuse — and follow the consequences through the
@@ -23,7 +27,18 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 | Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2F, 0x3E with negative response codes and S3 timeout |
 | Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, scripted lessons in JSON |
 
-## Build and run (Windows)
+## Download
+
+Get the latest Windows build from [Releases](https://github.com/Alexxfromgit/EcuDiagSim/releases/latest):
+`EcuDiagSim-<version>-win-x64.zip` runs as is (Windows 10/11, x64) — unzip and start `EcuDiagSim.exe`.
+Each release lists a SHA-256 checksum, and its build provenance can be checked with
+`gh attestation verify EcuDiagSim-<version>-win-x64.zip -R Alexxfromgit/EcuDiagSim`.
+
+On Linux, build from source (below).
+
+## Build and run
+
+### Windows
 
 Requirements: Visual Studio 2022 or newer with the C++ workload, CMake ≥ 3.24, Ninja, Qt ≥ 6.8 for
 MSVC x64 with the *Qt SerialBus* add-on. Qt can be installed without an account:
@@ -51,9 +66,26 @@ ctest --preset debug
 ./build/debug/EcuDiagSim.exe
 ```
 
-Presets: `debug`, `release`, `ci` (warnings as errors), `asan` (GCC/Clang). On Linux install Qt 6
-with SerialBus and use the same presets. In Visual Studio use *File → Open → Folder*; Qt Creator
-opens `CMakeLists.txt` directly.
+In Visual Studio use *File → Open → Folder*; Qt Creator opens `CMakeLists.txt` directly.
+
+### Linux
+
+Tested on Ubuntu 24.04 with GCC 13 and Qt 6.8:
+
+```bash
+sudo apt-get install -y build-essential cmake ninja-build python3-venv libgl1-mesa-dev libxkbcommon-dev
+python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
+~/.venv/aqt/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtserialbus qtserialport -O ~/Qt
+./scripts/build.sh --test        # configure, build, run the tests
+./scripts/build.sh --run         # build and start the application
+```
+
+`build.sh` finds Qt under `~/Qt` or `/opt/Qt` (or `CMAKE_PREFIX_PATH` / `QT_ROOT_DIR`).
+
+### Presets
+
+`debug`, `release`, `ci` (warnings as errors, what CI runs on Windows) and `asan` (GCC/Clang with
+AddressSanitizer and UndefinedBehaviorSanitizer, what CI runs on Linux).
 
 Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`,
 `--screenshot <file> --after <ms>`.
@@ -105,5 +137,16 @@ src/core                             UI-free simulation library (QtCore + QtSeri
   ecu/                               ECM, TCM, ABS, BCM, IPC
   tester/ trace/ sim/                scan tool, trace recorder/replayer, simulation, scenario runner
 src/app                              Qt Quick application (view models + QML)
-tests                                Qt Test: unit tests and end-to-end scenarios
+tests                                Qt Test: unit tests, view models and end-to-end scenarios
+scripts                              build, environment, packaging and screenshot helpers
 ```
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Please report vulnerabilities privately as described in
+[SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE) © 2026 Alexander Rubtsov. The application uses Qt 6 under the LGPLv3; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

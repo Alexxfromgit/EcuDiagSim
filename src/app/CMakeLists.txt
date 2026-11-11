@@ -27,6 +27,7 @@ qt_add_qml_module(EcuDiagSim
 )
 
 target_include_directories(EcuDiagSim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_definitions(EcuDiagSim PRIVATE ECUSIM_VERSION="${PROJECT_VERSION}")
 target_link_libraries(EcuDiagSim PRIVATE
     ecusim_core ecusim_options
     Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2

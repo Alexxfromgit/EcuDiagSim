@@ -4,46 +4,97 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  QT_VERSION: '6.8.3'
 
 jobs:
   windows:
     name: Windows / MSVC
     runs-on: windows-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
           modules: qtserialbus qtserialport
           cache: true
+
       - uses: ilammy/msvc-dev-cmd@v1
-      - name: Configure
+
+      - name: Configure (warnings as errors)
         run: cmake --preset ci
+
       - name: Build
         run: cmake --build --preset ci
+
       - name: Test
         run: ctest --preset ci
+
+      - name: Start the app and take a screenshot
+        shell: pwsh
+        env:
+          QT_QUICK_BACKEND: software # runners have no GPU
+        run: |
+          $p = Start-Process build/ci/EcuDiagSim.exe -ArgumentList '--scenario','1','--tab','2','--speed','4','--after','6000','--screenshot','screenshot.png' -PassThru
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'the app did not quit' }
+          if ($p.ExitCode -ne 0) { throw "the app exited with $($p.ExitCode)" }
+          if (-not (Test-Path screenshot.png)) { throw 'no screenshot written' }
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenshot-windows
+          path: screenshot.png
+          if-no-files-found: ignore
 
   linux:
     name: Linux / GCC (ASan + UBSan)
     runs-on: ubuntu-24.04
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
       - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y ninja-build libgl1-mesa-dev libxkbcommon-dev
+
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.8.3'
+          version: ${{ env.QT_VERSION }}
           modules: qtserialbus qtserialport
           cache: true
+
       - name: Configure
         run: cmake --preset asan
+
       - name: Build
         run: cmake --build --preset asan
+
       - name: Test
         run: ctest --preset asan
         env:
           ASAN_OPTIONS: detect_leaks=0
+
+  workflows:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # actionlint also runs shellcheck on every run: block.
+      - uses: docker://rhysd/actionlint:1.7.12
+        with:
+          args: -color

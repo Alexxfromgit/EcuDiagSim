@@ -1,0 +1,19 @@
+name: Feature or lesson request
+description: Suggest an idea, a new fault, ECU, diagnostic service or lesson
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to learn or do that you can't today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+      description: For a lesson, describe the fault, what a student should observe and how it is diagnosed.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered

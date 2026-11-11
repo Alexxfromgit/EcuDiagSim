@@ -12,7 +12,7 @@ int main(int argc, char *argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("EcuDiagSim"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("ECU Diagnostics Simulator"));
-    QGuiApplication::setApplicationVersion(QStringLiteral("0.1.0"));
+    QGuiApplication::setApplicationVersion(QStringLiteral(ECUSIM_VERSION));
     QGuiApplication::setOrganizationName(QStringLiteral("EcuDiagSim"));
     QQuickStyle::setStyle(QStringLiteral("Fusion"));
 

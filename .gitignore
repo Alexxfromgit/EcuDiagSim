@@ -8,3 +8,4 @@ CMakeUserPresets.json
 *.asc.tmp
 *.log
 !resources/**/*.log
+dist/
