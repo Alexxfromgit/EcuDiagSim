@@ -123,8 +123,7 @@ jobs:
         run: ctest --preset ci
 
       - name: Pack with Velopack and start the packed app
-        env:
-          QT_QPA_PLATFORM: offscreen
+        # Cocoa, as users run it: the bundle has no offscreen platform plugin.
         run: |
           version=$(sed -nE 's/^project\(EcuDiagSim VERSION ([0-9.]+).*/\1/p' CMakeLists.txt)
           python3 scripts/package.py --preset ci --version "$version" --channel osx-arm64 --out dist
@@ -132,6 +131,7 @@ jobs:
           ditto -x -k dist/EcuDiagSim-osx-arm64-Portable.zip "$RUNNER_TEMP/app"
           app=$(find "$RUNNER_TEMP/app" -maxdepth 1 -name '*.app' | head -1)
           codesign --verify --deep --strict --verbose=2 "$app"
+          # macOS has no GNU timeout; perl's alarm kills the app if it hangs.
           perl -e 'alarm shift; exec @ARGV' 120 "$app/Contents/MacOS/EcuDiagSim" --scenario 1 --speed 4 --after 6000 --screenshot macos.png
           test -s macos.png
 

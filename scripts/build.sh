@@ -45,5 +45,7 @@ if [ "$run_tests" = 1 ]; then
     ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" ctest --preset "$preset"
 fi
 if [ "$run_app" = 1 ]; then
-    "$root/build/$preset/EcuDiagSim"
+    app="$root/build/$preset/EcuDiagSim"
+    [ -d "$app.app" ] && app="$app.app/Contents/MacOS/EcuDiagSim" # macOS bundle
+    "$app"
 fi

@@ -9,13 +9,17 @@ You need CMake ≥ 3.24, Ninja, a C++20 compiler and Qt ≥ 6.8 with the *Qt Ser
 - **Windows:** Visual Studio 2022 or newer with *Desktop development with C++*, Qt for MSVC 2022 x64.
 - **Linux:** for example `sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libxkbcommon-dev`,
   Qt for `linux_gcc_64`.
+- **macOS 12+:** Xcode (or its command line tools), `brew install cmake ninja`, Qt for `macos`
+  (`aqt install-qt mac desktop 6.8.3 clang_64 -m qtserialbus qtserialport -O ~/Qt`). Homebrew's Qt
+  builds and tests fine but cannot be packed: its QML plugins are symlinks into the Homebrew cellar,
+  which end up in the `.app` and `vpk` rejects.
 
 Qt can be installed without an account with [aqtinstall](https://github.com/miurahr/aqtinstall), see the
 [README](README.md#build-and-run). Then:
 
 ```bash
 ./scripts/build.ps1 -Test          # Windows
-./scripts/build.sh --test          # Linux
+./scripts/build.sh --test          # Linux, macOS
 ```
 
 See [docs/architecture.md](docs/architecture.md) for how the simulator is put together.
@@ -31,8 +35,8 @@ See [docs/architecture.md](docs/architecture.md) for how the simulator is put to
   - `docs:`, `refactor:`, `test:`, `build:`, `ci:`, `chore:` → no release on their own, not in the notes
 
   Write the subject for users: it shows up as-is in the changelog.
-- Add or update tests in `tests/` (Qt Test). CI runs them on Windows (MSVC) and Linux
-  (GCC with AddressSanitizer and UndefinedBehaviorSanitizer). Builds must stay warning-free:
+- Add or update tests in `tests/` (Qt Test). CI runs them on Windows (MSVC), macOS (Clang) and
+  Linux (GCC with AddressSanitizer and UndefinedBehaviorSanitizer). Builds must stay warning-free:
   the `ci` preset treats warnings as errors.
 - Follow the existing style; `.clang-format` and `.editorconfig` cover formatting.
 

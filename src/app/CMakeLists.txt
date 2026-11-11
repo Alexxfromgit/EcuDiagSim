@@ -91,11 +91,9 @@ if(WIN32)
     include(InstallRequiredSystemLibraries)
 endif()
 
-if(APPLE)
-    # Cocoa, plus the headless platform for automated checks of the packaged app.
-    qt_import_plugins(EcuDiagSim INCLUDE_BY_TYPE platforms
-        Qt6::QCocoaIntegrationPlugin Qt6::QOffscreenIntegrationPlugin)
-elseif(UNIX)
+# macOS deploys with macdeployqt, which ignores qt_import_plugins and bundles only the Cocoa
+# platform, so a packaged Mac app always runs with a window (CI's macOS runners have a desktop).
+if(UNIX AND NOT APPLE)
     # X11 (also under Wayland through XWayland) and the headless platform for automated checks.
     qt_import_plugins(EcuDiagSim INCLUDE_BY_TYPE platforms
         Qt6::QXcbIntegrationPlugin Qt6::QOffscreenIntegrationPlugin)
