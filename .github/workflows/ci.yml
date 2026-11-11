@@ -63,7 +63,7 @@ jobs:
         env:
           QT_QUICK_BACKEND: software
         run: |
-          $version = (Select-String CMakeLists.txt 'project\(EcuDiagSim VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(EcuDiagSim VERSION ([0-9.]+)').Matches[0].Groups[1].Value
           python scripts/package.py --preset ci --version $version --out dist
           if ($LASTEXITCODE) { throw 'packaging failed' }
           $dir = Join-Path $env:RUNNER_TEMP 'ecusim'

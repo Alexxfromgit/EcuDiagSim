@@ -57,6 +57,13 @@ endif()
 
 if(ECUSIM_BUILD_APP)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Qml Quick QuickControls2)
+    # Qt 6.8 links Apple's long-deprecated AGL framework, which current macOS SDKs no longer
+    # contain ("framework 'AGL' not found"); later Qt versions dropped it. Nothing uses it.
+    if(APPLE AND TARGET WrapOpenGL::WrapOpenGL)
+        get_target_property(_gl_libs WrapOpenGL::WrapOpenGL INTERFACE_LINK_LIBRARIES)
+        list(FILTER _gl_libs EXCLUDE REGEX "AGL")
+        set_property(TARGET WrapOpenGL::WrapOpenGL PROPERTY INTERFACE_LINK_LIBRARIES "${_gl_libs}")
+    endif()
     add_subdirectory(src/app)
 endif()
 
