@@ -132,7 +132,7 @@ jobs:
           ditto -x -k dist/EcuDiagSim-osx-arm64-Portable.zip "$RUNNER_TEMP/app"
           app=$(find "$RUNNER_TEMP/app" -maxdepth 1 -name '*.app' | head -1)
           codesign --verify --deep --strict --verbose=2 "$app"
-          timeout 120 "$app/Contents/MacOS/EcuDiagSim" --scenario 1 --speed 4 --after 6000 --screenshot macos.png
+          perl -e 'alarm shift; exec @ARGV' 120 "$app/Contents/MacOS/EcuDiagSim" --scenario 1 --speed 4 --after 6000 --screenshot macos.png
           test -s macos.png
 
       - uses: actions/upload-artifact@v7
