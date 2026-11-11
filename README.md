@@ -87,7 +87,7 @@ python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
 `debug`, `release`, `ci` (warnings as errors, what CI runs on Windows) and `asan` (GCC/Clang with
 AddressSanitizer and UndefinedBehaviorSanitizer, what CI runs on Linux).
 
-Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`,
+Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`, `--size <WxH>`,
 `--screenshot <file> --after <ms>`.
 
 ## A first session

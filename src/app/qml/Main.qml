@@ -8,7 +8,7 @@ ApplicationWindow {
     width: 1600
     height: 940
     minimumWidth: 1280
-    minimumHeight: 760
+    minimumHeight: 680
     visible: true
     title: "ECU Diagnostics Simulator"
     color: Theme.bg
@@ -81,12 +81,19 @@ ApplicationWindow {
             }
 
             ColumnLayout {
-                Layout.preferredWidth: 470
-                Layout.maximumWidth: 470
+                // Narrower on small screens so the tabs on the right keep enough room.
+                Layout.preferredWidth: window.width < 1500 ? 420 : 470
+                Layout.maximumWidth: Layout.preferredWidth
                 Layout.fillHeight: true
                 spacing: 10
-                Cluster { Layout.fillWidth: true; Layout.preferredHeight: 330 }
-                DriverControls { Layout.fillWidth: true; Layout.fillHeight: true }
+                Cluster {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.preferredHeight: 330
+                    Layout.minimumHeight: 230
+                    Layout.maximumHeight: 330
+                }
+                DriverControls { Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 250 }
             }
 
             ColumnLayout {

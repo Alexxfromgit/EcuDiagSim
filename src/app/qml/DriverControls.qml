@@ -16,12 +16,27 @@ Panel {
         Layout.preferredWidth: 74
     }
 
-    ColumnLayout {
+    // Scrolls when the window is too short for all controls (small laptop screens). Each row
+    // is capped at the column width, otherwise rows keep their natural width and run off the side.
+    Flickable {
+        id: scroller
+        readonly property bool overflows: contentHeight > height
         anchors.fill: parent
+        clip: true
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: scroller.overflows ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+
+    ColumnLayout {
+        id: column
+        width: scroller.width - (scroller.overflows ? 14 : 0) // room for the scroll bar
         spacing: 10
 
         // --- ignition and engine ---
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Ignition" }
             Switch {
@@ -46,6 +61,8 @@ Panel {
 
         // --- selector ---
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Selector" }
             Repeater {
@@ -61,8 +78,12 @@ Panel {
                     onClicked: App.selector = index
                 }
             }
-            Item { Layout.fillWidth: true }
             Text {
+                // Shrinks first when the panel is narrow.
+                Layout.fillWidth: true
+                Layout.minimumWidth: 40
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
                 text: "true speed " + root.v.speed.toFixed(1) + " km/h"
                 color: Theme.textDim
                 font { family: Theme.mono; pixelSize: 11 }
@@ -71,6 +92,8 @@ Panel {
 
         // --- pedals ---
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Accelerator" }
             Slider {
@@ -89,6 +112,8 @@ Panel {
             }
         }
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Brake" }
             Slider {
@@ -106,6 +131,8 @@ Panel {
             }
         }
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 6
             Caption { text: "" }
             Button { text: "Coast"; onClicked: { App.throttle = 0; App.brake = 0 } }
@@ -119,6 +146,8 @@ Panel {
 
         // --- lights ---
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Lights" }
             Repeater {
@@ -145,6 +174,8 @@ Panel {
             Item { Layout.fillWidth: true }
         }
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Signals" }
             Button {
@@ -173,6 +204,8 @@ Panel {
 
         // --- doors ---
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "Doors" }
             Repeater {
@@ -188,6 +221,8 @@ Panel {
             Item { Layout.fillWidth: true }
         }
         RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
             spacing: 8
             Caption { text: "" }
             Switch {
@@ -202,6 +237,6 @@ Panel {
             Item { Layout.fillWidth: true }
         }
 
-        Item { Layout.fillHeight: true }
+    }
     }
 }

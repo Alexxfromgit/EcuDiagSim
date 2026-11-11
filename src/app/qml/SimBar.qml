@@ -11,6 +11,8 @@ Rectangle {
     radius: Theme.radius
 
     readonly property var speeds: [0.25, 0.5, 1, 2, 5, 10]
+    // Below this width (1366x768 laptops) the less important items give way.
+    readonly property bool compact: width < 1450
 
     RowLayout {
         anchors.fill: parent
@@ -19,11 +21,12 @@ Rectangle {
         spacing: 10
 
         Text {
+            visible: !root.compact
             text: "ECU DIAGNOSTICS SIMULATOR"
             color: Theme.text
             font { pixelSize: 13; bold: true; letterSpacing: 1.5 }
         }
-        Rectangle { width: 1; Layout.fillHeight: true; Layout.margins: 10; color: Theme.border }
+        Rectangle { visible: !root.compact; width: 1; Layout.fillHeight: true; Layout.margins: 10; color: Theme.border }
 
         Button {
             text: App.running ? "❚❚  Pause" : "▶  Run"
@@ -37,7 +40,7 @@ Rectangle {
             ToolTip.visible: hovered
             ToolTip.text: "Pause and advance one ABS/ECM cycle"
         }
-        Button { text: "Step 100 ms"; onClicked: App.step(100) }
+        Button { visible: !root.compact; text: "Step 100 ms"; onClicked: App.step(100) }
 
         Text { text: "Speed"; color: Theme.textDim; font.pixelSize: 12 }
         ComboBox {
@@ -57,12 +60,12 @@ Rectangle {
 
         Rectangle { width: 1; Layout.fillHeight: true; Layout.margins: 10; color: Theme.border }
 
-        Text { text: "Sim time"; color: Theme.textDim; font.pixelSize: 12 }
+        Text { visible: !root.compact; text: "Sim time"; color: Theme.textDim; font.pixelSize: 12 }
         Text {
             text: App.simTime.toFixed(2) + " s"
             color: Theme.text
             font { family: Theme.mono; pixelSize: 14 }
-            Layout.preferredWidth: 86
+            Layout.preferredWidth: 80
         }
 
         Text { text: "Bus load"; color: Theme.textDim; font.pixelSize: 12 }
@@ -79,13 +82,15 @@ Rectangle {
                 color: App.busLoad > 0.7 ? Theme.error : (App.busLoad > 0.4 ? Theme.warn : Theme.ok)
             }
         }
+        // Takes the free space and gives it up first when the window is narrow.
         Text {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 50
             text: (App.busLoad * 100).toFixed(1) + " %   " + App.frameRate.toFixed(0) + " frames/s   500 kbit/s"
             color: Theme.textDim
             font { family: Theme.mono; pixelSize: 12 }
+            elide: Text.ElideRight
         }
-
-        Item { Layout.fillWidth: true }
 
         Chip {
             visible: App.replaying

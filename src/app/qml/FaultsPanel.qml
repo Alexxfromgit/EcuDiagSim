@@ -43,7 +43,7 @@ Panel {
 
         // --- what can break ---
         ColumnLayout {
-            Layout.preferredWidth: 280
+            Layout.preferredWidth: Math.min(280, root.width * 0.45)
             Layout.maximumWidth: 280
             Layout.fillHeight: true
             spacing: 6
@@ -146,6 +146,8 @@ Panel {
                 ComboBox {
                     id: typeBox
                     Layout.preferredWidth: 220
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 220
                     model: root.target ? root.target.types : []
                     textRole: "label"
                     valueRole: "id"
@@ -246,9 +248,11 @@ Panel {
             }
             Text {
                 visible: App.activeFaults.length === 0
-                text: "The vehicle is healthy. Start the engine, pick a component and break it —\nthen watch the CAN trace, the cluster lamps and the fault memories."
+                text: "The vehicle is healthy. Start the engine, pick a component and break it — then watch the CAN trace, the cluster lamps and the fault memories."
                 color: Theme.textDim
                 font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
             }
 
             Item { Layout.fillHeight: true }

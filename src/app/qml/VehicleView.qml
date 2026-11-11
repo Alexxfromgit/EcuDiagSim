@@ -163,13 +163,17 @@ Panel {
         Item {
             id: stage
             Layout.fillWidth: true
-            Layout.preferredHeight: 470
+            Layout.fillHeight: true
+            Layout.minimumHeight: 240
+            Layout.maximumHeight: 470
             Layout.alignment: Qt.AlignHCenter
 
             Item {
                 id: car
                 width: 380; height: 470
                 anchors.centerIn: parent
+                // Shrinks on small screens (e.g. 1366x768) so the sensor table below stays visible.
+                scale: Math.min(1, stage.width / width, stage.height / height)
 
                 Text { x: 168; y: 0; text: "FRONT"; color: Theme.off; font { pixelSize: 9; bold: true } }
 
@@ -316,6 +320,6 @@ Panel {
                 }
             }
         }
-        Item { Layout.fillHeight: true }
+        Item { Layout.fillHeight: true; Layout.preferredHeight: 0 } // spare height goes below the table
     }
 }
