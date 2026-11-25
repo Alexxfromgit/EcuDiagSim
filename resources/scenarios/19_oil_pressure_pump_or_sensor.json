@@ -1,0 +1,40 @@
+{
+  "name": "Oil lamp on - pump or sensor?",
+  "description": "The red oil lamp means \"stop the engine\" - but it is lit both by a real loss of pressure and by a broken sensor. P0524 (pressure too low) and P0522 (sensor circuit low) tell the two apart, and so does the measured value next to the real one.",
+  "lesson": "docs/lessons/19-oil-pressure.md",
+  "level": "Intermediate",
+  "topics": ["ECM", "Sensors", "Warning lamps"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "wait", "ms": 3500 },
+    { "action": "expect", "lamp": "oil", "value": true, "note": "1. Ignition on, engine stopped: no pressure, the lamp is on - as in every car" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "lamp": "oil", "value": false, "note": "Running: pressure builds up and the lamp goes out" },
+    { "action": "expect", "signal": "OilPressure", "op": ">", "value": 1.0 },
+
+    { "action": "inject", "target": "oil_pump", "fault": "failure", "note": "2. Part A - the oil pump wears out" },
+    { "action": "wait", "ms": 4000 },
+    { "action": "expect", "lamp": "oil", "value": true },
+    { "action": "expect", "dtc": "P0524", "ecu": "ECM", "status": "confirmed", "note": "P0524: oil pressure too low" },
+    { "action": "expect", "signal": "OilPressure", "op": "<", "value": 0.4, "note": "The sensor is fine and measures the real, low pressure" },
+    { "action": "expect", "lamp": "mil", "value": false, "note": "Not an emission fault: no MIL, the red lamp alone says stop" },
+    { "action": "clearFault", "target": "oil_pump", "note": "New oil pump" },
+    { "action": "uds", "ecu": "ECM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "expect", "lamp": "oil", "value": false },
+
+    { "action": "inject", "target": "eop", "fault": "open", "note": "3. Part B - the sensor connector comes off" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "lamp": "oil", "value": true, "note": "The same red lamp" },
+    { "action": "expect", "dtc": "P0522", "ecu": "ECM", "status": "confirmed", "note": "... but P0522: sensor circuit low" },
+    { "action": "expect", "dtc": "P0524", "ecu": "ECM", "status": "absent", "note": "No P0524: without a sensor the pressure monitor cannot run" },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 06", "expect": "62 10 06 00 00", "note": "0 V at the pin: the pull-down wins (a working sensor never goes below 0.5 V)" },
+    { "action": "clearFault", "target": "eop" },
+    { "action": "uds", "ecu": "ECM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "lamp": "oil", "value": false }
+  ]
+}

@@ -42,6 +42,8 @@ as *failed* if at least one expectation was not met.
 | `selector` | `value`: `"P"`, `"R"`, `"N"`, `"D"` |
 | `throttle`, `brake` | `value`: 0…100 % |
 | `headlamps` | `value`: `"off"`, `"park"`, `"low"` |
+| `parkBrake` | `value`: true / false |
+| `fuel` | `value`: litres in the tank (0…55) — empty it, or refuel |
 | `log` | `text`: a line for the lesson log, nothing else happens |
 | `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`; `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
 
@@ -69,7 +71,8 @@ completed); `clearFault` instead puts the old, configured part back.
 | Target | Faults |
 |---|---|
 | `wss_fl` `wss_fr` `wss_rl` `wss_rr` `ckp` `ect` `tps` `tft` | `open`, `short_gnd`, `short_bat`, `stuck` (p1 = value), `offset` (p1), `gain` (p1), `noise` (p1 = sigma), `intermittent` (p1 = period ms, p2 = open share 0…1), `erratic` |
-| `alternator` `cooling` `bulb_low_left` | `failure` |
+| `eop` (oil pressure) `fls` (fuel level sender) | the sensor faults above |
+| `alternator` `cooling` `bulb_low_left` `oil_pump` `park_brake_switch` | `failure` (the switch sticks closed) |
 | `throttle_body` | `unconfigured` — new part, adaptation not learned (run routine 0x0201) |
 | `ecm` `tcm` `abs` `bcm` `ipc` | `power_loss`, `bus_off` |
 | `abs` `bcm` | also `unconfigured` — replaced module with blank coding (write DID 0x0100) |
@@ -82,7 +85,7 @@ completed); `clearFault` instead puts the old, configured part back.
 |---|---|
 | `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
 | `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `notConfirmed`, `absent` |
-| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam` |
+| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing) |
 
 ## Scan tool
 

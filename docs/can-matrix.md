@@ -12,10 +12,11 @@ definition is [`resources/dbc/vehicle.dbc`](../resources/dbc/vehicle.dbc); it op
 | 0x100 | ECM_Engine | ECM | 10 ms | TCM, ABS, IPC |
 | 0x1A0 | TCM_Status | TCM | 20 ms | ECM, BCM, IPC |
 | 0x300 | ECM_Status | ECM | 100 ms | TCM, BCM, IPC |
+| 0x310 | ECM_Fuel | ECM | 100 ms | IPC |
 | 0x350 | BCM_Status | BCM | 100 ms | ECM, ABS, IPC |
 
 Lower identifiers have higher priority: safety relevant chassis data comes first. With the ignition
-on the bus carries 320 frames per second, about 8 % load.
+on the bus carries 330 frames per second, about 8 % load.
 
 ### 0x0B0 ABS_WheelSpeeds
 
@@ -62,6 +63,19 @@ The vehicle speed is the mean of the valid wheels and stays valid with at least 
 | EngineRunning | 10 | 1 | |
 | EngineLimp | 11 | 1 | throttle opening limited |
 
+### 0x310 ECM_Fuel
+
+| Signal | Start bit | Length | Notes |
+|---|---|---|---|
+| FuelLevel | 0 | 8 | factor 0.25 l; damped against sloshing; 0 while the sender is faulty |
+| FuelLevelValid | 8 | 1 | 0 = fuel sender fault (P0462 / P0463) |
+| OilPressureWarn | 9 | 1 | below 0.4 bar, engine stopped, or oil pressure sensor fault |
+| FuelRate | 16 | 16 | factor 0.01 l/h; 0 on the overrun (fuel cut-off) |
+| OilPressure | 32 | 8 | factor 0.05 bar |
+
+The cluster's trip computer integrates `FuelRate` and the vehicle speed: l/100 km now, the average
+since the trip reset, and the range from the tank level.
+
 ### 0x1A0 TCM_Status
 
 | Signal | Start bit | Length | Notes |
@@ -83,6 +97,8 @@ The vehicle speed is the mean of the valid wheels and stays valid with at least 
 | HighBeam, TurnLeft, TurnRight, DoorLock | 4…7 | 1 | turn signals already blink in the signal |
 | DoorAjar_FL / FR / RL / RR | 8…11 | 1 | |
 | LampFault | 12 | 1 | |
+| ParkBrake | 13 | 1 | park brake switch closed → red BRAKE tell-tale |
+| ParkBrakeWarn | 14 | 1 | park brake applied above 10 km/h → BRAKE flashes |
 | BatteryVoltage | 16 | 8 | factor 0.1 V |
 
 The BCM is on permanent supply and sends this message with the ignition off as well.

@@ -117,6 +117,8 @@ struct SensorSet
     Sensor tps;                ///< throttle position (ECM)
     Sensor ckp;                ///< crankshaft position / engine speed (ECM)
     Sensor tft;                ///< transmission fluid temperature (TCM)
+    Sensor eop;                ///< engine oil pressure (ECM)
+    Sensor fls;                ///< fuel level sender, float potentiometer in the tank (ECM)
 
     void update(const VehicleModel &vehicle, qint64 nowMs);
     QList<Sensor *> all();

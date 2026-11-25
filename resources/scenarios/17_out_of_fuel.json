@@ -1,0 +1,41 @@
+{
+  "name": "Out of fuel - cranks, no start, no DTC",
+  "description": "The tank runs dry while driving. The engine dies, cranks normally but does not start - and the fault memory is empty, because nothing is broken. The fuel level PID and the low fuel lamp tell the story.",
+  "lesson": "docs/lessons/17-out-of-fuel.md",
+  "level": "Beginner",
+  "topics": ["ECM", "Fuel", "OBD-II"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "lamp": "lowFuel", "value": false },
+
+    { "action": "fuel", "value": 0.05, "note": "The fuel warning was ignored for too long: 50 ml left in the tank" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 100 },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 0, "timeout": 20000, "note": "1. The engine dies under load" },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 60 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<", "value": 1, "timeout": 20000 },
+    { "action": "selector", "value": "P" },
+    { "action": "brake", "value": 0 },
+    { "action": "expect", "lamp": "lowFuel", "value": true },
+
+    { "action": "startEngine", "note": "2. The starter turns the engine (watch the rpm), but it does not fire" },
+    { "action": "wait", "ms": 3500 },
+    { "action": "expect", "signal": "EngineRunning", "op": "==", "value": 0 },
+    { "action": "uds", "ecu": "ALL", "request": "03", "expect": "43 00", "note": "3. Mode 03: no stored DTC - an empty tank is not a fault" },
+    { "action": "expect", "dtc": "P0335", "ecu": "ECM", "status": "absent", "note": "The engine ran down through the low speeds: a stall, not a crankshaft sensor fault" },
+    { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "absent", "note": "The throttle motor kept the plate where the ECM wanted it: no throttle fault either" },
+    { "action": "uds", "ecu": "ALL", "request": "01 2F", "expect": "41 2F", "note": "4. PID 2F, fuel tank level: (almost) 0 %" },
+    { "action": "expect", "signal": "FuelLevel", "op": "<", "value": 1 },
+
+    { "action": "fuel", "value": 30, "note": "5. Refuel" },
+    { "action": "wait", "ms": 4000, "note": "The ECM damps the sender against sloshing: the gauge rises over a few seconds" },
+    { "action": "expect", "lamp": "lowFuel", "value": false },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000, "note": "Runs again" }
+  ]
+}

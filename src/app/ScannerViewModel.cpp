@@ -43,10 +43,10 @@ QVariantMap dtcRow(const DtcInfo &d, const QString &ecu, bool obd)
 QList<quint16> liveDids(int target)
 {
     switch (target) {
-    case 0: return {0xF40C, 0xF40D, 0xF405, 0xF411, 0xF404, 0xF442, 0x1001, 0x1002, 0x1003};
+    case 0: return {0xF40C, 0xF40D, 0xF405, 0xF411, 0xF404, 0xF442, 0xF42F, 0x1001, 0x1002, 0x1003, 0x1005};
     case 1: return {0x2001, 0x2002, 0x2003, 0xF40D, 0xF442};
     case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442};
-    default: return {0x4001, 0x4002, 0x4003, 0xF442};
+    default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442};
     }
 }
 } // namespace
@@ -301,7 +301,7 @@ void ScannerViewModel::obdLiveData()
                 rows->append(valueRow(rsp.ecu, v.name, v.value, v.unit));
     };
     send(DiagId::Functional, hex("01 01 04 05 0C 0D 11"), collect);
-    send(DiagId::Functional, hex("01 1F 42"), [this, rows, collect](const DiagResult &r) {
+    send(DiagId::Functional, hex("01 1F 2F 42 5E"), [this, rows, collect](const DiagResult &r) {
         collect(r);
         setValues(QStringLiteral("OBD-II live data (Mode 01)"), *rows);
     });

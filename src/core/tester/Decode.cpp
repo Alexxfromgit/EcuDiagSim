@@ -34,6 +34,8 @@ const QList<DidInfo> &didCatalog()
         {0xF40D, "Vehicle speed", DidInfo::U8, 1, 1, 0, "km/h"},
         {0xF411, "Throttle position", DidInfo::U8, 1, 100.0 / 255.0, 0, "%"},
         {0xF41F, "Run time since engine start", DidInfo::U16, 2, 1, 0, "s"},
+        {0xF42F, "Fuel tank level input", DidInfo::U8, 1, 100.0 / 255.0, 0, "%"},
+        {0xF45E, "Engine fuel rate", DidInfo::U16, 2, 0.05, 0, "l/h"},
         {0xF420, "Supported PIDs 21-40", DidInfo::Raw, 4, 1, 0, ""},
         {0xF440, "Supported PIDs 41-60", DidInfo::Raw, 4, 1, 0, ""},
         {0xF442, "Control module voltage", DidInfo::U16, 2, 0.001, 0, "V"},
@@ -44,6 +46,9 @@ const QList<DidInfo> &didCatalog()
         {0x1002, "Throttle sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         {0x1003, "Engine state (bit0 running, bit1 limp, bit2 MIL)", DidInfo::U8, 1, 1, 0, ""},
         {0x1004, "Throttle adaptation (learned flag, closed position mV)", DidInfo::Raw, 3, 1, 0, ""},
+        {0x1005, "Oil pressure", DidInfo::U8, 1, 0.05, 0, "bar"},
+        {0x1006, "Oil pressure sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
+        {0x1007, "Fuel level sender voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         // TCM
         {0x2001, "Current gear", DidInfo::U8, 1, 1, 0, ""},
         {0x2002, "Transmission fluid temperature", DidInfo::U8, 1, 1, -40, "°C"},
@@ -61,6 +66,7 @@ const QList<DidInfo> &didCatalog()
         {0x4003, "Doors (bit0-3 ajar FL/FR/RL/RR, bit7 locked)", DidInfo::U8, 1, 1, 0, ""},
         {0x4010, "Low beam output", DidInfo::U8, 1, 1, 0, ""},
         {0x4011, "Door lock output", DidInfo::U8, 1, 1, 0, ""},
+        {0x4004, "Switch inputs (bit0 park brake)", DidInfo::U8, 1, 1, 0, ""},
     };
     return catalog;
 }

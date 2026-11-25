@@ -185,6 +185,12 @@ void ScenarioRunner::execute(const QJsonObject &step)
     } else if (action == QLatin1String("brake")) {
         driver.brakePedal = value.toDouble() / 100.0;
         act(QStringLiteral("Brake pedal %1 %").arg(value.toDouble()));
+    } else if (action == QLatin1String("parkBrake")) {
+        driver.parkBrake = value.toBool() || value.toString() == QLatin1String("on");
+        act(QStringLiteral("Park brake %1").arg(driver.parkBrake ? QLatin1String("applied") : QLatin1String("released")));
+    } else if (action == QLatin1String("fuel")) {
+        m_sim.vehicle().setFuelLevel(value.toDouble());
+        act(QStringLiteral("Fuel in the tank: %1 l").arg(m_sim.vehicle().fuelLevel()));
     } else if (action == QLatin1String("headlamps")) {
         const QString v = value.toString();
         driver.headlamps = v == QLatin1String("low") ? 2 : v == QLatin1String("park") ? 1 : 0;
@@ -345,6 +351,12 @@ void ScenarioRunner::expect(const QJsonObject &step)
             actual = c.lowBeam;
         else if (lamp == QLatin1String("highBeam"))
             actual = c.highBeam;
+        else if (lamp == QLatin1String("oil"))
+            actual = c.oilWarn;
+        else if (lamp == QLatin1String("lowFuel"))
+            actual = c.lowFuel;
+        else if (lamp == QLatin1String("parkBrake"))
+            actual = c.parkBrake || c.parkBrakeWarn; // flashing counts as on
         else {
             fail(QStringLiteral("Unknown lamp '%1'").arg(lamp));
             return;

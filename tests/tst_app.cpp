@@ -312,7 +312,7 @@ void tst_App::traceModelIsConsistent()
     QAbstractItemModelTester tester(trace, QAbstractItemModelTester::FailureReportingMode::QtTest);
 
     // Chronological mode is capped.
-    r.app.step(10000); // 320 frames per second
+    r.app.step(10000); // 330 frames per second
     QCOMPARE(trace->rowCount(), TraceModel::kMaxRows);
 
     // By ID: one sorted row per identifier, updated in place.
@@ -324,7 +324,7 @@ void tst_App::traceModelIsConsistent()
     QStringList ids;
     for (int i = 0; i < trace->rowCount(); ++i)
         ids << trace->data(trace->index(i), TraceModel::IdRole).toString();
-    QCOMPARE(ids, QStringList({"0B0", "0B1", "100", "1A0", "300", "350"}));
+    QCOMPARE(ids, QStringList({"0B0", "0B1", "100", "1A0", "300", "310", "350"}));
     QVERIFY(!changed.isEmpty());
     const QString cycle = trace->data(trace->index(0), TraceModel::CycleRole).toString();
     QCOMPARE(cycle, QStringLiteral("10.0"));

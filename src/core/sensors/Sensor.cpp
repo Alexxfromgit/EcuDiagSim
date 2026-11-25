@@ -188,6 +188,13 @@ SensorSet::SensorSet()
     // Potentiometer with a pull-down in the ECU: unplugged reads 0 V.
     tps = Sensor({QStringLiteral("tps"), QStringLiteral("Throttle position sensor"), QStringLiteral("%"),
         QStringLiteral("ECM"), 0.0, 100.0, 0.5, 4.5, 0.0, false, QStringLiteral("Throttle"), QStringLiteral("TPS")});
+    // Pressure sensor, 0.5..4.5 V for 0..10 bar, pull-down in the ECM: unplugged reads 0 V.
+    eop = Sensor({QStringLiteral("eop"), QStringLiteral("Oil pressure sensor"), QStringLiteral("bar"),
+        QStringLiteral("ECM"), 0.0, 10.0, 0.5, 4.5, 0.0, false, QStringLiteral("Oil pressure"), QStringLiteral("EOP")});
+    // Float arm on a resistor track against a pull-up: empty = high voltage, so a broken wire
+    // reads "empty", never "full".
+    fls = Sensor({QStringLiteral("fls"), QStringLiteral("Fuel level sender"), QStringLiteral("l"), QStringLiteral("ECM"),
+        0.0, VehicleModel::kTankLitres, 4.5, 0.5, 5.0, false, QStringLiteral("Fuel level"), QStringLiteral("FUEL")});
     ckp = Sensor({QStringLiteral("ckp"), QStringLiteral("Crankshaft position sensor"), QStringLiteral("rpm"),
         QStringLiteral("ECM"), 0.0, 8000.0, 0.0, 0.0, 0.0, true, QStringLiteral("Crankshaft"), QStringLiteral("CKP")});
 }
@@ -200,12 +207,14 @@ void SensorSet::update(const VehicleModel &vehicle, qint64 nowMs)
     tps.update(vehicle.throttlePos() * 100.0, nowMs);
     ckp.update(vehicle.engineRpm(), nowMs);
     tft.update(vehicle.transTemp(), nowMs);
+    eop.update(vehicle.oilPressureBar(), nowMs);
+    fls.update(vehicle.fuelLevel(), nowMs);
 }
 
 QList<Sensor *> SensorSet::all()
 {
     // Table order: wheels, then the engine and transmission sensors.
-    return {&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps, &tft};
+    return {&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps, &eop, &fls, &tft};
 }
 
 Sensor *SensorSet::byId(const QString &id)

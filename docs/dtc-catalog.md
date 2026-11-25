@@ -26,6 +26,11 @@ until the DTC is confirmed and the lamp is requested; before that it is only *pe
 | P0335 | Crankshaft position sensor circuit | no speed signal while cranking or running | 1 | injection off: stall / no start |
 | P0562 | System voltage low | < 11.0 V with engine running for 3 s | 1 | |
 | P0700 | Transmission control system (MIL request) | TCM sets `TcmMilReq` | 1 | MIL |
+| P0462 | Fuel level sensor circuit low | sender voltage < 0.2 V (short to ground, would read full) for 2 s | 1 | level invalid, gauge empty, FUEL lamp, MIL |
+| P0463 | Fuel level sensor circuit high | sender voltage > 4.8 V (open circuit, reads empty) for 2 s | 1 | level invalid, gauge empty, FUEL lamp, MIL |
+| P0522 | Engine oil pressure sensor circuit low | sensor voltage < 0.2 V (open circuit, short to ground) for 2 s | 1 | OIL lamp (fail-safe), no MIL |
+| P0523 | Engine oil pressure sensor circuit high | sensor voltage > 4.8 V for 2 s | 1 | OIL lamp (fail-safe), no MIL |
+| P0524 | Engine oil pressure too low | < 0.4 bar with the engine running for more than 3 s, for 2 s | 1 | OIL lamp, no MIL |
 | P2176 | Throttle actuator control system, idle position not learned | new throttle body, adaptation (routine 0x0201) not run, 0.2 s | 1 | limp: throttle ≤ 25 %, MIL |
 | U0101-87 | Lost communication with TCM | TCM_Status missing | 1 | no lamp |
 | U0121-87 | Lost communication with ABS | ABS_Status missing | 1 | no lamp |

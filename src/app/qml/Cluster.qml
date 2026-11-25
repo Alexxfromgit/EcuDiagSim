@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import EcuDiagSim
 
@@ -47,11 +48,11 @@ Panel {
             ColumnLayout {
                 Layout.preferredWidth: 92
                 Layout.fillHeight: true
-                spacing: 6
+                spacing: 4
                 Item { Layout.fillHeight: true }
                 Rectangle {
                     Layout.alignment: Qt.AlignHCenter
-                    width: 76; height: 54
+                    width: 76; height: 46
                     radius: 6
                     color: "#0c0e12"
                     border.color: "#343b48"
@@ -87,6 +88,57 @@ Panel {
                     color: Theme.textDim
                     font { family: Theme.mono; pixelSize: 10 }
                 }
+                // fuel gauge: as the ECM reports the tank (a faulty sender drops it to empty)
+                Rectangle {
+                    id: fuelBar
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.topMargin: 2
+                    width: 76; height: 8; radius: 4
+                    color: "#0c0e12"
+                    border.color: "#343b48"
+                    readonly property real fraction: Math.max(0, Math.min(1, root.c.fuelLevel / root.c.tankLitres))
+                    Rectangle {
+                        visible: root.c.powered
+                        height: parent.height; radius: 4
+                        width: Math.max(4, fuelBar.fraction * parent.width)
+                        color: root.c.lowFuel ? Theme.warn : Theme.accent
+                        Behavior on width { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                    }
+                    // quarter marks
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            required property int index
+                            x: (index + 1) * fuelBar.width / 4; y: 2
+                            width: 1; height: fuelBar.height - 4
+                            color: "#0c0e12"
+                            opacity: 0.8
+                        }
+                    }
+                }
+                // trip computer
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: !root.c.powered ? " "
+                          : !root.c.fuelValid ? "FUEL  --"
+                          : root.c.fuelLevel.toFixed(0) + " l  " + root.c.range.toFixed(0) + " km"
+                    color: Theme.textDim
+                    font { family: Theme.mono; pixelSize: 10 }
+                    HoverHandler { id: tripHover }
+                    ToolTip.visible: tripHover.hovered && root.c.powered
+                    ToolTip.text: "Trip computer (IPC, from ECM_Fuel)\n"
+                        + "tank " + root.c.fuelLevel.toFixed(1) + " l, range " + root.c.range.toFixed(0) + " km\n"
+                        + "fuel rate " + root.c.fuelRate.toFixed(2) + " l/h\n"
+                        + "average " + (root.c.averageConsumption < 0 ? "--" : root.c.averageConsumption.toFixed(1) + " l/100 km")
+                }
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: !root.c.powered ? " "
+                          : root.c.consumption >= 0 ? root.c.consumption.toFixed(1) + " l/100km"
+                          : root.c.fuelRate.toFixed(1) + " l/h"
+                    color: Theme.off
+                    font { family: Theme.mono; pixelSize: 9 }
+                }
                 Item { Layout.fillHeight: true }
             }
 
@@ -113,6 +165,9 @@ Panel {
             Lamp { on: root.c.tcs; label: "TCS"; tip: "Traction control off (ABS_Status.TcsLampReq)" }
             Lamp { on: root.c.battery; label: "BATT"; tone: Theme.error; tip: "Charge warning: engine not running or battery below 12 V" }
             Lamp { on: root.c.coolantWarn; label: "TEMP"; tone: Theme.error; tip: "Coolant temperature (ECM_Status.CoolantWarnReq)" }
+            Lamp { on: root.c.oilWarn; label: "OIL"; tone: Theme.error; tip: "Oil pressure (ECM_Fuel.OilPressureWarn, or ECM silent)" }
+            Lamp { on: root.c.parkBrake; label: "BRAKE"; tone: Theme.error; tip: "Park brake applied (BCM_Status.ParkBrake); flashes when driving with it (ParkBrakeWarn)" }
+            Lamp { on: root.c.lowFuel; label: "FUEL"; tip: "Low fuel: below 7 l, or no valid level from the fuel sender (ECM_Fuel)" }
             Lamp { on: root.c.transFault; label: "TRANS"; tip: "Transmission limp mode (TCM_Status.LimpMode, or TCM silent)" }
             Lamp { on: root.c.lampFault; label: "BULB"; tip: "Exterior lamp failure (BCM_Status.LampFault)" }
             Lamp { on: root.c.doorAjar; label: "DOOR"; tone: Theme.error; tip: "Door ajar (BCM_Status.DoorAjar_xx)" }

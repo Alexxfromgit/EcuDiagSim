@@ -22,6 +22,7 @@ struct DriverInputs
     bool hazard = false;
     bool doorLock = false;
     std::array<bool, 4> doorAjar{};
+    bool parkBrake = false;     ///< mechanical hand brake on the rear axle
 };
 
 /// The plant: a simple longitudinal model of a mid-size car with a 6-speed automatic.
@@ -35,17 +36,20 @@ public:
     static constexpr double kAmbientTemp = 20.0;
     static constexpr double kIdleRpm = 800.0;
     static constexpr int kGearCount = 6;
+    static constexpr double kTankLitres = 55.0;
+    static constexpr double kStartFuelLitres = 40.0;
 
     // --- actuators (written by ECUs) ---
     double throttleCmd = 0.0; ///< ECM: throttle plate command 0..1
     bool fuelEnable = false;  ///< ECM: injection + ignition enabled
     int gearCmd = 1;          ///< TCM: forward gear 1..6 used while the selector is in D
-    bool throttleMotorOn = false; ///< ECM: drives the plate with the engine off (adaptation)
 
     // --- plant faults ---
     bool alternatorFailed = false;
     bool coolingFailed = false;
     bool bulbLowLeftOpen = false;
+    bool oilPumpFailed = false;        ///< worn pump / oil level far too low
+    bool parkBrakeSwitchStuck = false; ///< switch reports "applied" whatever the lever does
 
     void step(double dt, const DriverInputs &driver);
 
@@ -65,11 +69,16 @@ public:
     double transTemp() const { return m_transTemp; }
     double batteryVoltage() const { return m_voltage; }
     double brakePressureBar() const { return m_brake * 150.0; }
+    bool parkBrakeApplied() const { return m_parkBrake; }
+    double fuelLevel() const { return m_fuel; }          ///< litres in the tank
+    double fuelRateLph() const { return m_fuelRate; }    ///< what the injectors deliver, l/h
+    double oilPressureBar() const { return m_oilPressure; }
     /// Gear the transmission is mechanically in: 0 = no drive, 1..6, -1 = reverse.
     int engagedGear() const { return m_gear; }
 
     void setCoolantTemp(double t) { m_coolant = t; }
     void setTransTemp(double t) { m_transTemp = t; }
+    void setFuelLevel(double litres);
 
     static double gearRatio(int gear);
     /// Vehicle speed that corresponds to an engine speed in a given gear (locked converter).
@@ -83,6 +92,10 @@ private:
     double m_brake = 0.0;
     double m_coolant = kAmbientTemp;
     double m_transTemp = kAmbientTemp;
+    double m_fuel = kStartFuelLitres;
+    double m_fuelRate = 0.0;
+    double m_oilPressure = 0.0;
+    bool m_parkBrake = false;
     double m_voltage = 12.6;
     double m_restVoltage = 12.6;
     double m_crankTime = 0.0;

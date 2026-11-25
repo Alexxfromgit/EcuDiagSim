@@ -59,6 +59,36 @@ Panel {
             Item { Layout.fillWidth: true }
         }
 
+        // --- park brake and fuel ---
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
+            spacing: 8
+            Caption { text: "Park brake" }
+            Switch {
+                checked: App.parkBrake
+                text: checked ? "Applied" : "Released"
+                onToggled: App.parkBrake = checked
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: root.v.fuel.toFixed(1) + " l"
+                color: root.v.fuel < 7 ? Theme.warn : Theme.textDim
+                font { family: Theme.mono; pixelSize: 11 }
+                ToolTip.visible: fuelHover.hovered
+                ToolTip.text: "Fuel really in the tank, and what the injectors deliver now: "
+                    + root.v.fuelRate.toFixed(2) + " l/h"
+                HoverHandler { id: fuelHover }
+            }
+            Button {
+                text: "Refuel"
+                enabled: !root.v.engineRunning
+                onClicked: App.refuel()
+                ToolTip.visible: hovered
+                ToolTip.text: "Fill the tank to " + App.cluster.tankLitres + " l (engine off)"
+            }
+        }
+
         // --- selector ---
         RowLayout {
             Layout.fillWidth: true

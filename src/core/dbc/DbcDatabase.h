@@ -17,6 +17,7 @@ constexpr quint32 AbsStatus = 0x0B1;
 constexpr quint32 EcmEngine = 0x100;
 constexpr quint32 TcmStatus = 0x1A0;
 constexpr quint32 EcmStatus = 0x300;
+constexpr quint32 EcmFuel = 0x310;
 constexpr quint32 BcmStatus = 0x350;
 } // namespace msg
 

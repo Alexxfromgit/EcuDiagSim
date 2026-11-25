@@ -39,7 +39,9 @@ Panel {
         "tft": { x: 266, y: 128, left: true },
         "alternator": { x: 122, y: 100 }, "cooling": { x: 244, y: 100, left: true },
         "bulb_low_left": { x: 112, y: 2, left: true }, "abs_e2e": { x: 120, y: 162 },
-        "throttle_body": { x: 194, y: 112 }
+        "throttle_body": { x: 194, y: 112 },
+        "eop": { x: 104, y: 64 }, "oil_pump": { x: 104, y: 82 },
+        "fls": { x: 196, y: 392 }, "park_brake_switch": { x: 236, y: 314 }
     })
     readonly property var spots: App.faultTargets.filter(t => root.spotPlaces[t.id] !== undefined)
     readonly property var faultedIds: App.activeFaults.map(f => f.targetId)
@@ -455,6 +457,9 @@ Panel {
                     Wheel { x: 280; y: 72 }
                     Wheel { x: 76; y: 344 }
                     Wheel { x: 280; y: 344 }
+                    // park brake: the rear brakes glow while it is applied
+                    Glow { cx: 88; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }
+                    Glow { cx: 292; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }
 
                     // ---------- doors (swing open when ajar) ----------
                     Repeater {
