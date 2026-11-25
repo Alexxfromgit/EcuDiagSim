@@ -1,5 +1,6 @@
 // View models behind the QML UI, driven headless: AppController, ScannerViewModel, TraceModel.
 #include "AppController.h"
+#include "WindowGeometry.h"
 
 #include <QAbstractItemModelTester>
 #include <QSignalSpy>
@@ -49,6 +50,7 @@ private slots:
     void traceModelIsConsistent();
     void updatesInADevelopmentBuild();
     void swappedFaultRefreshesViews();
+    void windowFitsTheScreen();
 };
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
@@ -233,6 +235,41 @@ void tst_App::swappedFaultRefreshesViews()
     spy.clear();
     QTest::qWait(600);
     QCOMPARE(spy.count(), 0);
+}
+
+// The main window never opens past the work area of its screen, even on screens smaller than
+// its minimum size (the minimum gives way).
+void tst_App::windowFitsTheScreen()
+{
+    const QSize preferred(1600, 940);
+    const QSize minimum(1024, 600);
+
+    // 1024x600 display with a 60 px taskbar: 540 px of work area.
+    InitialWindowGeometry fit = fitWindowToScreen(QRect(0, 0, 1024, 540), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(0, 0, 1024, 540));
+    QCOMPARE(fit.minimum, QSize(1024, 540));
+
+    // Narrower than the minimum width, work area not at the origin (taskbar on the left).
+    fit = fitWindowToScreen(QRect(48, 0, 1000, 700), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(48, 30, 1000, 640));
+    QCOMPARE(fit.minimum, QSize(1000, 600));
+
+    // 1366x768 laptop with a 40 px taskbar: shrinks with a margin, centred.
+    fit = fitWindowToScreen(QRect(0, 0, 1366, 728), preferred, minimum);
+    QCOMPARE(fit.geometry.size(), QSize(1326, 668));
+    QCOMPARE(fit.geometry.topLeft(), QPoint(20, 30));
+    QCOMPARE(fit.minimum, minimum);
+
+    // Second monitor at x = 1920, large enough: the preferred size, centred on that screen.
+    fit = fitWindowToScreen(QRect(1920, 0, 2560, 1400), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(1920 + 480, 230, 1600, 940));
+
+    // Whatever the screen, the window stays inside the work area.
+    for (const QRect &avail : {QRect(0, 0, 800, 480), QRect(0, 0, 1024, 600), QRect(100, 50, 1280, 670)}) {
+        fit = fitWindowToScreen(avail, preferred, minimum);
+        QVERIFY2(avail.contains(fit.geometry), qPrintable(QStringLiteral("%1x%2").arg(avail.width()).arg(avail.height())));
+        QVERIFY(fit.geometry.width() >= fit.minimum.width() && fit.geometry.height() >= fit.minimum.height());
+    }
 }
 
 void tst_App::updatesInADevelopmentBuild()

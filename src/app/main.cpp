@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "WindowGeometry.h"
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
@@ -8,8 +9,6 @@
 #include <QQuickWindow>
 #include <QScreen>
 #include <QTimer>
-
-#include <algorithm>
 
 #ifdef ECUSIM_HAS_VELOPACK
 #include "Velopack.hpp"
@@ -86,10 +85,10 @@ int main(int argc, char *argv[])
     } else if (auto *window = qobject_cast<QQuickWindow *>(root); window && window->screen()) {
         // Never open larger than the screen the window is on (not the whole virtual desktop),
         // and centre it there. Done once: later resizes are the user's.
-        const QRect avail = window->screen()->availableGeometry();
-        const int w = std::max(window->minimumWidth(), std::min(window->width(), avail.width() - 40));
-        const int h = std::max(window->minimumHeight(), std::min(window->height(), avail.height() - 60));
-        window->setGeometry(avail.x() + (avail.width() - w) / 2, avail.y() + (avail.height() - h) / 2, w, h);
+        const InitialWindowGeometry fit = fitWindowToScreen(window->screen()->availableGeometry(),
+            window->size(), window->minimumSize());
+        window->setMinimumSize(fit.minimum);
+        window->setGeometry(fit.geometry);
     }
 
     if (parser.isSet(shotOpt)) {
