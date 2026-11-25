@@ -24,6 +24,8 @@ const QList<DtcCatalogEntry> &dtcCatalog()
         {P0562, "ECM", "System voltage low", "Supply voltage below 11.0 V with the engine running for 3 s."},
         {P0700, "ECM", "Transmission control system (MIL request)",
             "The TCM requests the malfunction indicator lamp over CAN."},
+        {P2176, "ECM", "Throttle actuator control system - idle position not learned",
+            "A new throttle body has not been adapted yet. Run routine 0x0201 (throttle adaptation)."},
         {P0218, "TCM", "Transmission fluid over temperature", "Fluid temperature above 135 degC for 3 s."},
         {P0500, "TCM", "Vehicle speed signal", "Vehicle speed from the ABS is missing or flagged invalid for 0.5 s."},
         {P0711, "TCM", "Transmission fluid temperature sensor range/performance",
@@ -55,6 +57,8 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             "Alive counter of ABS_WheelSpeeds does not change for 10 frames."});
         list.append({U0415Checksum, "ECM", "Invalid data received from ABS control module",
             "Checksum of ABS_WheelSpeeds wrong for 10 frames."});
+        list.append({U3000NotConfigured, "ABS, BCM", "Control module not configured",
+            "Variant coding (DID 0x0100) is blank, e.g. after the module was replaced. Write it with 0x2E."});
         return list;
     }();
     return full;

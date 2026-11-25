@@ -32,6 +32,7 @@ enum class FaultType {
     FrozenCounter,  ///< E2E alive counter no longer increments
     BadChecksum,    ///< E2E checksum wrong
     BusShort,       ///< CAN wiring fault, no communication at all
+    Unconfigured,   ///< part replaced: coding or adaptation missing until done with the scan tool
 };
 
 QString faultTypeName(FaultType type);       ///< stable identifier, e.g. "open"

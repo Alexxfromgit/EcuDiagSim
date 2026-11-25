@@ -5,6 +5,7 @@
 #include "diag/DtcManager.h"
 #include "tester/Decode.h"
 
+#include <algorithm>
 #include <memory>
 
 using namespace ecusim;
@@ -85,6 +86,38 @@ QVariantList ScannerViewModel::ioControls() const
     switch (m_target) {
     case 2: return {item(0x3010, QStringLiteral("ABS warning lamp"))};
     case 3: return {item(0x4010, QStringLiteral("Low beam")), item(0x4011, QStringLiteral("Door lock"))};
+    default: return {};
+    }
+}
+
+QVariantList ScannerViewModel::codings() const
+{
+    auto item = [](int did, const QString &name, const QString &hint, const QString &example) {
+        return QVariantMap{{QStringLiteral("did"), did}, {QStringLiteral("name"), name},
+            {QStringLiteral("hint"), hint}, {QStringLiteral("example"), example}};
+    };
+    switch (m_target) {
+    case 2:
+        return {item(0x0100, QStringLiteral("Variant coding"),
+            QStringLiteral("3 bytes: flags (bit0 stability control), rolling circumference in mm, e.g. 07 9C = 1948 mm"),
+            QStringLiteral("00 07 9C"))};
+    case 3:
+        return {item(0x0100, QStringLiteral("Variant coding"),
+            QStringLiteral("1 byte: bit0 lamp monitoring, bit1 auto-lock above 15 km/h, bit2 daytime running lights"),
+            QStringLiteral("01"))};
+    default: return {};
+    }
+}
+
+QVariantList ScannerViewModel::routines() const
+{
+    auto item = [](int id, const QString &name, const QString &hint) {
+        return QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("name"), name}, {QStringLiteral("hint"), hint}};
+    };
+    switch (m_target) {
+    case 0:
+        return {item(Ecm::kThrottleAdaptation, QStringLiteral("Throttle adaptation"),
+            QStringLiteral("Ignition on, engine off, foot off the pedal, car at rest. Takes 3 s."))};
     default: return {};
     }
 }
@@ -509,6 +542,58 @@ void ScannerViewModel::udsIoControl(int did, int state)
         request.append(static_cast<char>(state ? 1 : 0));
     }
     send(targetId(), request);
+}
+
+void ScannerViewModel::udsReadDid(int did)
+{
+    QByteArray request = hex("22");
+    request.append(static_cast<char>(did >> 8));
+    request.append(static_cast<char>(did & 0xFF));
+    const QString ecu = DiagnosticTester::ecuName(targetId());
+    send(targetId(), request, [this, ecu](const DiagResult &r) {
+        QVariantList rows;
+        if (const DiagResponse *rsp = r.positive())
+            for (const DecodedValue &v : parseDataResponse(rsp->data))
+                rows.append(valueRow(ecu, v.name, v.value, v.unit));
+        if (!rows.isEmpty())
+            setValues(QStringLiteral("%1: read data (UDS 22)").arg(ecu), rows);
+    });
+}
+
+void ScannerViewModel::udsWriteDid(int did, const QString &hexData)
+{
+    const QByteArray data = fromHex(hexData);
+    if (data.isEmpty()) {
+        addLog(QStringLiteral("error"), QStringLiteral("Not a valid hex string: '%1'").arg(hexData));
+        return;
+    }
+    QByteArray request = hex("2E");
+    request.append(static_cast<char>(did >> 8));
+    request.append(static_cast<char>(did & 0xFF));
+    request.append(data);
+    send(targetId(), request);
+}
+
+void ScannerViewModel::udsRoutine(int id, int type)
+{
+    QByteArray request = hex("31");
+    request.append(static_cast<char>(std::clamp(type, 1, 3)));
+    request.append(static_cast<char>(id >> 8));
+    request.append(static_cast<char>(id & 0xFF));
+    const QString ecu = DiagnosticTester::ecuName(targetId());
+    send(targetId(), request, [this, ecu, id](const DiagResult &r) {
+        const DiagResponse *rsp = r.positive();
+        if (!rsp || rsp->data.size() < 5)
+            return;
+        const QByteArray &d = rsp->data;
+        QVariantList rows{valueRow(ecu, QStringLiteral("Routine 0x%1").arg(id, 4, 16, QLatin1Char('0')),
+            routineStatusText(static_cast<quint8>(d[4])), {})};
+        if (d.size() >= 7)
+            rows.append(valueRow(ecu, QStringLiteral("Learned value"),
+                QString::number(((static_cast<quint8>(d[5]) << 8) | static_cast<quint8>(d[6])) / 1000.0, 'f', 3),
+                QStringLiteral("V")));
+        setValues(QStringLiteral("%1: routine control (UDS 31)").arg(ecu), rows);
+    });
 }
 
 void ScannerViewModel::sendRaw(const QString &hexText, bool functional)

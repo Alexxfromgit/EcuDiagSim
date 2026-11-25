@@ -37,10 +37,13 @@ const QList<DidInfo> &didCatalog()
         {0xF420, "Supported PIDs 21-40", DidInfo::Raw, 4, 1, 0, ""},
         {0xF440, "Supported PIDs 41-60", DidInfo::Raw, 4, 1, 0, ""},
         {0xF442, "Control module voltage", DidInfo::U16, 2, 0.001, 0, "V"},
+        // all coded control units (ABS: flags + rolling circumference in mm, BCM: function bits)
+        {0x0100, "Variant coding", DidInfo::Raw, 0, 1, 0, ""},
         // ECM
         {0x1001, "Coolant sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         {0x1002, "Throttle sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         {0x1003, "Engine state (bit0 running, bit1 limp, bit2 MIL)", DidInfo::U8, 1, 1, 0, ""},
+        {0x1004, "Throttle adaptation (learned flag, closed position mV)", DidInfo::Raw, 3, 1, 0, ""},
         // TCM
         {0x2001, "Current gear", DidInfo::U8, 1, 1, 0, ""},
         {0x2002, "Transmission fluid temperature", DidInfo::U8, 1, 1, -40, "°C"},
@@ -179,7 +182,7 @@ QList<DecodedValue> parseDataResponse(const QByteArray &response)
             const quint16 did = static_cast<quint16>((u8(response, pos) << 8) | u8(response, pos + 1));
             pos += 2;
             const DidInfo *info = didInfo(did);
-            const qsizetype len = info ? info->length : response.size() - pos;
+            const qsizetype len = info && info->length > 0 ? info->length : response.size() - pos;
             values.append(decodeDid(did, response.mid(pos, len)));
             pos += len;
         }
@@ -194,6 +197,17 @@ QList<DecodedValue> parseDataResponse(const QByteArray &response)
         }
     }
     return values;
+}
+
+QString routineStatusText(quint8 status)
+{
+    switch (status) {
+    case 0x01: return QStringLiteral("running");
+    case 0x02: return QStringLiteral("completed successfully");
+    case 0x03: return QStringLiteral("aborted");
+    case 0x04: return QStringLiteral("failed");
+    default: return QStringLiteral("status 0x%1").arg(status, 2, 16, QLatin1Char('0'));
+    }
 }
 
 QString explainResponse(const QByteArray &request, const QByteArray &response)
@@ -230,6 +244,21 @@ QString explainResponse(const QByteArray &request, const QByteArray &response)
     case Sid::SecurityAccess:
         if (response.size() >= 2)
             text += u8(response, 1) == 0x01 ? QStringLiteral(": seed received") : QStringLiteral(": ECU unlocked");
+        break;
+    case Sid::WriteDataByIdentifier:
+        if (response.size() >= 3)
+            text += QStringLiteral(": DID 0x%1 written").arg((u8(response, 1) << 8) | u8(response, 2), 4, 16, QLatin1Char('0'));
+        break;
+    case Sid::RoutineControl:
+        if (response.size() >= 4) {
+            static const char *kTypes[] = {"", "started", "stopped", "results"};
+            const quint8 type = u8(response, 1);
+            text += QStringLiteral(": routine 0x%1 %2")
+                        .arg((u8(response, 2) << 8) | u8(response, 3), 4, 16, QLatin1Char('0'))
+                        .arg(QLatin1String(type <= 3 ? kTypes[type] : "?"));
+            if (response.size() >= 5)
+                text += QStringLiteral(", %1").arg(routineStatusText(u8(response, 4)));
+        }
         break;
     case Sid::ReadDataByIdentifier:
     case Sid::ObdCurrentData: {

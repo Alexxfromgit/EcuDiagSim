@@ -17,8 +17,24 @@ Bcm::Bcm(SimContext &ctx)
     d.define(networkDtc(U0100));
     d.define(networkDtc(U0101));
     d.define(networkDtc(U0121));
+    d.define(dtcDef(U3000NotConfigured, 5));
+    subscribe(msg::EcmEngine, 500);
 
     auto &s = diag();
+    // Variant coding: which body functions this car has (see Bcm::Coding).
+    s.addDid(0x0100, [this] { return encU8(m_codingBlank ? 0xFF : m_coding); });
+    s.addWritableDid(0x0100, 1, [this](const QByteArray &data) -> quint8 {
+        const quint8 coding = static_cast<quint8>(data[0]);
+        if (coding & ~(LampMonitoring | AutoLock | DaytimeLights))
+            return Nrc::RequestOutOfRange;
+        m_coding = coding;
+        if (m_codingBlank) {
+            m_codingBlank = false;
+            if (onConfigured)
+                onConfigured(QStringLiteral("bcm"));
+        }
+        return 0;
+    });
     s.addDid(0x4001, [this] { return encU8(m_ctx.vehicle.batteryVoltage() * 10.0); });
     // Lamp outputs as the BCM drives them; turn signals as "flashing", independent of the blink phase.
     s.addDid(0x4002, [this] {
@@ -53,6 +69,16 @@ Bcm::Bcm(SimContext &ctx)
     every(100, [this] { task100ms(); });
 }
 
+void Bcm::setCodingBlank(bool blank)
+{
+    if (blank) {
+        m_codingBlank = true;
+    } else if (m_codingBlank) {
+        m_codingBlank = false;
+        m_coding = kDefaultCoding;
+    }
+}
+
 void Bcm::onSleep()
 {
     // No supply, no lamp current: every exterior lamp the BCM drives goes dark.
@@ -64,8 +90,12 @@ void Bcm::task20ms()
     const DriverInputs &in = m_ctx.driver;
     m_lowBeam = m_lowBeamForced >= 0 ? m_lowBeamForced == 1 : in.headlamps == 2;
     m_highBeam = in.highBeam;
-    m_park = in.headlamps >= 1 || m_lowBeam;
-    m_locked = m_lockForced >= 0 ? m_lockForced == 1 : in.doorLock;
+    const auto coded = [this](quint8 function) { return !m_codingBlank && (m_coding & function); };
+    // Daytime running lights: the position lamps while the engine runs.
+    const bool engineRunning = !rxTimedOut(msg::EcmEngine) && rx(msg::EcmEngine, QStringLiteral("EngineRPM")) > 400.0;
+    const bool drl = coded(DaytimeLights) && in.ignition != Ignition::Off && engineRunning;
+    m_park = in.headlamps >= 1 || m_lowBeam || drl;
+    m_locked = m_lockForced >= 0 ? m_lockForced == 1 : (in.doorLock || m_autoLocked);
     m_blink = (now() / 400) % 2 == 0;
     m_turnLeftOut = (in.turnLeft || in.hazard) && m_blink;
     m_turnRightOut = (in.turnRight || in.hazard) && m_blink;
@@ -78,11 +108,24 @@ void Bcm::task100ms()
     const VehicleModel &v = m_ctx.vehicle;
     const bool ignition = in.ignition != Ignition::Off;
 
+    const auto coded = [this](quint8 function) { return !m_codingBlank && (m_coding & function); };
+    dtcs().report(U3000NotConfigured, m_codingBlank);
+
     if (ignition)
         dtcs().report(B1318, v.batteryVoltage() < 11.0);
     // Lamp outputs are current monitored: commanded on but no current = open circuit.
-    if (m_lowBeam)
+    if (m_lowBeam && coded(LampMonitoring))
         dtcs().report(B1601, v.bulbLowLeftOpen);
+
+    // Auto-lock above 15 km/h with all doors shut; ends with ignition off, an opened door or
+    // a press on the central locking switch.
+    const bool anyDoorOpen = in.doorAjar[0] || in.doorAjar[1] || in.doorAjar[2] || in.doorAjar[3];
+    const double speed = rxTimedOut(msg::AbsStatus) ? 0.0 : rx(msg::AbsStatus, QStringLiteral("VehicleSpeed"));
+    if (!ignition || anyDoorOpen || in.doorLock != m_lastLockSwitch || !coded(AutoLock))
+        m_autoLocked = false;
+    else if (speed > 15.0 && !in.doorLock)
+        m_autoLocked = true;
+    m_lastLockSwitch = in.doorLock;
 
     send(msg::BcmStatus, {{QStringLiteral("IgnitionState"), static_cast<int>(in.ignition)},
                              {QStringLiteral("Headlamps"), m_lowBeam ? 2 : (in.headlamps >= 1 ? 1 : 0)},

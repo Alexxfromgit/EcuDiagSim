@@ -38,7 +38,8 @@ Panel {
         "ckp": { x: 150, y: 38, left: true }, "ect": { x: 183, y: 34 }, "tps": { x: 224, y: 38 },
         "tft": { x: 266, y: 128, left: true },
         "alternator": { x: 122, y: 100 }, "cooling": { x: 244, y: 100, left: true },
-        "bulb_low_left": { x: 112, y: 2, left: true }, "abs_e2e": { x: 120, y: 162 }
+        "bulb_low_left": { x: 112, y: 2, left: true }, "abs_e2e": { x: 120, y: 162 },
+        "throttle_body": { x: 194, y: 112 }
     })
     readonly property var spots: App.faultTargets.filter(t => root.spotPlaces[t.id] !== undefined)
     readonly property var faultedIds: App.activeFaults.map(f => f.targetId)

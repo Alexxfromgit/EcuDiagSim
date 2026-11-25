@@ -24,8 +24,8 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 | Faults | Open circuit, short to ground / battery, stuck, offset, gain, noise, intermittent, erratic; alternator, water pump and bulb failures; ECU power loss and bus-off; wrong checksum / frozen alive counter; CAN wiring short |
 | CAN | ID-priority arbitration, real bit timing and bus load, signals defined in [`resources/dbc/vehicle.dbc`](resources/dbc/vehicle.dbc), end-to-end protection (CRC-8 + alive counter) |
 | Fault memory | ISO 14229 status byte, counter debounce, pending / confirmed with one- and two-trip DTCs, lamp healing, aging, snapshots (freeze frames) |
-| Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2F, 0x3E with negative response codes and S3 timeout |
-| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, thirteen scripted lessons in JSON |
+| Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2E (coding), 0x2F, 0x31 (routines), 0x3E with negative response codes and S3 timeout |
+| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, sixteen scripted lessons in JSON |
 
 ## Download
 
@@ -106,7 +106,8 @@ python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
 AddressSanitizer and UndefinedBehaviorSanitizer, what CI runs on Linux).
 
 Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`, `--size <WxH>`,
-`--settings` (open the settings page), `--screenshot <file> --after <ms>`.
+`--settings` (open the settings page), `--uds <0..3>` (scan tool in UDS mode on ECM / TCM / ABS / BCM),
+`--screenshot <file> --after <ms>`.
 
 The app opens **paused** at 0 s: nothing happens on the bus until you press **Run** (or Space).
 **Settings** (⚙ in the top bar, or Ctrl+,) can change that, set the speed the app starts with, reduce
@@ -149,6 +150,9 @@ step. The same lessons run as automated tests.
 | 11 | [Intermittent wheel speed sensor](docs/lessons/11-intermittent-sensor.md) | Intermediate | debounce, occurrence counter |
 | 12 | [CAN bus short](docs/lessons/12-can-bus-short.md) | Advanced | fail-safe lamps, reading the U-code pattern |
 | 13 | [Two-trip DTC](docs/lessons/13-two-trip-dtc.md) | Advanced | operation cycles, pending versus confirmed, Mode 03 / 07 |
+| 14 | [Replacement ABS module, coding](docs/lessons/14-abs-module-coding.md) | Intermediate | variant coding, UDS 0x2E, U3000-55, knock-on P0500 |
+| 15 | [New throttle body, adaptation](docs/lessons/15-throttle-body-adaptation.md) | Intermediate | routines (UDS 0x31), preconditions, P2176 |
+| 16 | [Body functions by coding](docs/lessons/16-bcm-feature-coding.md) | Beginner | activating functions: daytime lights, auto-lock |
 
 ## Documentation
 
@@ -157,7 +161,7 @@ step. The same lessons run as automated tests.
 - [DTC catalog](docs/dtc-catalog.md) — every fault code and how it is detected
 - [Diagnostics reference](docs/diagnostics.md) — supported OBD-II and UDS services, identifiers, security access
 - [Scenario format](docs/scenarios.md) — write your own lessons
-- [Lessons](#lessons) — thirteen guided lessons, from a first sensor fault to two-trip DTCs
+- [Lessons](#lessons) — sixteen guided lessons, from a first sensor fault to coding and adaptation
 
 ## Scope and simplifications
 

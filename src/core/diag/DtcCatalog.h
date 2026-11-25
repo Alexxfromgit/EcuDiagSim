@@ -33,6 +33,8 @@ constexpr quint32 P0500 = saeDtc('P', 0x0500);
 constexpr quint32 P0711 = saeDtc('P', 0x0711);
 constexpr quint32 P0712 = saeDtc('P', 0x0712);
 constexpr quint32 P0713 = saeDtc('P', 0x0713);
+// ECM: throttle adaptation (SAE J2012 P2176)
+constexpr quint32 P2176 = saeDtc('P', 0x2176);
 // ABS: wheel speed sensors FL, FR, RL, RR with a failure type byte
 constexpr quint32 kWheelBase[4] = {0x0035, 0x0040, 0x0045, 0x0050};
 constexpr quint8 FtbShortGround = 0x11;
@@ -50,6 +52,8 @@ constexpr quint32 U0121 = saeDtc('U', 0x0121, 0x87);
 constexpr quint32 U0140 = saeDtc('U', 0x0140, 0x87);
 constexpr quint32 U0415Counter = saeDtc('U', 0x0415, 0x82);
 constexpr quint32 U0415Checksum = saeDtc('U', 0x0415, 0x83);
+// Control module not configured (SAE J2012 U3000 "Control module", FTB 0x55 "not configured")
+constexpr quint32 U3000NotConfigured = saeDtc('U', 0x3000, 0x55);
 } // namespace dtc
 
 struct DtcCatalogEntry

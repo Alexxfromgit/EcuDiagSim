@@ -31,6 +31,7 @@ constexpr FaultName kFaultNames[] = {
     {FaultType::FrozenCounter, "frozen_counter", "Alive counter frozen"},
     {FaultType::BadChecksum, "bad_checksum", "Wrong checksum"},
     {FaultType::BusShort, "bus_short", "CAN wiring short"},
+    {FaultType::Unconfigured, "unconfigured", "Replaced, not configured"},
 };
 } // namespace
 

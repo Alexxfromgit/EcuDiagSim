@@ -40,7 +40,9 @@ enum : quint8 {
     ReadDtcInformation = 0x19,
     ReadDataByIdentifier = 0x22,
     SecurityAccess = 0x27,
+    WriteDataByIdentifier = 0x2E,
     InputOutputControlByIdentifier = 0x2F,
+    RoutineControl = 0x31,
     TesterPresent = 0x3E,
     NegativeResponse = 0x7F,
 };

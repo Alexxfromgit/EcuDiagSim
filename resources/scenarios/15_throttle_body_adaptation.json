@@ -1,0 +1,43 @@
+{
+  "name": "New throttle body - adaptation routine",
+  "description": "After a throttle body replacement the ECM does not know the closed position of the new plate: P2176, MIL and reduced power. The adaptation is a routine (UDS 0x31) with conditions: it is refused while the engine runs, and it reports its result when asked.",
+  "lesson": "docs/lessons/15-throttle-body-adaptation.md",
+  "level": "Intermediate",
+  "topics": ["ECM", "UDS", "Routine control"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "inject", "target": "throttle_body", "fault": "unconfigured", "note": "A new throttle body was fitted: its closed position has not been learned" },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "dtc": "P2176", "ecu": "ECM", "status": "confirmed", "note": "1. P2176: idle position not learned" },
+    { "action": "expect", "lamp": "mil", "value": true },
+
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "signal": "EngineLimp", "op": "==", "value": 1, "note": "2. Reduced power: the ECM limits the throttle opening" },
+    { "action": "uds", "ecu": "ECM", "request": "10 03", "expect": "50 03" },
+    { "action": "uds", "ecu": "ECM", "request": "31 01 02 01", "expect": "7F 31 22", "note": "3. Start the adaptation with the engine running: conditionsNotCorrect" },
+
+    { "action": "ignition", "value": "off", "note": "4. Engine off, ignition on again" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "uds", "ecu": "ECM", "request": "10 03", "expect": "50 03" },
+    { "action": "uds", "ecu": "ECM", "request": "31 03 02 01", "expect": "7F 31 24", "note": "Results before the routine ran: requestSequenceError" },
+    { "action": "uds", "ecu": "ECM", "request": "31 01 02 01", "expect": "71 01 02 01 01", "note": "5. Started (status 01 = running): the motor opens the plate fully and closes it again" },
+    { "action": "wait", "ms": 900 },
+    { "action": "expect", "signal": "ThrottlePos", "op": ">", "value": 60, "note": "The plate moves although the engine is off" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "ECM", "request": "31 03 02 01", "expect": "71 03 02 01 02", "note": "6. Results: 02 = completed, followed by the learned closed position in mV" },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 04", "expectContains": "62 10 04 01", "note": "DID 0x1004: learned = 1" },
+
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44", "note": "7. Clear the codes" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "signal": "EngineLimp", "op": "==", "value": 0, "note": "Full power again" },
+    { "action": "expect", "dtc": "P2176", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

@@ -83,7 +83,7 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
         m_crankTime = 0.0;
     }
 
-    const double throttleTarget = m_running ? std::clamp(throttleCmd, 0.0, 1.0) : 0.0;
+    const double throttleTarget = m_running || (throttleMotorOn && ignitionOn) ? std::clamp(throttleCmd, 0.0, 1.0) : 0.0;
     m_throttle = approach(m_throttle, throttleTarget, dt, 0.05);
 
     const double ratio = gearRatio(m_gear);

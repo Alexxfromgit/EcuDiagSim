@@ -40,6 +40,7 @@ public:
     double throttleCmd = 0.0; ///< ECM: throttle plate command 0..1
     bool fuelEnable = false;  ///< ECM: injection + ignition enabled
     int gearCmd = 1;          ///< TCM: forward gear 1..6 used while the selector is in D
+    bool throttleMotorOn = false; ///< ECM: drives the plate with the engine off (adaptation)
 
     // --- plant faults ---
     bool alternatorFailed = false;

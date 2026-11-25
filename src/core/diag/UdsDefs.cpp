@@ -42,7 +42,9 @@ QString serviceName(quint8 sid)
     case Sid::ReadDtcInformation: return QStringLiteral("ReadDTCInformation");
     case Sid::ReadDataByIdentifier: return QStringLiteral("ReadDataByIdentifier");
     case Sid::SecurityAccess: return QStringLiteral("SecurityAccess");
+    case Sid::WriteDataByIdentifier: return QStringLiteral("WriteDataByIdentifier");
     case Sid::InputOutputControlByIdentifier: return QStringLiteral("InputOutputControlByIdentifier");
+    case Sid::RoutineControl: return QStringLiteral("RoutineControl");
     case Sid::TesterPresent: return QStringLiteral("TesterPresent");
     default: return QStringLiteral("Service 0x%1").arg(sid, 2, 16, QLatin1Char('0'));
     }

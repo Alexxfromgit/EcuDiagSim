@@ -13,7 +13,7 @@ struct DidInfo
     quint16 did;
     const char *name;
     Kind kind;
-    int length;
+    int length;      ///< 0: variable, the rest of the response
     double factor;
     double offset;
     const char *unit;
@@ -49,6 +49,9 @@ QList<DtcInfo> parseObdDtcList(const QByteArray &response);
 QList<DecodedValue> parseSnapshot(const QByteArray &response);
 /// Parses a 62 response (one or more DIDs) or a 41 response (one or more PIDs).
 QList<DecodedValue> parseDataResponse(const QByteArray &response);
+
+/// Text for the first byte of a routine status record (RoutineControl 0x71 response).
+QString routineStatusText(quint8 status);
 
 /// One line of plain language for a request/response pair, e.g.
 /// "negative response: securityAccessDenied (0x33)".

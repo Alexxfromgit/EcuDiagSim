@@ -46,10 +46,13 @@ int main(int argc, char *argv[])
         QStringLiteral("Milliseconds to wait before the screenshot (default 3000)."), QStringLiteral("ms"),
         QStringLiteral("3000"));
     const QCommandLineOption settingsOpt(QStringLiteral("settings"), QStringLiteral("Open the settings page at start."));
+    const QCommandLineOption udsOpt(QStringLiteral("uds"),
+        QStringLiteral("Open the scan tool in UDS mode on this control unit: 0 ECM, 1 TCM, 2 ABS, 3 BCM."),
+        QStringLiteral("index"));
     const QCommandLineOption sizeOpt(QStringLiteral("size"),
         QStringLiteral("Window size, e.g. 1366x768 (for screenshots and testing small screens)."),
         QStringLiteral("WxH"));
-    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt, settingsOpt});
+    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt, settingsOpt, udsOpt});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -77,6 +80,8 @@ int main(int argc, char *argv[])
     }
     if (parser.isSet(tabOpt))
         root->setProperty("currentTab", parser.value(tabOpt).toInt());
+    if (parser.isSet(udsOpt))
+        QMetaObject::invokeMethod(root, "openUds", Qt::QueuedConnection, Q_ARG(QVariant, parser.value(udsOpt).toInt()));
     if (parser.isSet(settingsOpt))
         QMetaObject::invokeMethod(root, "openSettings", Qt::QueuedConnection);
     if (parser.isSet(sizeOpt)) {

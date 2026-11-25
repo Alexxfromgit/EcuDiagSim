@@ -23,6 +23,8 @@ class ScannerViewModel : public QObject
     Q_PROPERTY(QVariantList values READ values NOTIFY valuesChanged)
     Q_PROPERTY(QString valuesTitle READ valuesTitle NOTIFY valuesChanged)
     Q_PROPERTY(QVariantList ioControls READ ioControls NOTIFY targetChanged)
+    Q_PROPERTY(QVariantList codings READ codings NOTIFY targetChanged)
+    Q_PROPERTY(QVariantList routines READ routines NOTIFY targetChanged)
     Q_PROPERTY(QString sessionText READ sessionText NOTIFY stateChanged)
     Q_PROPERTY(bool unlocked READ unlocked NOTIFY stateChanged)
     Q_PROPERTY(bool keepAlive READ keepAlive WRITE setKeepAlive NOTIFY stateChanged)
@@ -40,6 +42,10 @@ public:
     QVariantList values() const { return m_values; }
     QString valuesTitle() const { return m_valuesTitle; }
     QVariantList ioControls() const;
+    /// Writable identifiers of the selected ECU: did, name, hint, the original value as an example.
+    QVariantList codings() const;
+    /// Routines of the selected ECU: id, name, hint.
+    QVariantList routines() const;
     QString sessionText() const;
     bool unlocked() const { return m_unlocked[m_target]; }
     bool keepAlive() const;
@@ -66,6 +72,9 @@ public:
     Q_INVOKABLE void udsIdentification();
     Q_INVOKABLE void udsLiveData();
     Q_INVOKABLE void udsIoControl(int did, int state); ///< state: 1 on, 0 off, -1 return control
+    Q_INVOKABLE void udsReadDid(int did);
+    Q_INVOKABLE void udsWriteDid(int did, const QString &hexData);
+    Q_INVOKABLE void udsRoutine(int id, int type); ///< type: 1 start, 2 stop, 3 request results
     Q_INVOKABLE void sendRaw(const QString &hexText, bool functional);
     Q_INVOKABLE void clearLog();
 
