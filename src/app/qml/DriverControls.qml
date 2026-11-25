@@ -134,12 +134,16 @@ Panel {
             Layout.fillWidth: true
             Layout.maximumWidth: column.width
             spacing: 6
-            Caption { text: "" }
-            Button { text: "Coast"; onClicked: { App.throttle = 0; App.brake = 0 } }
-            Button { text: "Cruise 30 %"; onClicked: { App.brake = 0; App.throttle = 30 } }
-            Button { text: "Full throttle"; onClicked: { App.brake = 0; App.throttle = 100 } }
-            Button { text: "Stop"; onClicked: { App.throttle = 0; App.brake = 60 } }
-            Item { Layout.fillWidth: true }
+            Caption { text: ""; Layout.alignment: Qt.AlignTop }
+            // Wraps onto a second line when the panel is narrow instead of running off the side.
+            Flow {
+                Layout.fillWidth: true
+                spacing: 6
+                Button { text: "Coast"; onClicked: { App.throttle = 0; App.brake = 0 } }
+                Button { text: "Cruise 30 %"; onClicked: { App.brake = 0; App.throttle = 30 } }
+                Button { text: "Full throttle"; onClicked: { App.brake = 0; App.throttle = 100 } }
+                Button { text: "Stop"; onClicked: { App.throttle = 0; App.brake = 60 } }
+            }
         }
 
         Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
@@ -207,18 +211,24 @@ Panel {
             Layout.fillWidth: true
             Layout.maximumWidth: column.width
             spacing: 8
-            Caption { text: "Doors" }
-            Repeater {
-                model: ["FL", "FR", "RL", "RR"]
-                CheckBox {
-                    required property int index
-                    required property string modelData
-                    text: modelData + " open"
-                    checked: App.doors[index]
-                    onToggled: App.setDoor(index, checked)
+            Caption { text: "Doors open"; Layout.alignment: Qt.AlignTop; Layout.topMargin: 6 }
+            Flow {
+                Layout.fillWidth: true
+                spacing: 2
+                Repeater {
+                    model: ["FL", "FR", "RL", "RR"]
+                    CheckBox {
+                        required property int index
+                        required property string modelData
+                        text: modelData
+                        checked: App.doors[index]
+                        onToggled: App.setDoor(index, checked)
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 500
+                        ToolTip.text: ["Front left", "Front right", "Rear left", "Rear right"][index] + " door ajar"
+                    }
                 }
             }
-            Item { Layout.fillWidth: true }
         }
         RowLayout {
             Layout.fillWidth: true

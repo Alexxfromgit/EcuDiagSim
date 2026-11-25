@@ -1,5 +1,6 @@
 // View models behind the QML UI, driven headless: AppController, ScannerViewModel, TraceModel.
 #include "AppController.h"
+#include "WindowGeometry.h"
 
 #include <QAbstractItemModelTester>
 #include <QSignalSpy>
@@ -48,6 +49,8 @@ private slots:
     void sessionStateFollowsTheEcu();
     void traceModelIsConsistent();
     void updatesInADevelopmentBuild();
+    void swappedFaultRefreshesViews();
+    void windowFitsTheScreen();
 };
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
@@ -203,6 +206,72 @@ void tst_App::traceModelIsConsistent()
 }
 
 // A test binary is not installed by Velopack, exactly like a development build of the app.
+// A scenario that swaps one fault for another (same count) or changes only a parameter must still
+// refresh the views, which poll the simulation for changes made behind their back.
+void tst_App::swappedFaultRefreshesViews()
+{
+    Rig r;
+    QSignalSpy spy(&r.app, &AppController::faultsChanged);
+    Simulation &sim = r.app.sim();
+    QVERIFY(sim.injectFault(QStringLiteral("ect"), {FaultType::OpenCircuit}));
+    QVERIFY(spy.wait(2000));
+
+    spy.clear();
+    sim.clearFault(QStringLiteral("ect"));
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), {FaultType::ShortToGround}));
+    QVERIFY(spy.wait(2000));
+    QCOMPARE(r.app.activeFaults().size(), 1);
+    QCOMPARE(r.app.activeFaults().first().toMap().value(QStringLiteral("targetId")).toString(), QStringLiteral("tps"));
+
+    Fault loose{FaultType::Intermittent, 400.0, 0.3, true};
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), loose));
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+    loose.p2 = 0.6;
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), loose));
+    QVERIFY(spy.wait(2000));
+
+    // Nothing changed: no refresh.
+    spy.clear();
+    QTest::qWait(600);
+    QCOMPARE(spy.count(), 0);
+}
+
+// The main window never opens past the work area of its screen, even on screens smaller than
+// its minimum size (the minimum gives way).
+void tst_App::windowFitsTheScreen()
+{
+    const QSize preferred(1600, 940);
+    const QSize minimum(1024, 600);
+
+    // 1024x600 display with a 60 px taskbar: 540 px of work area.
+    InitialWindowGeometry fit = fitWindowToScreen(QRect(0, 0, 1024, 540), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(0, 0, 1024, 540));
+    QCOMPARE(fit.minimum, QSize(1024, 540));
+
+    // Narrower than the minimum width, work area not at the origin (taskbar on the left).
+    fit = fitWindowToScreen(QRect(48, 0, 1000, 700), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(48, 30, 1000, 640));
+    QCOMPARE(fit.minimum, QSize(1000, 600));
+
+    // 1366x768 laptop with a 40 px taskbar: shrinks with a margin, centred.
+    fit = fitWindowToScreen(QRect(0, 0, 1366, 728), preferred, minimum);
+    QCOMPARE(fit.geometry.size(), QSize(1326, 668));
+    QCOMPARE(fit.geometry.topLeft(), QPoint(20, 30));
+    QCOMPARE(fit.minimum, minimum);
+
+    // Second monitor at x = 1920, large enough: the preferred size, centred on that screen.
+    fit = fitWindowToScreen(QRect(1920, 0, 2560, 1400), preferred, minimum);
+    QCOMPARE(fit.geometry, QRect(1920 + 480, 230, 1600, 940));
+
+    // Whatever the screen, the window stays inside the work area.
+    for (const QRect &avail : {QRect(0, 0, 800, 480), QRect(0, 0, 1024, 600), QRect(100, 50, 1280, 670)}) {
+        fit = fitWindowToScreen(avail, preferred, minimum);
+        QVERIFY2(avail.contains(fit.geometry), qPrintable(QStringLiteral("%1x%2").arg(avail.width()).arg(avail.height())));
+        QVERIFY(fit.geometry.width() >= fit.minimum.width() && fit.geometry.height() >= fit.minimum.height());
+    }
+}
+
 void tst_App::updatesInADevelopmentBuild()
 {
     UpdateService updates;

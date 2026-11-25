@@ -26,6 +26,18 @@ bool sameInputs(const DriverInputs &a, const DriverInputs &b)
         && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar;
 }
 
+/// Identifies the set of active faults, so a fault swapped for another one by a scenario
+/// (same count, different content) still refreshes the views.
+QString faultSignature(const QList<ActiveFault> &faults)
+{
+    QString s;
+    for (const ActiveFault &f : faults)
+        s += f.targetId + QLatin1Char(':') + faultTypeName(f.fault.type) + QLatin1Char(':')
+            + (f.fault.hasP1 ? QString::number(f.fault.p1) : QString()) + QLatin1Char(':')
+            + QString::number(f.fault.p2) + QLatin1Char(';');
+    return s;
+}
+
 QString circuitText(CircuitState c)
 {
     switch (c) {
@@ -55,6 +67,8 @@ AppController::AppController(QObject *parent)
             {QStringLiteral("name"), o.value(QLatin1String("name")).toString(file)},
             {QStringLiteral("description"), o.value(QLatin1String("description")).toString()},
             {QStringLiteral("lesson"), o.value(QLatin1String("lesson")).toString()},
+            {QStringLiteral("level"), o.value(QLatin1String("level")).toString()},
+            {QStringLiteral("topics"), o.value(QLatin1String("topics")).toVariant()},
             {QStringLiteral("steps"), o.value(QLatin1String("steps")).toArray().size()}});
     }
 
@@ -86,6 +100,7 @@ void AppController::createSimulation()
     };
     m_lastFrameCount = 0;
     m_lastRateSimMs = 0;
+    m_lastFaults.clear();
     m_lastInputs = m_sim->driver();
 }
 
@@ -176,8 +191,8 @@ void AppController::onTimer()
             m_lastInputs = m_sim->driver();
             emit inputsChanged();
         }
-        if (m_lastActiveFaults != m_sim->activeFaults().size()) {
-            m_lastActiveFaults = static_cast<int>(m_sim->activeFaults().size());
+        if (const QString signature = faultSignature(m_sim->activeFaults()); signature != m_lastFaults) {
+            m_lastFaults = signature;
             emit faultsChanged();
         }
         emit slowUpdated();
@@ -315,8 +330,19 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("voltage"), v.batteryVoltage()},
         {QStringLiteral("throttle"), v.throttlePos() * 100.0},
         {QStringLiteral("gear"), v.engagedGear()},
+        {QStringLiteral("brake"), m_sim->driver().brakePedal},
+        {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},
+        {QStringLiteral("selector"), static_cast<int>(m_sim->driver().selector)},
+        {QStringLiteral("doors"), doors()},
+        // exterior lamps as the BCM really drives them (dark when the BCM has no supply)
         {QStringLiteral("lowBeam"), m_sim->bcm().lowBeamOn()},
+        {QStringLiteral("highBeam"), m_sim->bcm().highBeamOn()},
+        {QStringLiteral("parkLamps"), m_sim->bcm().parkLampsOn()},
+        {QStringLiteral("turnLeftLamp"), m_sim->bcm().turnLeftLampOn()},
+        {QStringLiteral("turnRightLamp"), m_sim->bcm().turnRightLampOn()},
+        {QStringLiteral("bulbLowLeftOpen"), v.bulbLowLeftOpen},
         {QStringLiteral("locked"), m_sim->bcm().doorsLocked()},
+        {QStringLiteral("busLoad"), m_sim->bus().busLoad()},
         {QStringLiteral("busFailure"), m_sim->bus().busFailure()}};
 }
 
@@ -426,7 +452,7 @@ bool AppController::injectFault(const QString &targetId, const QString &faultTyp
         const FaultTarget *t = m_sim->faultTarget(targetId);
         setMessage(QStringLiteral("Fault injected: %1 - %2").arg(t ? t->name : targetId, faultTypeLabel(fault.type)));
     }
-    m_lastActiveFaults = static_cast<int>(m_sim->activeFaults().size());
+    m_lastFaults = faultSignature(m_sim->activeFaults());
     emit faultsChanged();
     return ok;
 }
@@ -434,14 +460,14 @@ bool AppController::injectFault(const QString &targetId, const QString &faultTyp
 void AppController::clearFault(const QString &targetId)
 {
     m_sim->clearFault(targetId);
-    m_lastActiveFaults = static_cast<int>(m_sim->activeFaults().size());
+    m_lastFaults = faultSignature(m_sim->activeFaults());
     emit faultsChanged();
 }
 
 void AppController::clearAllFaults()
 {
     m_sim->clearAllFaults();
-    m_lastActiveFaults = 0;
+    m_lastFaults.clear();
     emit faultsChanged();
 }
 

@@ -1,0 +1,41 @@
+{
+  "name": "End-to-end protection - frozen counter and bad CRC",
+  "description": "ABS_WheelSpeeds carries an alive counter and a CRC-8. First the ABS sender task hangs (same counter in every frame), then the data gets corrupted (CRC wrong). The ECM flags the frames as invalid and stores U0415 with two different failure types.",
+  "lesson": "docs/lessons/09-end-to-end-protection.md",
+  "level": "Advanced",
+  "topics": ["Network", "E2E", "UDS"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 25 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 20, "timeout": 30000 },
+
+    { "action": "inject", "target": "abs_e2e", "fault": "frozen_counter", "note": "The ABS software task that fills the counter hangs; the frames still go out" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "U0415-82", "ecu": "ECM", "status": "confirmed", "note": "1. FTB 82: alive / sequence counter incorrect, after 10 frames" },
+    { "action": "expect", "dtc": "U0415-83", "ecu": "ECM", "status": "absent", "note": "The CRC is still correct - the data is consistent, only stale" },
+    { "action": "expect", "lamp": "abs", "value": false, "note": "The ABS itself has no idea anything is wrong" },
+    { "action": "expect", "lamp": "mil", "value": false, "note": "Network DTCs are stored without a warning lamp" },
+
+    { "action": "inject", "target": "abs_e2e", "fault": "bad_checksum", "note": "Now the counter runs again, but the payload is corrupted on its way to the bus" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "U0415-83", "ecu": "ECM", "status": "confirmed", "note": "2. FTB 83: value of signal protection calculation incorrect" },
+    { "action": "uds", "ecu": "ECM", "request": "19 02 08", "expectContains": "C4 15 82", "note": "3. Both failure types are listed as separate DTCs" },
+    { "action": "uds", "ecu": "ECM", "request": "19 02 08", "expectContains": "C4 15 83" },
+    { "action": "uds", "ecu": "ABS", "request": "19 02 08", "expect": "59 02", "expectNotContains": "C4 15", "note": "The sender stores nothing: only a receiver can detect E2E errors" },
+
+    { "action": "clearFault", "target": "abs_e2e", "note": "Repair: new ABS software" },
+    { "action": "wait", "ms": 500 },
+    { "action": "uds", "ecu": "ECM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "U0415", "ecu": "ECM", "status": "absent" },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<=", "value": 0.5, "timeout": 20000 },
+    { "action": "brake", "value": 0 },
+    { "action": "selector", "value": "P" }
+  ]
+}

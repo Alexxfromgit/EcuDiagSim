@@ -1,0 +1,43 @@
+{
+  "name": "CAN bus short - every module goes silent",
+  "description": "CAN-H shorted to CAN-L: not a single frame gets through. The engine keeps running, but the cluster falls back to fail-safe lamps, the TCM goes into limp mode and the scan tool gets no answer. After the repair every module tells the story with U-codes - and one knock-on DTC keeps the MIL on.",
+  "lesson": "docs/lessons/12-can-bus-short.md",
+  "level": "Advanced",
+  "topics": ["Network", "U-codes", "Fail-safe"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "lamp": "mil", "value": false },
+
+    { "action": "inject", "target": "can_bus", "fault": "bus_short", "note": "A chafed harness shorts CAN-H to CAN-L" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "1. The cluster lights MIL, ABS and TRANS because their senders are silent" },
+    { "action": "expect", "lamp": "abs", "value": true },
+    { "action": "expect", "lamp": "trans", "value": true },
+    { "action": "uds", "ecu": "ECM", "request": "3E 00", "expectNoResponse": true, "note": "2. The scan tool cannot reach anything - check the bus wiring before blaming a module" },
+    { "action": "uds", "ecu": "ALL", "request": "01 00", "expectNoResponse": true },
+
+    { "action": "clearFault", "target": "can_bus", "note": "Repair the harness" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "expect", "signal": "EngineRunning", "op": "==", "value": 1, "note": "3. Frames flow again - and the engine ran the whole time" },
+    { "action": "expect", "lamp": "trans", "value": false, "note": "TRANS and ABS lamps go out: their messages are back" },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "But the MIL stays on. Network DTCs request no lamp - so who does?" },
+    { "action": "expect", "dtc": "P0500", "ecu": "TCM", "status": "confirmed", "note": "A knock-on fault: without ABS_Status the TCM lost its vehicle speed (P0500)" },
+    { "action": "expect", "dtc": "P0700", "ecu": "ECM", "status": "confirmed", "note": "... and asked the ECM for the MIL (P0700)" },
+    { "action": "expect", "dtc": "U0121", "ecu": "ECM", "status": "confirmed", "note": "4. Everybody missed everybody: the U-code pattern points at the bus, not at one node" },
+    { "action": "expect", "dtc": "U0101", "ecu": "ECM", "status": "confirmed" },
+    { "action": "expect", "dtc": "U0140", "ecu": "ECM", "status": "confirmed" },
+    { "action": "expect", "dtc": "U0100", "ecu": "TCM", "status": "confirmed" },
+    { "action": "expect", "dtc": "U0100", "ecu": "ABS", "status": "confirmed" },
+    { "action": "expect", "dtc": "U0100", "ecu": "BCM", "status": "confirmed" },
+    { "action": "uds", "ecu": "ALL", "request": "14 FF FF FF", "expect": "54", "note": "5. One functional request clears every module" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "U0121", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "dtc": "U0100", "ecu": "BCM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

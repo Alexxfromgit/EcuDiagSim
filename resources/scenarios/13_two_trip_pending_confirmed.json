@@ -1,0 +1,40 @@
+{
+  "name": "Two-trip DTC - pending versus confirmed",
+  "description": "A worn throttle sensor reads 30 % too much. P0121 is a two-trip DTC: in the first ignition cycle it is only pending (Mode 07) and the MIL stays off. The fault is still there in the next cycle, so the DTC is confirmed (Mode 03) and the MIL comes on.",
+  "lesson": "docs/lessons/13-two-trip-dtc.md",
+  "level": "Advanced",
+  "topics": ["ECM", "Fault memory", "OBD-II"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Trip 1: waiting for the cluster bulb check to finish" },
+
+    { "action": "inject", "target": "tps", "fault": "offset", "p1": 30, "note": "The sensor track wears: it reads 30 % more than the real throttle angle" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "pending", "note": "1. Measured and commanded angle disagree: P0121 is pending" },
+    { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "notConfirmed", "note": "... but not confirmed - it needs a second trip" },
+    { "action": "expect", "lamp": "mil", "value": false },
+    { "action": "uds", "ecu": "ALL", "request": "07", "expectContains": "01 21", "note": "2. OBD Mode 07 (pending DTCs) shows it" },
+    { "action": "uds", "ecu": "ALL", "request": "03", "expect": "43", "expectNotContains": "01 21", "note": "Mode 03 (confirmed DTCs) does not - an emissions inspection would pass" },
+
+    { "action": "ignition", "value": "off", "note": "End of trip 1" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "ignition", "value": "on", "note": "Trip 2" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+    { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "confirmed", "note": "3. Failed again in the second trip: confirmed" },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "... and the MIL comes on" },
+    { "action": "uds", "ecu": "ALL", "request": "03", "expectContains": "01 21" },
+    { "action": "expect", "signal": "EngineLimp", "op": "==", "value": 1, "note": "A throttle angle that cannot be trusted also means limp home" },
+
+    { "action": "clearFault", "target": "tps", "note": "Repair: new throttle body" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

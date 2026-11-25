@@ -1,4 +1,5 @@
 #include "AppController.h"
+#include "WindowGeometry.h"
 
 #include <QCommandLineParser>
 #include <QGuiApplication>
@@ -6,6 +7,7 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QScreen>
 #include <QTimer>
 
 #ifdef ECUSIM_HAS_VELOPACK
@@ -80,6 +82,13 @@ int main(int argc, char *argv[])
             root->setProperty("width", wh.at(0).toInt());
             root->setProperty("height", wh.at(1).toInt());
         }
+    } else if (auto *window = qobject_cast<QQuickWindow *>(root); window && window->screen()) {
+        // Never open larger than the screen the window is on (not the whole virtual desktop),
+        // and centre it there. Done once: later resizes are the user's.
+        const InitialWindowGeometry fit = fitWindowToScreen(window->screen()->availableGeometry(),
+            window->size(), window->minimumSize());
+        window->setMinimumSize(fit.minimum);
+        window->setGeometry(fit.geometry);
     }
 
     if (parser.isSet(shotOpt)) {

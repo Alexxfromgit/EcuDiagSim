@@ -8,6 +8,16 @@ Panel {
     id: root
 
     readonly property string state_: App.scenarioState
+    readonly property var levels: ["All", "Beginner", "Intermediate", "Advanced"]
+    property string levelFilter: "All"
+    readonly property var shown: {
+        const list = []
+        const all = App.scenarios
+        for (let i = 0; i < all.length; ++i)
+            if (levelFilter === "All" || all[i].level === levelFilter)
+                list.push(Object.assign({ number: i + 1 }, all[i]))
+        return list
+    }
 
     FileDialog {
         id: openDialog
@@ -33,6 +43,14 @@ Panel {
         default: return "·"
         }
     }
+    function difficultyColor(level) {
+        switch (level) {
+        case "Beginner": return Theme.ok
+        case "Intermediate": return Theme.warn
+        case "Advanced": return Theme.violet
+        default: return Theme.textDim
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -45,52 +63,127 @@ Panel {
             color: Theme.textDim
             font.pixelSize: 12
             wrapMode: Text.WordWrap
+            maximumLineCount: 3
+            elide: Text.ElideRight
         }
 
-        Repeater {
-            model: App.scenarios
-            Rectangle {
-                id: card
-                required property var modelData
-                required property int index
-                readonly property bool current: App.scenarioName === modelData.name
-                Layout.fillWidth: true
-                implicitHeight: cardLayout.implicitHeight + 16
-                radius: 4
-                color: Theme.inset
-                border.color: current ? Theme.accent : Theme.border
-                RowLayout {
-                    id: cardLayout
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                    spacing: 10
-                    Text {
-                        text: card.index + 1
-                        color: Theme.off
-                        font { pixelSize: 26; bold: true }
-                        Layout.preferredWidth: 22
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 4
+            Repeater {
+                model: root.levels
+                Button {
+                    required property string modelData
+                    text: modelData
+                    highlighted: root.levelFilter === modelData
+                    flat: !highlighted
+                    onClicked: root.levelFilter = modelData
+                }
+            }
+            Item { Layout.fillWidth: true }
+            Text {
+                text: root.shown.length + " of " + App.scenarios.length
+                color: Theme.textDim
+                font.pixelSize: 11
+            }
+        }
+
+        // --- lesson list: scrolls, shares the height with the log below ---
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.preferredHeight: 100
+            Layout.minimumHeight: 90
+            Layout.verticalStretchFactor: 3
+            color: "transparent"
+            ListView {
+                id: lessons
+                anchors.fill: parent
+                clip: true
+                spacing: 6
+                model: root.shown
+                boundsBehavior: Flickable.StopAtBounds
+                ScrollBar.vertical: ScrollBar { policy: lessons.contentHeight > lessons.height ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+                delegate: Rectangle {
+                    id: card
+                    required property var modelData
+                    readonly property bool current: App.scenarioName === modelData.name
+                    width: ListView.view.width - (lessons.contentHeight > lessons.height ? 12 : 0)
+                    implicitHeight: cardLayout.implicitHeight + 16
+                    height: implicitHeight
+                    radius: 5
+                    color: cardArea.containsMouse ? Theme.panelAlt : Theme.inset
+                    border.color: current ? Theme.accent : Theme.border
+                    border.width: current ? 2 : 1
+                    Behavior on color { ColorAnimation { duration: 100 } }
+                    MouseArea { id: cardArea; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
+                    RowLayout {
+                        id: cardLayout
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                        spacing: 10
                         Text {
-                            text: card.modelData.name
-                            color: Theme.text
-                            font { pixelSize: 13; bold: true }
+                            text: card.modelData.number
+                            color: card.current ? Theme.accent : Theme.off
+                            font { pixelSize: 24; bold: true }
+                            horizontalAlignment: Text.AlignHCenter
+                            Layout.preferredWidth: 30
+                            Layout.alignment: Qt.AlignTop
                         }
-                        Text {
+                        ColumnLayout {
                             Layout.fillWidth: true
-                            text: card.modelData.description
-                            color: Theme.textDim
-                            font.pixelSize: 11
-                            wrapMode: Text.WordWrap
+                            spacing: 3
+                            Text {
+                                Layout.fillWidth: true
+                                text: card.modelData.name
+                                color: Theme.text
+                                font { pixelSize: 13; bold: true }
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                id: desc
+                                Layout.fillWidth: true
+                                text: card.modelData.description
+                                color: Theme.textDim
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                Chip {
+                                    visible: (card.modelData.level ?? "") !== ""
+                                    text: (card.modelData.level ?? "").toUpperCase()
+                                    tone: root.difficultyColor(card.modelData.level)
+                                }
+                                Repeater {
+                                    model: card.modelData.topics ?? []
+                                    Chip {
+                                        required property string modelData
+                                        text: modelData
+                                        tone: Theme.textDim
+                                    }
+                                }
+                            }
+                        }
+                        Button {
+                            Layout.alignment: Qt.AlignVCenter
+                            text: card.current && root.state_ === "running" ? "Running…" : "Run"
+                            highlighted: true
+                            enabled: root.state_ !== "running"
+                            onClicked: App.runScenario(card.modelData.path)
                         }
                     }
-                    Button {
-                        text: "Run"
-                        highlighted: true
-                        enabled: root.state_ !== "running"
-                        onClicked: App.runScenario(card.modelData.path)
-                    }
+                    ToolTip.visible: cardArea.containsMouse && desc.truncated
+                    ToolTip.delay: 600
+                    ToolTip.text: card.modelData.description
+                }
+                Text {
+                    anchors.centerIn: parent
+                    visible: lessons.count === 0
+                    text: "No lessons at this level."
+                    color: Theme.textDim
                 }
             }
         }
@@ -117,6 +210,9 @@ Panel {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.preferredHeight: 100
+            Layout.minimumHeight: 110
+            Layout.verticalStretchFactor: 2
             color: Theme.inset
             border.color: Theme.border
             radius: 4
@@ -160,6 +256,9 @@ Panel {
             }
             Text {
                 anchors.centerIn: parent
+                width: parent.width - 24
+                horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.WordWrap
                 visible: logView.count === 0
                 text: "Pick a lesson above. Running one resets the vehicle first."
                 color: Theme.textDim

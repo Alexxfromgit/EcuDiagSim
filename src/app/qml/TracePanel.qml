@@ -8,6 +8,8 @@ Panel {
     id: root
 
     readonly property var trace: App.trace
+    // Narrow panel: file actions move into a menu, the frame counter goes.
+    readonly property bool compact: width < 620
     // column widths: time, id, name, sender, dlc, data
     readonly property var cols: [58, 30, 116, 34, 14, 168]
 
@@ -36,7 +38,11 @@ Panel {
             spacing: 6
             TextField {
                 id: filter
+                // shrinks first when the panel is narrow
+                Layout.fillWidth: true
                 Layout.preferredWidth: 150
+                Layout.maximumWidth: 220
+                Layout.minimumWidth: 80
                 placeholderText: "Filter: 0B0, ABS, diag"
                 selectByMouse: true
                 onTextChanged: root.trace.filter = text
@@ -61,14 +67,31 @@ Panel {
                 onClicked: root.trace.paused = !root.trace.paused
             }
             Button { text: "Clear"; onClicked: root.trace.clear() }
-            Item { Layout.fillWidth: true }
+            Item { Layout.fillWidth: true; visible: root.compact }
             Text {
+                visible: !root.compact
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                horizontalAlignment: Text.AlignRight
+                elide: Text.ElideLeft
                 text: root.trace.count + (root.trace.fixedMode ? " IDs" : " frames")
                 color: Theme.textDim
                 font { family: Theme.mono; pixelSize: 11 }
             }
-            Button { text: "Save…"; onClicked: saveDialog.open() }
-            Button { text: "Replay…"; onClicked: openDialog.open() }
+            Button { visible: !root.compact; text: "Save…"; onClicked: saveDialog.open() }
+            Button { visible: !root.compact; text: "Replay…"; onClicked: openDialog.open() }
+            Button {
+                id: fileButton
+                visible: root.compact
+                text: "File ▾"
+                onClicked: fileMenu.open()
+                Menu {
+                    id: fileMenu
+                    y: fileButton.height
+                    MenuItem { text: "Save trace…"; onTriggered: saveDialog.open() }
+                    MenuItem { text: "Replay a log…"; onTriggered: openDialog.open() }
+                }
+            }
         }
 
         // header

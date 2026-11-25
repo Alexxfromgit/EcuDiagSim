@@ -38,18 +38,22 @@ void Ipc::task20ms()
     // Lamps: requested over CAN, forced on during the bulb check and when the sender is silent.
     const bool engineRunning = !ecmLost && flag(msg::EcmStatus, "EngineRunning");
     s.mil = bulbCheck || ecmLost || flag(msg::EcmStatus, "MilReq");
-    s.coolantWarn = bulbCheck || flag(msg::EcmStatus, "CoolantWarnReq");
+    // The last received values of a silent sender are kept by the receive buffer; a lamp that
+    // depends on them must not freeze in its last state (e.g. a turn signal stuck on).
+    s.coolantWarn = bulbCheck || (!ecmLost && flag(msg::EcmStatus, "CoolantWarnReq"));
     s.abs = bulbCheck || absLost || flag(msg::AbsStatus, "AbsLampReq");
     s.tcs = bulbCheck || absLost || flag(msg::AbsStatus, "TcsLampReq");
     s.battery = bulbCheck || !engineRunning || (!bcmLost && s.batteryVoltage < 12.0);
     s.transFault = bulbCheck || tcmLost || flag(msg::TcmStatus, "LimpMode");
-    s.turnLeft = flag(msg::BcmStatus, "TurnLeft");
-    s.turnRight = flag(msg::BcmStatus, "TurnRight");
-    s.lowBeam = sig(msg::BcmStatus, "Headlamps") > 1.5;
-    s.highBeam = flag(msg::BcmStatus, "HighBeam");
-    s.doorAjar = flag(msg::BcmStatus, "DoorAjar_FL") || flag(msg::BcmStatus, "DoorAjar_FR")
-        || flag(msg::BcmStatus, "DoorAjar_RL") || flag(msg::BcmStatus, "DoorAjar_RR");
-    s.lampFault = flag(msg::BcmStatus, "LampFault");
+    if (!bcmLost) {
+        s.turnLeft = flag(msg::BcmStatus, "TurnLeft");
+        s.turnRight = flag(msg::BcmStatus, "TurnRight");
+        s.lowBeam = sig(msg::BcmStatus, "Headlamps") > 1.5;
+        s.highBeam = flag(msg::BcmStatus, "HighBeam");
+        s.doorAjar = flag(msg::BcmStatus, "DoorAjar_FL") || flag(msg::BcmStatus, "DoorAjar_FR")
+            || flag(msg::BcmStatus, "DoorAjar_RL") || flag(msg::BcmStatus, "DoorAjar_RR");
+        s.lampFault = flag(msg::BcmStatus, "LampFault");
+    }
     m_state = s;
 }
 

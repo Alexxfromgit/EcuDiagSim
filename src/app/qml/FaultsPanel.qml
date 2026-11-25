@@ -37,15 +37,23 @@ Panel {
         return false
     }
 
-    RowLayout {
+    // Side by side when there is room, otherwise the component list goes on top.
+    readonly property bool stacked: width < 560
+
+    GridLayout {
         anchors.fill: parent
-        spacing: 12
+        columns: root.stacked ? 1 : 2
+        columnSpacing: 12
+        rowSpacing: 10
 
         // --- what can break ---
         ColumnLayout {
-            Layout.preferredWidth: Math.min(280, root.width * 0.45)
-            Layout.maximumWidth: 280
+            Layout.preferredWidth: root.stacked ? -1 : Math.min(280, root.width * 0.42)
+            Layout.maximumWidth: root.stacked ? Number.POSITIVE_INFINITY : 280
+            Layout.fillWidth: root.stacked
             Layout.fillHeight: true
+            Layout.preferredHeight: root.stacked ? root.height * 0.36 : -1
+            Layout.maximumHeight: root.stacked ? root.height * 0.36 : Number.POSITIVE_INFINITY
             spacing: 6
             Text { text: "1 · PICK A COMPONENT"; color: Theme.textDim; font { pixelSize: 11; bold: true; letterSpacing: 1 } }
             Rectangle {
@@ -116,10 +124,22 @@ Panel {
             }
         }
 
-        // --- how it breaks ---
-        ColumnLayout {
+        // --- how it breaks --- (scrolls when the window is too short for everything)
+        Flickable {
+            id: detail
+            readonly property bool overflows: contentHeight > height + 1
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
+            contentWidth: width
+            contentHeight: detailColumn.height
+            boundsBehavior: Flickable.StopAtBounds
+            ScrollBar.vertical: ScrollBar { policy: detail.overflows ? ScrollBar.AlwaysOn : ScrollBar.AsNeeded }
+
+        ColumnLayout {
+            id: detailColumn
+            width: detail.width - (detail.overflows ? 12 : 0)
+            height: Math.max(implicitHeight, detail.height)
             spacing: 8
 
             Text { text: "2 · CHOOSE THE FAULT"; color: Theme.textDim; font { pixelSize: 11; bold: true; letterSpacing: 1 } }
@@ -131,6 +151,8 @@ Panel {
                 Layout.fillWidth: true
             }
             Text {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
                 visible: root.liveSensor !== null
                 text: root.liveSensor
                       ? "real " + root.liveSensor.trueValue.toFixed(1) + " " + root.liveSensor.unit
@@ -142,11 +164,13 @@ Panel {
             }
 
             RowLayout {
+                Layout.fillWidth: true
                 spacing: 8
                 ComboBox {
                     id: typeBox
                     Layout.preferredWidth: 220
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 120
                     Layout.maximumWidth: 220
                     model: root.target ? root.target.types : []
                     textRole: "label"
@@ -196,7 +220,9 @@ Panel {
             Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border; Layout.topMargin: 6 }
 
             RowLayout {
+                Layout.fillWidth: true
                 Text {
+                    elide: Text.ElideRight
                     text: "ACTIVE FAULTS  ·  " + App.activeFaults.length
                     color: Theme.textDim
                     font { pixelSize: 11; bold: true; letterSpacing: 1 }
@@ -260,6 +286,10 @@ Panel {
             // --- state of the control units ---
             Text { text: "CONTROL UNITS"; color: Theme.textDim; font { pixelSize: 11; bold: true; letterSpacing: 1 } }
             Flow {
+                id: ecuFlow
+                // as many equal columns as fit, cards stretch to fill the row
+                readonly property int columns: Math.max(1, Math.min(5, Math.floor((width + spacing) / (136 + spacing))))
+                readonly property real cardWidth: (width - spacing * (columns - 1)) / columns
                 Layout.fillWidth: true
                 spacing: 6
                 Repeater {
@@ -268,7 +298,7 @@ Panel {
                         id: ecuCard
                         required property var modelData
                         readonly property color tone: Theme.ecuColor(modelData.state)
-                        width: 150; height: 44
+                        width: ecuFlow.cardWidth; height: 44
                         radius: 4
                         color: Theme.inset
                         border.color: Qt.rgba(tone.r, tone.g, tone.b, 0.7)
@@ -287,14 +317,17 @@ Panel {
                                 }
                             }
                             Text {
+                                width: parent.width
                                 text: Theme.ecuStateText(ecuCard.modelData.state)
                                 color: Theme.textDim
                                 font.pixelSize: 10
+                                elide: Text.ElideRight
                             }
                         }
                     }
                 }
             }
+        }
         }
     }
 }

@@ -13,6 +13,8 @@ ecusim_add_test(tst_obd)
 ecusim_add_test(tst_vehicle)
 ecusim_add_test(tst_trace)
 ecusim_add_test(tst_scenarios)
+# The bundled lessons point at their documentation; the test checks those files exist.
+target_compile_definitions(tst_scenarios PRIVATE ECUSIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 # The UI's view models, built from the app sources and driven without QML or any GUI module.
 if(TARGET Qt6::Qml)

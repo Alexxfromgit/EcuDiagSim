@@ -1,0 +1,39 @@
+{
+  "name": "Water pump failure - engine overheating",
+  "description": "A failed water pump lets the coolant temperature climb. The temperature warning lamp comes on first, then the ECM stores P0217 and lights the MIL. Run it at 5x speed - real overheating takes about a minute.",
+  "lesson": "docs/lessons/07-overheating.md",
+  "level": "Beginner",
+  "topics": ["ECM", "Thermal", "OBD-II"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "lamp": "coolant", "value": false },
+
+    { "action": "inject", "target": "cooling", "fault": "failure", "note": "The water pump impeller breaks: the coolant no longer circulates" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 30, "note": "Driving on - the temperature gauge creeps up" },
+    { "action": "waitFor", "signal": "CoolantTemp", "op": ">", "value": 112, "timeout": 90000 },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "lamp": "coolant", "value": true, "note": "1. Above 112 degC the ECM asks the cluster for the red temperature lamp" },
+    { "action": "expect", "dtc": "P0217", "ecu": "ECM", "status": "absent", "note": "No DTC yet: this is a warning to the driver, not a fault in the system" },
+    { "action": "waitFor", "signal": "CoolantTemp", "op": ">", "value": 118, "timeout": 90000 },
+    { "action": "wait", "ms": 3500, "note": "Above 118 degC for 3 s: engine over temperature" },
+    { "action": "expect", "dtc": "P0217", "ecu": "ECM", "status": "confirmed", "note": "2. P0217 is stored" },
+    { "action": "expect", "lamp": "mil", "value": true },
+    { "action": "uds", "ecu": "ALL", "request": "01 05", "expect": "41 05", "note": "3. OBD PID 05: coolant temperature + 40 in one byte" },
+    { "action": "uds", "ecu": "ECM", "request": "19 04 02 17 00 01", "expect": "59 04 02 17 00", "note": "The snapshot holds speed, rpm and temperature at the moment of detection" },
+
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 50 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<=", "value": 0.5, "timeout": 30000, "note": "Pull over" },
+    { "action": "brake", "value": 0 },
+    { "action": "selector", "value": "P" },
+    { "action": "clearFault", "target": "cooling", "note": "Repair: new water pump" },
+    { "action": "waitFor", "signal": "CoolantTemp", "op": "<", "value": 105, "timeout": 90000 },
+    { "action": "expect", "lamp": "coolant", "value": false, "note": "The warning lamp goes out on its own once the engine cools down" },
+    { "action": "expect", "dtc": "P0217", "ecu": "ECM", "status": "confirmed", "note": "The DTC stays as a record that the engine overheated" }
+  ]
+}

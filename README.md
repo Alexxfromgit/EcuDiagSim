@@ -25,7 +25,7 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 | CAN | ID-priority arbitration, real bit timing and bus load, signals defined in [`resources/dbc/vehicle.dbc`](resources/dbc/vehicle.dbc), end-to-end protection (CRC-8 + alive counter) |
 | Fault memory | ISO 14229 status byte, counter debounce, pending / confirmed with one- and two-trip DTCs, lamp healing, aging, snapshots (freeze frames) |
 | Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2F, 0x3E with negative response codes and S3 timeout |
-| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, scripted lessons in JSON |
+| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, thirteen scripted lessons in JSON |
 
 ## Download
 
@@ -108,6 +108,10 @@ AddressSanitizer and UndefinedBehaviorSanitizer, what CI runs on Linux).
 Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`, `--size <WxH>`,
 `--screenshot <file> --after <ms>`.
 
+The window adapts to the screen: it opens no larger than the available desktop and works down to
+1024×600. Below 1200 pixels of width the vehicle view is hidden by default (**Show car** brings it
+back), and narrow panels stack or scroll instead of clipping.
+
 ## A first session
 
 1. Switch the **ignition** on. All lamps light for three seconds (bulb check); the trace fills with
@@ -124,6 +128,24 @@ Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <fact
 Or let the **Lessons** tab do this for you: each lesson runs the complete sequence and checks every
 step. The same lessons run as automated tests.
 
+## Lessons
+
+| # | Lesson | Level | You learn |
+|---|---|---|---|
+| 1 | [Wheel speed sensor, open circuit](docs/lessons/01-wheel-speed-sensor.md) | Beginner | the whole chain from sensor to scan tool, UDS snapshots |
+| 2 | [Coolant sensor, open circuit](docs/lessons/02-coolant-sensor.md) | Beginner | pull-up circuits, substitute values, OBD-II modes 02/03/09 |
+| 3 | [Alternator failure](docs/lessons/03-low-battery.md) | Beginner | one root cause, DTCs in several ECUs |
+| 4 | [ABS module offline](docs/lessons/04-abs-node-offline.md) | Intermediate | lost communication U-codes, knock-on faults |
+| 5 | [Throttle sensor, limp home](docs/lessons/05-throttle-limp-home.md) | Beginner | limp home strategy, circuit low / high |
+| 6 | [Crankshaft sensor, stall and no start](docs/lessons/06-crankshaft-no-start.md) | Beginner | cranks-but-no-start diagnosis with live data |
+| 7 | [Water pump failure, overheating](docs/lessons/07-overheating.md) | Beginner | driver warning versus stored DTC |
+| 8 | [Transmission fluid sensor](docs/lessons/08-trans-fluid-sensor.md) | Intermediate | MIL request over CAN, P0700 |
+| 9 | [End-to-end protection](docs/lessons/09-end-to-end-protection.md) | Advanced | alive counter, CRC, failure type bytes |
+| 10 | [Low beam bulb, actuator test](docs/lessons/10-low-beam-actuator-test.md) | Intermediate | current monitoring, UDS 0x2F with security access |
+| 11 | [Intermittent wheel speed sensor](docs/lessons/11-intermittent-sensor.md) | Intermediate | debounce, occurrence counter |
+| 12 | [CAN bus short](docs/lessons/12-can-bus-short.md) | Advanced | fail-safe lamps, reading the U-code pattern |
+| 13 | [Two-trip DTC](docs/lessons/13-two-trip-dtc.md) | Advanced | operation cycles, pending versus confirmed, Mode 03 / 07 |
+
 ## Documentation
 
 - [Architecture](docs/architecture.md) — how the simulator is put together
@@ -131,10 +153,7 @@ step. The same lessons run as automated tests.
 - [DTC catalog](docs/dtc-catalog.md) — every fault code and how it is detected
 - [Diagnostics reference](docs/diagnostics.md) — supported OBD-II and UDS services, identifiers, security access
 - [Scenario format](docs/scenarios.md) — write your own lessons
-- Lessons: [wheel speed sensor](docs/lessons/01-wheel-speed-sensor.md),
-  [coolant sensor](docs/lessons/02-coolant-sensor.md),
-  [low battery](docs/lessons/03-low-battery.md),
-  [ABS module offline](docs/lessons/04-abs-node-offline.md)
+- [Lessons](#lessons) — thirteen guided lessons, from a first sensor fault to two-trip DTCs
 
 ## Scope and simplifications
 

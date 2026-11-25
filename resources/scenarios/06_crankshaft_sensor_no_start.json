@@ -1,0 +1,36 @@
+{
+  "name": "Crankshaft position sensor - stall and no start",
+  "description": "Without the crankshaft signal the ECM does not know where the pistons are, so it stops injecting: the running engine stalls and will not restart. The engine itself is fine - a classic case where the symptom points at the wrong part.",
+  "lesson": "docs/lessons/06-crankshaft-no-start.md",
+  "level": "Beginner",
+  "topics": ["ECM", "Sensors", "No start"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "signal": "EngineRPM", "op": ">=", "value": 600, "note": "Idling at about 800 rpm" },
+
+    { "action": "inject", "target": "ckp", "fault": "open", "note": "The crankshaft sensor connector falls off" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 0, "timeout": 2000, "note": "1. No pulses, no injection: the engine stalls" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "P0335", "ecu": "ECM", "status": "confirmed", "note": "2. P0335: the engine was running and the speed signal vanished" },
+    { "action": "expect", "lamp": "mil", "value": true },
+    { "action": "expect", "lamp": "battery", "value": true, "note": "The charge lamp lights too - the alternator stopped with the engine" },
+
+    { "action": "startEngine", "note": "3. Try to restart: the starter cranks, but the ECM sees no crank signal and never fires" },
+    { "action": "wait", "ms": 3500 },
+    { "action": "expect", "signal": "EngineRunning", "op": "==", "value": 0 },
+    { "action": "expect", "signal": "EngineRPM", "op": "==", "value": 0, "note": "The ECM reports 0 rpm - the real engine was cranking at about 250 rpm" },
+    { "action": "uds", "ecu": "ECM", "request": "22 F4 0C", "expect": "62 F4 0C 00 00", "note": "4. Live data confirms it: engine speed 0 while cranking means check the CKP sensor first" },
+
+    { "action": "clearFault", "target": "ckp", "note": "Repair: plug the sensor back in" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000, "note": "The engine starts at the first attempt" },
+    { "action": "uds", "ecu": "ECM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "P0335", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

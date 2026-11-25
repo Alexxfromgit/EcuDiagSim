@@ -1,4 +1,4 @@
-qt_add_executable(EcuDiagSim main.cpp)
+qt_add_executable(EcuDiagSim main.cpp WindowGeometry.h)
 
 # Application icon: Windows resource, macOS bundle icon, and the window icon at run time.
 set(icons_dir "${CMAKE_SOURCE_DIR}/resources/icons")

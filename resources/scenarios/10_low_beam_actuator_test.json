@@ -1,0 +1,41 @@
+{
+  "name": "Low beam bulb - lamp check and actuator test",
+  "description": "The BCM monitors the lamp current. A blown left low beam bulb sets B1601 and the BULB tell-tale. After the repair, an actuator test (UDS 0x2F, extended session plus security access) switches the low beam on from the scan tool.",
+  "lesson": "docs/lessons/10-low-beam-actuator-test.md",
+  "level": "Intermediate",
+  "topics": ["BCM", "UDS", "Actuator test"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "headlamps", "value": "low" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "lowBeam", "value": true },
+    { "action": "expect", "lamp": "lampFault", "value": false },
+
+    { "action": "inject", "target": "bulb_low_left", "fault": "failure", "note": "The filament of the left low beam bulb breaks" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "B1601-13", "ecu": "BCM", "status": "confirmed", "note": "1. Output on, but no current: open circuit, B1601-13" },
+    { "action": "expect", "signal": "LampFault", "op": "==", "value": 1, "note": "2. BCM_Status.LampFault lights the BULB tell-tale" },
+    { "action": "expect", "lamp": "lampFault", "value": true },
+    { "action": "uds", "ecu": "BCM", "request": "22 40 02", "expect": "62 40 02 05", "note": "3. Lamp outputs: 0x05 = low beam + parking lamps commanded on" },
+
+    { "action": "clearFault", "target": "bulb_low_left", "note": "Repair: new bulb" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "lamp": "lampFault", "value": false, "note": "The current is back: the monitor passes" },
+    { "action": "headlamps", "value": "off" },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "lamp": "lowBeam", "value": false },
+
+    { "action": "uds", "ecu": "BCM", "request": "2F 40 10 03 01", "expect": "7F 2F 7F", "note": "4. Actuator test in the default session: rejected (NRC 7F)" },
+    { "action": "unlock", "ecu": "BCM", "note": "Extended session and security access" },
+    { "action": "uds", "ecu": "BCM", "request": "2F 40 10 03 01", "expect": "6F 40 10 03", "note": "5. Now the scan tool drives the low beam output with the light switch off" },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "lamp": "lowBeam", "value": true, "note": "Both bulbs light: the repair is verified without touching the light switch" },
+    { "action": "uds", "ecu": "BCM", "request": "2F 40 10 00", "expect": "6F 40 10 00", "note": "Return control to the ECU" },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "lamp": "lowBeam", "value": false },
+    { "action": "uds", "ecu": "BCM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "B1601", "ecu": "BCM", "status": "absent" }
+  ]
+}

@@ -107,14 +107,26 @@ class Bcm : public Ecu
 {
 public:
     explicit Bcm(SimContext &ctx);
+    // Lamp driver outputs: what the exterior lamps really do (all dark without BCM supply).
     bool lowBeamOn() const { return m_lowBeam; }
+    bool highBeamOn() const { return m_highBeam; }
+    bool parkLampsOn() const { return m_park; }
+    bool turnLeftLampOn() const { return m_turnLeftOut; }
+    bool turnRightLampOn() const { return m_turnRightOut; }
     bool doorsLocked() const { return m_locked; }
+
+protected:
+    void onSleep() override;
 
 private:
     void task20ms();
     void task100ms();
 
     bool m_lowBeam = false;
+    bool m_highBeam = false;
+    bool m_park = false;
+    bool m_turnLeftOut = false;
+    bool m_turnRightOut = false;
     bool m_locked = false;
     bool m_blink = false;
     int m_lowBeamForced = -1;

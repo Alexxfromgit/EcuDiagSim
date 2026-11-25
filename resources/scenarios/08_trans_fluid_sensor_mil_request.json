@@ -1,0 +1,36 @@
+{
+  "name": "Transmission fluid sensor - MIL request over CAN",
+  "description": "The TCM has no MIL of its own. When its fluid temperature sensor shorts to battery it stores P0713, uses a substitute temperature and asks the ECM over CAN to light the lamp - which is why the ECM stores P0700.",
+  "lesson": "docs/lessons/08-trans-fluid-sensor.md",
+  "level": "Intermediate",
+  "topics": ["TCM", "Sensors", "OBD-II"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "signal": "TransTemp", "op": ">=", "value": 70, "note": "Fluid at operating temperature" },
+    { "action": "expect", "lamp": "mil", "value": false },
+
+    { "action": "inject", "target": "tft", "fault": "short_bat", "note": "The sensor signal wire shorts to battery voltage - the ECU input clamps at 5 V" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "P0713", "ecu": "TCM", "status": "confirmed", "note": "1. The TCM sees 5 V on an NTC input: circuit high, P0713" },
+    { "action": "expect", "signal": "TransTemp", "op": "==", "value": 80, "note": "The TCM sends a substitute 80 degC so the shift strategy keeps working" },
+    { "action": "expect", "signal": "TcmMilReq", "op": "==", "value": 1, "note": "2. TCM_Status.TcmMilReq: the TCM asks for the MIL" },
+    { "action": "expect", "dtc": "P0700", "ecu": "ECM", "status": "confirmed", "note": "3. The ECM, owner of the MIL, stores P0700 and lights the lamp" },
+    { "action": "expect", "lamp": "mil", "value": true },
+    { "action": "expect", "lamp": "trans", "value": false, "note": "No limp mode: a substitute temperature is good enough to keep shifting" },
+    { "action": "uds", "ecu": "TCM", "request": "22 20 03", "expect": "62 20 03 13 88", "note": "4. Pin voltage via UDS: 0x1388 = 5000 mV" },
+    { "action": "uds", "ecu": "ALL", "request": "03", "expectContains": "07 13", "note": "Mode 03 to 0x7DF: the TCM reports P0713, the ECM P0700" },
+    { "action": "uds", "ecu": "ALL", "request": "03", "expectContains": "07 00" },
+
+    { "action": "clearFault", "target": "tft", "note": "Repair the harness" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44", "note": "Mode 04 clears both modules with one functional request" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "P0713", "ecu": "TCM", "status": "absent" },
+    { "action": "expect", "dtc": "P0700", "ecu": "ECM", "status": "absent" },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}
