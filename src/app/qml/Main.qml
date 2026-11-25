@@ -5,18 +5,26 @@ import EcuDiagSim
 
 ApplicationWindow {
     id: window
+    // Preferred size; main.cpp shrinks it to the available area of the window's own screen
+    // (e.g. 1366x768 laptops, or 1920x1080 at 150 % scaling = 1280x720 logical pixels).
     width: 1600
     height: 940
-    minimumWidth: 1280
-    minimumHeight: 680
+    minimumWidth: 1024
+    minimumHeight: 600
     visible: true
     title: "ECU Diagnostics Simulator"
     color: Theme.bg
 
     // 0 faults, 1 CAN trace, 2 scanner, 3 scenarios
     property int currentTab: 0
-    // Hides the vehicle view to give the trace / scan tool more room.
-    property bool wide: false
+    // Below this width the vehicle view is hidden by default to keep the tabs usable.
+    readonly property bool narrow: width < 1200
+    // The user's explicit choice (true / false) wins; undefined = follow the window width.
+    property var carChoice: undefined
+    readonly property bool carVisible: carChoice === undefined ? !narrow : carChoice
+    // Column widths grow with the window; the tabs on the right take the rest.
+    readonly property real carWidth: Math.max(330, Math.min(470, width * 0.24))
+    readonly property real clusterWidth: Math.max(420, Math.min(580, width * 0.29))
 
     palette {
         window: Theme.bg
@@ -113,9 +121,9 @@ ApplicationWindow {
             spacing: 10
 
             VehicleView {
-                visible: !window.wide
-                Layout.preferredWidth: 372
-                Layout.maximumWidth: 372
+                visible: window.carVisible
+                Layout.preferredWidth: window.carWidth
+                Layout.maximumWidth: window.carWidth
                 Layout.fillHeight: true
                 onTargetPicked: id => {
                     faults.selectTarget(id)
@@ -129,17 +137,18 @@ ApplicationWindow {
             }
 
             ColumnLayout {
-                // Narrower on small screens so the tabs on the right keep enough room.
-                Layout.preferredWidth: window.width < 1500 ? 420 : 470
-                Layout.maximumWidth: Layout.preferredWidth
+                Layout.preferredWidth: window.clusterWidth
+                Layout.maximumWidth: window.clusterWidth
                 Layout.fillHeight: true
                 spacing: 10
                 Cluster {
+                    id: cluster
+                    // As tall as the gauges need for the column width, no empty bands.
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    Layout.preferredHeight: 330
-                    Layout.minimumHeight: 230
-                    Layout.maximumHeight: 330
+                    Layout.preferredHeight: cluster.idealHeight
+                    Layout.minimumHeight: 220
+                    Layout.maximumHeight: cluster.idealHeight
                 }
                 DriverControls { Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 250 }
             }
@@ -163,11 +172,12 @@ ApplicationWindow {
                     TabButton { text: "Lessons" }
                 }
                     Button {
-                        text: window.wide ? "⇥ Show car" : "⇤ Wide"
+                        text: window.carVisible ? "⇤ Wide" : "⇥ Show car"
                         flat: true
-                        onClicked: window.wide = !window.wide
+                        onClicked: window.carChoice = !window.carVisible
                         ToolTip.visible: hovered
-                        ToolTip.text: "Hide the vehicle view to make room for the trace"
+                        ToolTip.text: window.carVisible ? "Hide the vehicle view to make room for the trace"
+                                                        : "Show the vehicle view"
                     }
                 }
                 StackLayout {
@@ -193,7 +203,10 @@ ApplicationWindow {
                 Layout.fillWidth: true
             }
             Text {
-                text: "Space: run / pause    F10: single step    Click a sensor or control unit in the car to work with it"
+                visible: window.width >= 1360
+                text: window.width >= 1600
+                      ? "Space: run / pause    F10: single step    Click a sensor or control unit in the car to work with it"
+                      : "Space: run / pause    F10: single step"
                 color: Theme.off
                 font.pixelSize: 11
             }

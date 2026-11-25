@@ -1,0 +1,41 @@
+{
+  "name": "Intermittent wheel speed sensor - loose connector",
+  "description": "A loose rear-right connector opens for a fraction of every second. The sensor works most of the time, yet the DTC is confirmed and the ABS lamp stays on. Extended data shows how often the fault occurred.",
+  "lesson": "docs/lessons/11-intermittent-sensor.md",
+  "level": "Intermediate",
+  "topics": ["ABS", "Sensors", "UDS"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 35 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 40, "timeout": 40000 },
+    { "action": "throttle", "value": 15 },
+
+    { "action": "inject", "target": "wss_rr", "fault": "intermittent", "p1": 1000, "p2": 0.4, "note": "Loose contact: open for 400 ms of every second" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "dtc": "C0050-13", "ecu": "ABS", "status": "confirmed", "note": "1. Each open phase lasts longer than the 200 ms debounce: C0050-13" },
+    { "action": "expect", "lamp": "abs", "value": true, "note": "2. Once requested, the lamp stays on for the rest of the ignition cycle" },
+    { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1, "note": "Three healthy wheels still give a valid vehicle speed" },
+    { "action": "uds", "ecu": "ABS", "request": "19 06 40 50 13 FF", "expect": "59 06 40 50 13", "note": "3. Extended data: the occurrence counter rises with every dropout" },
+    { "action": "uds", "ecu": "ABS", "request": "14 FF FF FF", "expect": "54", "note": "4. Clearing does not help - the next dropout brings it back" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "C0050-13", "ecu": "ABS", "status": "confirmed" },
+
+    { "action": "clearFault", "target": "wss_rr", "note": "Repair: new connector with a proper locking clip" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "signal": "WheelSpeed_RR_Valid", "op": "==", "value": 1 },
+    { "action": "uds", "ecu": "ABS", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "dtc": "C0050", "ecu": "ABS", "status": "absent", "note": "It stays away now: the fault was in the connector, not in the sensor" },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<=", "value": 0.5, "timeout": 20000 },
+    { "action": "brake", "value": 0 },
+    { "action": "selector", "value": "P" }
+  ]
+}

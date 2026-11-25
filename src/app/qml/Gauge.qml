@@ -1,6 +1,7 @@
 import QtQuick
+import QtQuick.Shapes
 
-// Round dial: the face is painted once, only the needle moves.
+// Round dial: the face is painted once; the needle and the lit arc move.
 Item {
     id: root
     property real value: 0
@@ -18,6 +19,9 @@ Item {
     readonly property real startAngle: 135   // degrees, clockwise from 3 o'clock
     readonly property real sweep: 270
     readonly property real clamped: Math.max(minimum, Math.min(maximum, value))
+    // The arc follows in steps of 0.25 % of the range: the path is rebuilt only when that changes,
+    // not on every frame.
+    readonly property real arcFraction: Math.round((clamped - minimum) / (maximum - minimum) * 400) / 400
 
     implicitWidth: 200
     implicitHeight: 200
@@ -105,6 +109,27 @@ Item {
         }
     }
 
+    // lit arc from zero to the current value
+    Shape {
+        id: arc
+        readonly property real r: Math.min(root.width, root.height) / 2 - 4
+        anchors.fill: parent
+        visible: root.lit && root.arcFraction > 0
+        preferredRendererType: Shape.CurveRenderer
+        ShapePath {
+            fillColor: "transparent"
+            strokeWidth: 3
+            capStyle: ShapePath.RoundCap
+            strokeColor: root.clamped >= root.redFrom ? Qt.rgba(1, 0.35, 0.3, 0.85) : Qt.rgba(0.29, 0.66, 1, 0.75)
+            PathAngleArc {
+                centerX: root.width / 2; centerY: root.height / 2
+                radiusX: arc.r - 2; radiusY: arc.r - 2
+                startAngle: root.startAngle
+                sweepAngle: root.arcFraction * root.sweep
+            }
+        }
+    }
+
     // needle
     Item {
         anchors.centerIn: parent
@@ -116,6 +141,17 @@ Item {
             height: 3
             radius: 1.5
             color: root.lit ? "#ff5a4d" : "#5a2a28"
+            antialiasing: true
+        }
+        // soft glow along the lit needle
+        Rectangle {
+            z: -1
+            visible: root.lit
+            x: -6; y: -4
+            width: Math.min(root.width, root.height) / 2 - 22 + 4
+            height: 8
+            radius: 4
+            color: Qt.rgba(1, 0.35, 0.3, 0.18)
             antialiasing: true
         }
     }

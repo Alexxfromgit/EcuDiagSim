@@ -48,6 +48,7 @@ private slots:
     void sessionStateFollowsTheEcu();
     void traceModelIsConsistent();
     void updatesInADevelopmentBuild();
+    void swappedFaultRefreshesViews();
 };
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
@@ -203,6 +204,37 @@ void tst_App::traceModelIsConsistent()
 }
 
 // A test binary is not installed by Velopack, exactly like a development build of the app.
+// A scenario that swaps one fault for another (same count) or changes only a parameter must still
+// refresh the views, which poll the simulation for changes made behind their back.
+void tst_App::swappedFaultRefreshesViews()
+{
+    Rig r;
+    QSignalSpy spy(&r.app, &AppController::faultsChanged);
+    Simulation &sim = r.app.sim();
+    QVERIFY(sim.injectFault(QStringLiteral("ect"), {FaultType::OpenCircuit}));
+    QVERIFY(spy.wait(2000));
+
+    spy.clear();
+    sim.clearFault(QStringLiteral("ect"));
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), {FaultType::ShortToGround}));
+    QVERIFY(spy.wait(2000));
+    QCOMPARE(r.app.activeFaults().size(), 1);
+    QCOMPARE(r.app.activeFaults().first().toMap().value(QStringLiteral("targetId")).toString(), QStringLiteral("tps"));
+
+    Fault loose{FaultType::Intermittent, 400.0, 0.3, true};
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), loose));
+    QVERIFY(spy.wait(2000));
+    spy.clear();
+    loose.p2 = 0.6;
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), loose));
+    QVERIFY(spy.wait(2000));
+
+    // Nothing changed: no refresh.
+    spy.clear();
+    QTest::qWait(600);
+    QCOMPARE(spy.count(), 0);
+}
+
 void tst_App::updatesInADevelopmentBuild()
 {
     UpdateService updates;

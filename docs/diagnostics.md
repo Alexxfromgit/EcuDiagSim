@@ -114,7 +114,7 @@ ECU would reject a request meant for one of them.
 | 3001…3004 | ABS | wheel speed FL, FR, RL, RR | 2 bytes, 0.01 km/h |
 | 3005 | ABS | brake pressure | 1 byte, bar |
 | 4001 | BCM | battery voltage | 1 byte, 0.1 V |
-| 4002 | BCM | lamps: bit 0 low, 1 high, 2 parking, 3 left, 4 right | 1 byte |
+| 4002 | BCM | lamp outputs: bit 0 low, 1 high, 2 parking, 3 left flashing, 4 right flashing | 1 byte |
 | 4003 | BCM | doors: bits 0…3 ajar FL/FR/RL/RR, bit 7 locked | 1 byte |
 
 IO control identifiers: `3010` ABS warning lamp (ABS), `4010` low beam, `4011` door lock (BCM);

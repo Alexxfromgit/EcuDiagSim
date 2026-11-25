@@ -2,6 +2,8 @@
   "name": "Wheel speed sensor - open circuit",
   "description": "Drive at 50 km/h, unplug the front-left wheel speed sensor and follow the fault from the sensor to the CAN frame, the DTC, the ABS lamp and the scan tool.",
   "lesson": "docs/lessons/01-wheel-speed-sensor.md",
+  "level": "Beginner",
+  "topics": ["ABS", "UDS", "Sensors"],
   "steps": [
     { "action": "ignition", "value": "on" },
     { "action": "warmUp" },

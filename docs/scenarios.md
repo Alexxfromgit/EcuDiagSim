@@ -8,6 +8,8 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 {
   "name": "My lesson",
   "description": "Shown in the lesson list",
+  "level": "Beginner",
+  "topics": ["ECM", "Sensors"],
   "steps": [
     { "action": "ignition", "value": "on" },
     { "action": "startEngine" },
@@ -18,6 +20,9 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
   ]
 }
 ```
+
+`level` (`Beginner`, `Intermediate` or `Advanced`) and `topics` are optional; the *Lessons* tab
+shows them as tags and filters by level.
 
 Any step may carry a `"note"`. A failed expectation is logged and the scenario continues; it ends
 as *failed* if at least one expectation was not met.
@@ -33,7 +38,7 @@ as *failed* if at least one expectation was not met.
 | `throttle`, `brake` | `value`: 0…100 % |
 | `headlamps` | `value`: `"off"`, `"park"`, `"low"` |
 | `log` | `text`: a line for the lesson log, nothing else happens |
-| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`; `value`: true / false |
+| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`; `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
 
 ## Time
 
@@ -66,8 +71,8 @@ check fails; set `"maxAgeMs"` on the step to allow older values.
 | Form | Meaning |
 |---|---|
 | `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
-| `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `absent` |
-| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault` |
+| `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `notConfirmed`, `absent` |
+| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam` |
 
 ## Scan tool
 

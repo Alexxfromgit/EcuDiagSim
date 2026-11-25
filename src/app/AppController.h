@@ -174,7 +174,7 @@ private:
     quint64 m_lastFrameCount = 0;
     qint64 m_lastRateSimMs = 0;
     double m_frameRate = 0.0;
-    int m_lastActiveFaults = 0;
+    QString m_lastFaults;
     ecusim::DriverInputs m_lastInputs;
     QVariantList m_scenarios;
     QVariantList m_scenarioLog;

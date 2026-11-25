@@ -9,6 +9,9 @@ Panel {
     subtitle: c.powered ? "shows what the IPC receives on the bus" : "ignition off"
 
     readonly property var c: App.cluster
+    // Height at which the two gauges fill their width exactly (no empty bands above and below).
+    readonly property real gaugeSize: Math.max(120, (width - 20 - 92 - 8) / 2)
+    readonly property real idealHeight: 36 + gaugeSize + 6 + 26 + 14
 
     ColumnLayout {
         anchors.fill: parent
@@ -90,8 +93,9 @@ Panel {
         }
 
         RowLayout {
+            id: lamps
             Layout.fillWidth: true
-            spacing: 4
+            spacing: 3
             Lamp { on: root.c.turnLeft; label: "◀"; tone: Theme.ok; tip: "Left turn signal (BCM_Status.TurnLeft)" }
             Item { Layout.fillWidth: true }
             Lamp { on: root.c.mil; label: "CHECK"; tip: "Malfunction indicator lamp (ECM_Status.MilReq, or ECM silent)" }

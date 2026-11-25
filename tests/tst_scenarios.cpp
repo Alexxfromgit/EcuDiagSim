@@ -5,6 +5,10 @@
 #include "sim/ScenarioRunner.h"
 
 #include <QDir>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 using namespace ecusim;
 using namespace testutil;
@@ -26,6 +30,10 @@ private slots:
     void ecuResetOverUds();
     void ioControlNeedsSessionAndSecurity();
     void faultTargetsAreConsistent();
+    void silentBcmDoesNotFreezeClusterLamps();
+    void silentEcmClearsCoolantWarning();
+    void runnerInputsAndLamps();
+    void dtcExpectationNeedsAKnownDtc();
 };
 
 void tst_Scenarios::simulationIsValid()
@@ -124,6 +132,18 @@ void tst_Scenarios::bundledScenarios()
         if (e.level == ScenarioLogEntry::Level::Fail)
             failures << QStringLiteral("[%1 ms] %2").arg(e.timeMs).arg(e.text);
     QVERIFY2(sim.scenario().state() == ScenarioRunner::State::Passed, qPrintable(failures.join(u'\n')));
+
+    // The Lessons tab filters by level and every lesson links to its documentation.
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    const QJsonObject lesson = QJsonDocument::fromJson(file.readAll()).object();
+    const QString level = lesson.value(QLatin1String("level")).toString();
+    QVERIFY2(QStringList({QStringLiteral("Beginner"), QStringLiteral("Intermediate"), QStringLiteral("Advanced")})
+                 .contains(level),
+        qPrintable(QStringLiteral("level '%1'").arg(level)));
+    QVERIFY(!lesson.value(QLatin1String("topics")).toArray().isEmpty());
+    const QString doc = lesson.value(QLatin1String("lesson")).toString();
+    QVERIFY2(QFile::exists(QStringLiteral(ECUSIM_SOURCE_DIR "/") + doc), qPrintable(doc));
 }
 
 void tst_Scenarios::failingExpectationFailsScenario()
@@ -303,6 +323,110 @@ void tst_Scenarios::faultTargetsAreConsistent()
     QVERIFY(sim.activeFaults().isEmpty());
     QVERIFY(!sim.injectFault(QStringLiteral("nope"), {FaultType::OpenCircuit}));
     QVERIFY(!sim.injectFault(QStringLiteral("alternator"), {FaultType::OpenCircuit}));
+}
+
+// A blinking turn signal and an open door must not stay lit in the cluster when the BCM
+// goes silent, and the exterior lamps go dark without BCM supply.
+void tst_Scenarios::silentBcmDoesNotFreezeClusterLamps()
+{
+    Simulation sim;
+    startEngine(sim);
+    sim.driver().headlamps = 2;
+    sim.driver().highBeam = true;
+    sim.driver().doorAjar[0] = true;
+    sim.driver().turnLeft = true;
+    QVERIFY(sim.runUntil([&] { return sim.ipc().state().turnLeft; }, 1000));
+    QVERIFY(sim.ipc().state().doorAjar);
+    QVERIFY(sim.ipc().state().lowBeam);
+    QVERIFY(sim.bcm().lowBeamOn() && sim.bcm().highBeamOn() && sim.bcm().parkLampsOn());
+
+    QVERIFY(sim.injectFault(QStringLiteral("bcm"), {FaultType::PowerLoss}));
+    sim.run(1500);
+    const ClusterState &c = sim.ipc().state();
+    QVERIFY(!c.turnLeft);
+    QVERIFY(!c.doorAjar);
+    QVERIFY(!c.lowBeam);
+    QVERIFY(!c.highBeam);
+    QVERIFY(!sim.bcm().lowBeamOn() && !sim.bcm().highBeamOn() && !sim.bcm().parkLampsOn());
+    QVERIFY(!sim.bcm().turnLeftLampOn());
+
+    // The fuse is back: lamps and tell-tales return.
+    sim.clearFault(QStringLiteral("bcm"));
+    QVERIFY(sim.runUntil([&] { return sim.ipc().state().turnLeft; }, 2000));
+    QVERIFY(sim.ipc().state().doorAjar);
+    QVERIFY(sim.bcm().lowBeamOn());
+}
+
+// The cluster's temperature lamp follows the ECM's request, and goes out with a silent ECM
+// instead of keeping the last received request.
+void tst_Scenarios::silentEcmClearsCoolantWarning()
+{
+    Simulation sim;
+    startEngine(sim);
+    sim.vehicle().setCoolantTemp(125.0);
+    QVERIFY(sim.runUntil([&] { return sim.ipc().state().coolantWarn; }, 1000));
+
+    QVERIFY(sim.injectFault(QStringLiteral("ecm"), {FaultType::PowerLoss}));
+    sim.run(1500);
+    QVERIFY(!sim.ipc().state().coolantWarn);
+    QVERIFY(sim.ipc().state().mil); // the silent ECM itself is signalled by the MIL
+}
+
+void tst_Scenarios::runnerInputsAndLamps()
+{
+    Simulation sim;
+    const QByteArray json = R"({ "name": "t", "steps": [
+        { "action": "ignition", "value": "on" },
+        { "action": "wait", "ms": 3500 },
+        { "action": "expect", "lamp": "door", "value": false },
+        { "action": "input", "name": "doorRL", "value": true },
+        { "action": "input", "name": "highBeam", "value": true },
+        { "action": "headlamps", "value": "low" },
+        { "action": "wait", "ms": 300 },
+        { "action": "expect", "lamp": "door", "value": true },
+        { "action": "expect", "lamp": "highBeam", "value": true },
+        { "action": "expect", "lamp": "lowBeam", "value": true },
+        { "action": "input", "name": "doorRL", "value": false },
+        { "action": "input", "name": "turnLeft", "value": true },
+        { "action": "input", "name": "turnRight", "value": true },
+        { "action": "wait", "ms": 300 },
+        { "action": "expect", "lamp": "door", "value": false } ] })";
+    QVERIFY(sim.scenario().loadJson(json));
+    sim.scenario().start();
+    QVERIFY(sim.runUntil([&] { return sim.scenario().finished(); }, 10000));
+    QStringList failures;
+    for (const ScenarioLogEntry &e : sim.scenario().log())
+        if (e.level == ScenarioLogEntry::Level::Fail)
+            failures << e.text;
+    QVERIFY2(sim.scenario().state() == ScenarioRunner::State::Passed, qPrintable(failures.join(u'\n')));
+    // One stalk: switching right cancels left.
+    QVERIFY(sim.driver().turnRight);
+    QVERIFY(!sim.driver().turnLeft);
+    QVERIFY(!sim.driver().doorAjar[2]);
+
+    // Switching the active side off leaves the other side alone.
+    QVERIFY(sim.scenario().loadJson(R"({ "name": "t", "steps": [
+        { "action": "input", "name": "turnLeft", "value": false } ] })"));
+    sim.scenario().start();
+    sim.run(10);
+    QVERIFY(sim.driver().turnRight);
+}
+
+// "absent" and "notConfirmed" must not pass for a DTC the ECU does not monitor (typo, wrong ECU).
+void tst_Scenarios::dtcExpectationNeedsAKnownDtc()
+{
+    Simulation sim;
+    const QByteArray json = R"({ "name": "t", "steps": [
+        { "action": "ignition", "value": "on" },
+        { "action": "wait", "ms": 100 },
+        { "action": "expect", "dtc": "P0121", "ecu": "TCM", "status": "absent" },
+        { "action": "expect", "dtc": "P1021", "ecu": "ECM", "status": "notConfirmed" },
+        { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "absent" },
+        { "action": "expect", "dtc": "P0121", "ecu": "ECM", "status": "notConfirmed" } ] })";
+    QVERIFY(sim.scenario().loadJson(json));
+    sim.scenario().start();
+    QVERIFY(sim.runUntil([&] { return sim.scenario().finished(); }, 1000));
+    QCOMPARE(sim.scenario().failures(), 2);
 }
 
 QTEST_GUILESS_MAIN(tst_Scenarios)

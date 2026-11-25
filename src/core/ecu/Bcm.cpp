@@ -20,9 +20,10 @@ Bcm::Bcm(SimContext &ctx)
 
     auto &s = diag();
     s.addDid(0x4001, [this] { return encU8(m_ctx.vehicle.batteryVoltage() * 10.0); });
+    // Lamp outputs as the BCM drives them; turn signals as "flashing", independent of the blink phase.
     s.addDid(0x4002, [this] {
         const DriverInputs &in = m_ctx.driver;
-        return encU8((m_lowBeam ? 0x01 : 0) | (in.highBeam ? 0x02 : 0) | (in.headlamps >= 1 ? 0x04 : 0)
+        return encU8((m_lowBeam ? 0x01 : 0) | (m_highBeam ? 0x02 : 0) | (m_park ? 0x04 : 0)
             | ((in.turnLeft || in.hazard) ? 0x08 : 0) | ((in.turnRight || in.hazard) ? 0x10 : 0));
     });
     s.addDid(0x4003, [this] {
@@ -52,12 +53,22 @@ Bcm::Bcm(SimContext &ctx)
     every(100, [this] { task100ms(); });
 }
 
+void Bcm::onSleep()
+{
+    // No supply, no lamp current: every exterior lamp the BCM drives goes dark.
+    m_lowBeam = m_highBeam = m_park = m_turnLeftOut = m_turnRightOut = false;
+}
+
 void Bcm::task20ms()
 {
     const DriverInputs &in = m_ctx.driver;
     m_lowBeam = m_lowBeamForced >= 0 ? m_lowBeamForced == 1 : in.headlamps == 2;
+    m_highBeam = in.highBeam;
+    m_park = in.headlamps >= 1 || m_lowBeam;
     m_locked = m_lockForced >= 0 ? m_lockForced == 1 : in.doorLock;
     m_blink = (now() / 400) % 2 == 0;
+    m_turnLeftOut = (in.turnLeft || in.hazard) && m_blink;
+    m_turnRightOut = (in.turnRight || in.hazard) && m_blink;
 }
 
 void Bcm::task100ms()
@@ -75,9 +86,9 @@ void Bcm::task100ms()
 
     send(msg::BcmStatus, {{QStringLiteral("IgnitionState"), static_cast<int>(in.ignition)},
                              {QStringLiteral("Headlamps"), m_lowBeam ? 2 : (in.headlamps >= 1 ? 1 : 0)},
-                             {QStringLiteral("HighBeam"), in.highBeam ? 1 : 0},
-                             {QStringLiteral("TurnLeft"), (in.turnLeft || in.hazard) && m_blink ? 1 : 0},
-                             {QStringLiteral("TurnRight"), (in.turnRight || in.hazard) && m_blink ? 1 : 0},
+                             {QStringLiteral("HighBeam"), m_highBeam ? 1 : 0},
+                             {QStringLiteral("TurnLeft"), m_turnLeftOut ? 1 : 0},
+                             {QStringLiteral("TurnRight"), m_turnRightOut ? 1 : 0},
                              {QStringLiteral("DoorLock"), m_locked ? 1 : 0},
                              {QStringLiteral("DoorAjar_FL"), in.doorAjar[0] ? 1 : 0},
                              {QStringLiteral("DoorAjar_FR"), in.doorAjar[1] ? 1 : 0},

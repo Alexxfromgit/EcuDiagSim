@@ -4,6 +4,7 @@
 
 #include <QFile>
 #include <QJsonDocument>
+#include <QStringList>
 
 #include <cmath>
 
@@ -193,14 +194,22 @@ void ScenarioRunner::execute(const QJsonObject &step)
         const bool on = value.toBool();
         if (name == QLatin1String("highBeam"))
             driver.highBeam = on;
-        else if (name == QLatin1String("turnLeft"))
-            driver.turnLeft = on;
-        else if (name == QLatin1String("turnRight"))
+        else if (name == QLatin1String("turnLeft")) {
+            driver.turnLeft = on; // one stalk: left and right exclude each other, as in the UI
+            driver.turnRight = driver.turnRight && !on;
+        } else if (name == QLatin1String("turnRight")) {
             driver.turnRight = on;
+            driver.turnLeft = driver.turnLeft && !on;
+        }
         else if (name == QLatin1String("hazard"))
             driver.hazard = on;
         else if (name == QLatin1String("doorLock"))
             driver.doorLock = on;
+        else if (const qsizetype door = QStringList{QStringLiteral("doorFL"), QStringLiteral("doorFR"),
+                     QStringLiteral("doorRL"), QStringLiteral("doorRR")}
+                         .indexOf(name);
+                 door >= 0)
+            driver.doorAjar[static_cast<size_t>(door)] = on;
         else {
             fail(QStringLiteral("Unknown input '%1'").arg(name));
             return;
@@ -277,9 +286,17 @@ void ScenarioRunner::expect(const QJsonObject &step)
         }
         const bool exact = QString(codeText).remove(QLatin1Char('-')).size() == 7;
         quint8 combined = 0;
+        bool matched = false;
         for (const DtcEntry &e : ecu->dtcs().entries()) {
-            if (exact ? e.def.code == code : (e.def.code >> 8) == (code >> 8))
+            if (exact ? e.def.code == code : (e.def.code >> 8) == (code >> 8)) {
                 combined |= e.status;
+                matched = true;
+            }
+        }
+        // Otherwise a typo or the wrong ECU would make "absent" / "notConfirmed" pass.
+        if (!matched) {
+            fail(QStringLiteral("%1 does not monitor %2").arg(ecuName, codeText));
+            return;
         }
         bool ok = false;
         if (status == QLatin1String("confirmed"))
@@ -292,6 +309,8 @@ void ScenarioRunner::expect(const QJsonObject &step)
             ok = combined & DtcStatus::WarningIndicatorRequested;
         else if (status == QLatin1String("stored"))
             ok = combined & (DtcStatus::Pending | DtcStatus::Confirmed);
+        else if (status == QLatin1String("notConfirmed"))
+            ok = !(combined & DtcStatus::Confirmed);
         else if (status == QLatin1String("absent"))
             ok = !(combined & (DtcStatus::Pending | DtcStatus::Confirmed));
         const QString text = QStringLiteral("%1 %2 is %3 (status 0x%4)")
@@ -320,6 +339,12 @@ void ScenarioRunner::expect(const QJsonObject &step)
             actual = c.transFault;
         else if (lamp == QLatin1String("lampFault"))
             actual = c.lampFault;
+        else if (lamp == QLatin1String("door"))
+            actual = c.doorAjar;
+        else if (lamp == QLatin1String("lowBeam"))
+            actual = c.lowBeam;
+        else if (lamp == QLatin1String("highBeam"))
+            actual = c.highBeam;
         else {
             fail(QStringLiteral("Unknown lamp '%1'").arg(lamp));
             return;

@@ -2,6 +2,8 @@
   "name": "ABS control module offline",
   "description": "A blown fuse takes the ABS module off the bus. It cannot store a DTC about itself - the other ECUs notice the missing messages: U0121 everywhere, the TCM loses its speed signal (P0500) and asks the ECM for the MIL (P0700).",
   "lesson": "docs/lessons/04-abs-node-offline.md",
+  "level": "Intermediate",
+  "topics": ["Network", "U-codes"],
   "steps": [
     { "action": "ignition", "value": "on" },
     { "action": "warmUp" },

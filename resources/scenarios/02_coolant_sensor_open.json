@@ -2,6 +2,8 @@
   "name": "Coolant temperature sensor - open circuit",
   "description": "An unplugged NTC sensor reads -40 degC because the ECU pull-up drives the input to 5 V. The ECM stores P0118, substitutes a default temperature and lights the MIL. Diagnosed with the legislated OBD-II services.",
   "lesson": "docs/lessons/02-coolant-sensor.md",
+  "level": "Beginner",
+  "topics": ["ECM", "OBD-II", "Sensors"],
   "steps": [
     { "action": "ignition", "value": "on" },
     { "action": "warmUp" },

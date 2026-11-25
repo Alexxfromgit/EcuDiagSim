@@ -1,9 +1,14 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtQuick.Shapes
 import EcuDiagSim
 
 // Top view of the car: control units on the CAN bus, sensors and components as hotspots.
+// Head, park, tail and turn lamps show what the BCM really drives, so they go dark without the BCM;
+// brake and reversing lamps are switched directly by the pedal and the selector and stay lit.
 Panel {
     id: root
     title: "Vehicle"
@@ -30,37 +35,173 @@ Panel {
         "ckp": "Crankshaft", "ect": "Coolant", "tps": "Throttle", "tft": "Trans. fluid"
     })
     readonly property var faultedIds: App.activeFaults.map(f => f.targetId)
+    readonly property var doors: App.doors // changes with the inputs, not on every frame
 
-    // --- building blocks ---------------------------------------------------
+    // Lamp states: BCM outputs, plus brake and reversing lamps wired to their switches.
+    readonly property bool lowLeft: v.lowBeam && !v.bulbLowLeftOpen
+    readonly property bool lowRight: v.lowBeam
+    readonly property bool highBeam: v.highBeam
+    readonly property bool parkLamps: v.parkLamps
+    readonly property bool braking: v.brake > 0.02
+    readonly property bool reversing: v.ignition && v.selector === 1
+    readonly property bool animate: App.running && root.visible
+
+    // Distance rolled, drives the tyre tread animation.
+    property real roll: 0
+    FrameAnimation {
+        running: root.animate && root.v.speed > 0.05
+        onTriggered: root.roll = (root.roll + root.v.speed / 3.6 * frameTime * App.speedFactor * 9) % 8
+    }
+
+    // --- colours -------------------------------------------------------------
+    readonly property color warmWhite: "#fff1c9"
+    readonly property color coolWhite: "#e4efff"
+    readonly property color amber: "#ffad1f"
+    readonly property color tailRed: "#ff2a3c"
+
+    // --- building blocks -----------------------------------------------------
+    // Soft round light source; centred on (cx, cy).
+    component Glow: Shape {
+        id: glow
+        property real cx: 0
+        property real cy: 0
+        property real r: 16
+        property color tint: "white"
+        property real strength: 0.75
+        property bool on: false
+        x: cx - r; y: cy - r
+        width: 2 * r; height: 2 * r
+        opacity: on ? 1 : 0
+        visible: opacity > 0.01
+        preferredRendererType: Shape.CurveRenderer
+        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: RadialGradient {
+                centerX: glow.r; centerY: glow.r; centerRadius: glow.r
+                focalX: glow.r; focalY: glow.r
+                GradientStop { position: 0.0; color: Qt.rgba(glow.tint.r, glow.tint.g, glow.tint.b, glow.strength) }
+                GradientStop { position: 0.45; color: Qt.rgba(glow.tint.r, glow.tint.g, glow.tint.b, glow.strength * 0.35) }
+                GradientStop { position: 1.0; color: Qt.rgba(glow.tint.r, glow.tint.g, glow.tint.b, 0) }
+            }
+            PathAngleArc { centerX: glow.r; centerY: glow.r; radiusX: glow.r; radiusY: glow.r; startAngle: 0; sweepAngle: 360 }
+        }
+    }
+
+    // Light cone in front of a headlamp: from (x0, y0) forward to yEnd, spreading by `spread`.
+    component Beam: Shape {
+        id: beam
+        property real x0: 0
+        property real y0: 0
+        property real yEnd: -40
+        property real halfWidth: 10
+        property real spread: 18
+        property real skew: 0
+        property color tint: "white"
+        property real strength: 0.4
+        property bool on: false
+        anchors.fill: parent
+        opacity: on ? 1 : 0
+        visible: opacity > 0.01
+        preferredRendererType: Shape.CurveRenderer
+        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutQuad } }
+        ShapePath {
+            strokeColor: "transparent"
+            fillGradient: LinearGradient {
+                x1: beam.x0; y1: beam.y0; x2: beam.x0 + beam.skew; y2: beam.yEnd
+                GradientStop { position: 0.0; color: Qt.rgba(beam.tint.r, beam.tint.g, beam.tint.b, beam.strength) }
+                GradientStop { position: 1.0; color: Qt.rgba(beam.tint.r, beam.tint.g, beam.tint.b, 0) }
+            }
+            startX: beam.x0 - beam.halfWidth; startY: beam.y0
+            PathLine { x: beam.x0 - beam.halfWidth - beam.spread + beam.skew; y: beam.yEnd + 8 }
+            PathQuad {
+                x: beam.x0 + beam.halfWidth + beam.spread + beam.skew; y: beam.yEnd + 8
+                controlX: beam.x0 + beam.skew; controlY: beam.yEnd - 10
+            }
+            PathLine { x: beam.x0 + beam.halfWidth; y: beam.y0 }
+            PathLine { x: beam.x0 - beam.halfWidth; y: beam.y0 }
+        }
+    }
+
+    // A lamp lens on the body: dark when off, bright with a halo when on.
+    component LampLens: Rectangle {
+        id: lens
+        property color tint: "white"
+        property color offColor: "#2a303a"
+        property bool on: false
+        property real level: 1.0 // 0..1 brightness when on
+        property real haloRadius: 14
+        radius: Math.min(width, height) / 2
+        color: on ? Qt.tint(offColor, Qt.rgba(tint.r, tint.g, tint.b, 0.35 + 0.65 * level)) : offColor
+        border.color: on ? Qt.lighter(tint, 1.2) : "#454d5c"
+        border.width: 1
+        antialiasing: true
+        Behavior on color { ColorAnimation { duration: 120 } }
+        Glow {
+            parent: lens.parent
+            cx: lens.x + lens.width / 2
+            cy: lens.y + lens.height / 2
+            r: lens.haloRadius
+            tint: lens.tint
+            strength: 0.55 * lens.level
+            on: lens.on
+        }
+    }
+
     component EcuBox: Rectangle {
         id: box
         property string name: ""
         property int diagIndex: -1
         readonly property var info: root.ecuMap[name] ?? ({ state: "sleep", dtcCount: 0, description: "" })
         readonly property color tone: Theme.ecuColor(info.state)
+        readonly property bool alert: info.state === "fault" || info.state === "busoff" || info.state === "nopower"
 
-        radius: 5
-        color: info.state === "nopower" ? "#17191d" : Qt.rgba(tone.r, tone.g, tone.b, 0.13)
-        border.color: tone
+        radius: 6
+        gradient: Gradient {
+            GradientStop { position: 0; color: box.info.state === "nopower" ? "#1a1c21" : Qt.rgba(box.tone.r, box.tone.g, box.tone.b, 0.22) }
+            GradientStop { position: 1; color: box.info.state === "nopower" ? "#121418" : Qt.rgba(box.tone.r, box.tone.g, box.tone.b, 0.08) }
+        }
+        border.color: area.containsMouse ? Qt.lighter(tone, 1.3) : tone
         border.width: area.containsMouse ? 2 : 1
+
+        // Pulsing halo while a fault is active.
+        Rectangle {
+            z: -1
+            anchors.centerIn: parent
+            width: parent.width + 10; height: parent.height + 10
+            radius: parent.radius + 5
+            color: "transparent"
+            border.color: box.tone
+            border.width: 2
+            visible: box.alert
+            opacity: 0
+            SequentialAnimation on opacity {
+                running: box.alert && root.visible
+                loops: Animation.Infinite
+                NumberAnimation { from: 0.55; to: 0.0; duration: 1100; easing.type: Easing.OutQuad }
+            }
+        }
 
         Text {
             anchors.centerIn: parent
             text: box.name
             color: box.info.state === "sleep" || box.info.state === "nopower" ? Theme.textDim : Theme.text
-            font { pixelSize: 12; bold: true }
+            font { pixelSize: 12; bold: true; letterSpacing: 0.5 }
         }
         Rectangle {
             visible: box.info.dtcCount > 0
             anchors { right: parent.right; top: parent.top; margins: -7 }
             width: 18; height: 18; radius: 9
             color: Theme.warn
+            border.color: "#0b0d10"
             Text {
                 anchors.centerIn: parent
                 text: box.info.dtcCount
                 color: "#0b0d10"
                 font { pixelSize: 10; bold: true }
             }
+            onVisibleChanged: if (visible) pop.restart()
+            NumberAnimation on scale { id: pop; from: 1.6; to: 1; duration: 260; easing.type: Easing.OutBack }
         }
         Text {
             visible: box.info.state === "nopower" || box.info.state === "busoff"
@@ -96,28 +237,54 @@ Panel {
         property bool labelLeft: false
         readonly property var sensor: root.sensorMap[targetId]
         readonly property bool faulted: root.faultedIds.indexOf(targetId) >= 0
+        z: 5
 
         width: 14; height: 14
+        // Ripple while the fault is active.
+        Rectangle {
+            anchors.centerIn: parent
+            width: parent.width; height: parent.height; radius: width / 2
+            color: "transparent"
+            border.color: Theme.error
+            border.width: 2
+            visible: spot.faulted
+            opacity: 0
+            ParallelAnimation {
+                running: spot.faulted && root.visible
+                loops: Animation.Infinite
+                NumberAnimation { target: ripple; property: "scale"; from: 1; to: 2.6; duration: 1200; easing.type: Easing.OutCubic }
+                NumberAnimation { target: ripple; property: "opacity"; from: 0.9; to: 0; duration: 1200; easing.type: Easing.OutCubic }
+            }
+            id: ripple
+        }
         Rectangle {
             anchors.fill: parent
             radius: 7
-            color: spot.faulted ? Theme.error : "#1d2f29"
+            color: spot.faulted ? Theme.error : (spotArea.containsMouse ? "#25463b" : "#16241f")
             border.color: spot.faulted ? "#ffb3ba" : Theme.ok
-            border.width: spotArea.containsMouse ? 2 : 1
-            SequentialAnimation on opacity {
-                running: spot.faulted
-                loops: Animation.Infinite
-                alwaysRunToEnd: true
-                NumberAnimation { to: 0.35; duration: 450 }
-                NumberAnimation { to: 1.0; duration: 450 }
+            border.width: spotArea.containsMouse ? 2 : 1.5
+            Rectangle {
+                anchors.centerIn: parent
+                width: 4; height: 4; radius: 2
+                color: spot.faulted ? "#ffffff" : Theme.ok
             }
         }
-        Text {
-            text: spot.label
-            color: spot.faulted ? Theme.error : Theme.textDim
-            font { pixelSize: 9; bold: true }
+        // Label on a dark pill so it stays readable over the body, the lamps and the background.
+        Rectangle {
             anchors.verticalCenter: parent.verticalCenter
-            x: spot.labelLeft ? -implicitWidth - 4 : parent.width + 4
+            x: spot.labelLeft ? -width - 3 : parent.width + 3
+            width: labelText.implicitWidth + 8
+            height: 13
+            radius: 3
+            color: spot.faulted ? Qt.rgba(1, 0.3, 0.37, 0.22) : "#cc0d1015"
+            border.color: spot.faulted ? Theme.error : "#2c3340"
+            Text {
+                id: labelText
+                anchors.centerIn: parent
+                text: spot.label
+                color: spot.faulted ? "#ffc2c8" : Theme.textDim
+                font { pixelSize: 8; bold: true; letterSpacing: 0.4 }
+            }
         }
         MouseArea {
             id: spotArea
@@ -147,13 +314,46 @@ Panel {
 
     component Wire: Rectangle {
         color: root.v.busFailure ? Theme.error : "#c9a227"
-        opacity: root.v.busFailure ? 0.9 : 0.75
+        opacity: root.v.busFailure ? 0.55 + 0.45 * busBlink.value : 0.8
+        radius: 1
     }
 
     component Wheel: Rectangle {
-        width: 26; height: 66; radius: 6
-        color: "#0c0e12"
-        border.color: "#4a5262"
+        id: tyre
+        width: 24; height: 64; radius: 7
+        color: "#0a0c0f"
+        border.color: "#3b4352"
+        clip: true
+        // tread blocks rolling with the road speed
+        Repeater {
+            model: 10
+            Rectangle {
+                required property int index
+                x: 3; width: tyre.width - 6; height: 2; radius: 1
+                y: index * 8 + root.roll - 8
+                color: "#262c36"
+            }
+        }
+        // rim seen through the arch
+        Rectangle {
+            anchors { verticalCenter: parent.verticalCenter }
+            x: (tyre.width - width) / 2
+            width: 8; height: 40; radius: 3
+            color: "#1b2027"
+            border.color: "#4a5262"
+        }
+    }
+
+    // Shared blink phase for the shorted CAN wiring.
+    QtObject {
+        id: busBlink
+        property real value: 0
+        SequentialAnimation on value {
+            running: root.v.busFailure && root.visible
+            loops: Animation.Infinite
+            NumberAnimation { to: 1; duration: 350 }
+            NumberAnimation { to: 0; duration: 350 }
+        }
     }
 
     ColumnLayout {
@@ -165,118 +365,380 @@ Panel {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.minimumHeight: 240
-            Layout.maximumHeight: 470
             Layout.alignment: Qt.AlignHCenter
 
             Item {
                 id: car
-                width: 380; height: 470
+                width: 380; height: 540
                 anchors.centerIn: parent
-                // Shrinks on small screens (e.g. 1366x768) so the sensor table below stays visible.
-                scale: Math.min(1, stage.width / width, stage.height / height)
+                // Fits the stage: shrinks on small screens, grows a little on large ones.
+                scale: Math.min(1.45, stage.width / width, stage.height / height)
 
-                Text { x: 168; y: 0; text: "FRONT"; color: Theme.off; font { pixelSize: 9; bold: true } }
-
-                Wheel { x: 72; y: 70 }
-                Wheel { x: 282; y: 70 }
-                Wheel { x: 72; y: 340 }
-                Wheel { x: 282; y: 340 }
-
-                // body
-                Rectangle {
-                    x: 96; y: 16; width: 188; height: 444
-                    radius: 46
-                    color: "#161a21"
-                    border.color: "#4a5262"
-                    border.width: 2
-                }
-                // windscreen, cabin, rear window
-                Rectangle { x: 116; y: 176; width: 148; height: 18; radius: 8; color: "#1f2733" }
-                Rectangle { x: 112; y: 198; width: 156; height: 150; radius: 14; color: "#11141a"; border.color: "#2a303b" }
-                Rectangle { x: 120; y: 352; width: 140; height: 14; radius: 7; color: "#1f2733" }
-                // headlamps
-                Rectangle {
-                    x: 110; y: 20; width: 34; height: 10; radius: 5
-                    color: root.v.lowBeam && root.faultedIds.indexOf("bulb_low_left") < 0 ? "#ffe9a3" : "#2a303b"
-                }
-                Rectangle {
-                    x: 236; y: 20; width: 34; height: 10; radius: 5
-                    color: root.v.lowBeam ? "#ffe9a3" : "#2a303b"
-                }
-
-                // --- CAN bus: backbone with stubs ---
-                Wire { x: 189; y: 96; width: 2; height: 204 }      // backbone
-                Wire { x: 172; y: 139; width: 18; height: 2 }      // ABS
-                Wire { x: 190; y: 163; width: 18; height: 2 }      // TCM
-                Wire { x: 136; y: 262; width: 54; height: 2 }      // DLC
                 Text {
-                    x: 194; y: 106
-                    text: root.v.busFailure ? "CAN  ✕" : "CAN 500k"
-                    color: root.v.busFailure ? Theme.error : "#c9a227"
-                    font { pixelSize: 8; bold: true }
-                }
-                MouseArea {
-                    x: 182; y: 96; width: 16; height: 30
-                    cursorShape: Qt.PointingHandCursor
-                    onClicked: root.targetPicked("can_bus")
+                    x: 6; y: 2
+                    text: "▲ FRONT"
+                    color: Theme.off
+                    font { pixelSize: 9; bold: true; letterSpacing: 1 }
                 }
 
-                // --- control units ---
-                EcuBox { name: "ECM"; diagIndex: 0; x: 144; y: 58; width: 92; height: 38 }
-                EcuBox { name: "ABS"; diagIndex: 2; x: 112; y: 124; width: 60; height: 32 }
-                EcuBox { name: "TCM"; diagIndex: 1; x: 208; y: 148; width: 60; height: 32 }
-                EcuBox { name: "IPC"; x: 146; y: 206; width: 88; height: 28 }
-                EcuBox { name: "BCM"; diagIndex: 3; x: 152; y: 300; width: 76; height: 34 }
+                // The car in its own coordinate system: front bumper at y ≈ 14, rear at y ≈ 466.
+                Item {
+                    id: body
+                    y: 44
+                    width: 380; height: 480
 
-                // OBD connector (scan tool)
-                Rectangle {
-                    x: 106; y: 252; width: 30; height: 22; radius: 3
-                    color: "#22303f"; border.color: Theme.accent
-                    Text { anchors.centerIn: parent; text: "OBD"; color: Theme.accent; font { pixelSize: 8; bold: true } }
+                    // ---------- light on the road (under the car) ----------
+                    Beam { x0: 128; y0: 24; yEnd: -40; skew: -6; halfWidth: 12; spread: 14; tint: root.warmWhite; strength: 0.34; on: root.lowLeft }
+                    Beam { x0: 252; y0: 24; yEnd: -40; skew: 6; halfWidth: 12; spread: 14; tint: root.warmWhite; strength: 0.34; on: root.lowRight }
+                    Beam { x0: 128; y0: 24; yEnd: -44; skew: -2; halfWidth: 9; spread: 8; tint: root.coolWhite; strength: 0.5; on: root.highBeam }
+                    Beam { x0: 252; y0: 24; yEnd: -44; skew: 2; halfWidth: 9; spread: 8; tint: root.coolWhite; strength: 0.5; on: root.highBeam }
+                    // red glow on the road behind the car
+                    Glow { cx: 122; cy: 462; r: root.braking ? 34 : 22; tint: root.tailRed; strength: root.braking ? 0.5 : 0.22; on: root.braking || root.parkLamps }
+                    Glow { cx: 258; cy: 462; r: root.braking ? 34 : 22; tint: root.tailRed; strength: root.braking ? 0.5 : 0.22; on: root.braking || root.parkLamps }
+                    Glow { cx: 190; cy: 470; r: 30; tint: "white"; strength: 0.3; on: root.reversing }
+
+                    // ---------- exhaust ----------
+                    Rectangle { x: 128; y: 462; width: 12; height: 8; radius: 3; color: "#2a2f37"; border.color: "#4a5262" }
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            id: puff
+                            required property int index
+                            x: 128; y: 468
+                            width: 10; height: 10; radius: 5
+                            color: "#c8d0dc"
+                            opacity: 0
+                            visible: root.v.engineRunning
+                            SequentialAnimation {
+                                running: root.animate && root.v.engineRunning
+                                loops: Animation.Infinite
+                                PauseAnimation { duration: puff.index * 420 }
+                                ParallelAnimation {
+                                    NumberAnimation { target: puff; property: "y"; from: 468; to: 498; duration: 1260; easing.type: Easing.OutQuad }
+                                    NumberAnimation { target: puff; property: "x"; from: 128; to: 118 + puff.index * 6; duration: 1260 }
+                                    NumberAnimation { target: puff; property: "opacity"; from: 0.12; to: 0; duration: 1260 }
+                                    NumberAnimation { target: puff; property: "scale"; from: 0.6; to: 2.0; duration: 1260 }
+                                }
+                                PauseAnimation { duration: (2 - puff.index) * 420 }
+                            }
+                        }
+                    }
+
+                    // ---------- wheels ----------
+                    Wheel { x: 76; y: 72 }
+                    Wheel { x: 280; y: 72 }
+                    Wheel { x: 76; y: 344 }
+                    Wheel { x: 280; y: 344 }
+
+                    // ---------- doors (swing open when ajar) ----------
+                    Repeater {
+                        model: [
+                            { x: 95, y: 204, h: 66, left: true },
+                            { x: 280, y: 204, h: 66, left: false },
+                            { x: 95, y: 272, h: 62, left: true },
+                            { x: 280, y: 272, h: 62, left: false }
+                        ]
+                        Rectangle {
+                            id: door
+                            required property int index
+                            required property var modelData
+                            readonly property bool open: root.doors[index] === true
+                            y: modelData.y
+                            width: 8; height: modelData.h
+                            x: modelData.left ? modelData.x : modelData.x - 3
+                            radius: 3
+                            visible: rotation !== 0
+                            color: "#252c37"
+                            border.color: "#6b7690"
+                            Rectangle { // door window
+                                anchors { horizontalCenter: parent.horizontalCenter; top: parent.top; topMargin: 6 }
+                                width: 3; height: parent.height * 0.55; radius: 1.5
+                                color: "#33465c"
+                            }
+                            transformOrigin: Item.Top
+                            rotation: open ? (modelData.left ? 38 : -38) : 0
+                            Behavior on rotation { NumberAnimation { duration: 380; easing.type: Easing.OutCubic } }
+                        }
+                    }
+
+                    // ---------- body shell ----------
+                    Shape {
+                        anchors.fill: parent
+                        preferredRendererType: Shape.CurveRenderer
+                        ShapePath {
+                            strokeColor: "#5a6478"
+                            strokeWidth: 1.5
+                            fillGradient: LinearGradient {
+                                x1: 96; y1: 0; x2: 284; y2: 0
+                                GradientStop { position: 0.0; color: "#171b22" }
+                                GradientStop { position: 0.18; color: "#232a35" }
+                                GradientStop { position: 0.5; color: "#2a3240" }
+                                GradientStop { position: 0.82; color: "#232a35" }
+                                GradientStop { position: 1.0; color: "#171b22" }
+                            }
+                            startX: 190; startY: 12
+                            PathQuad { x: 252; y: 16; controlX: 224; controlY: 11 }
+                            PathCubic { x: 282; y: 54; control1X: 272; control1Y: 19; control2X: 281; control2Y: 32 }
+                            PathLine { x: 285; y: 148 }
+                            PathQuad { x: 280; y: 176; controlX: 285; controlY: 166 }
+                            PathLine { x: 280; y: 322 }
+                            PathQuad { x: 285; y: 348; controlX: 285; controlY: 332 }
+                            PathLine { x: 285; y: 430 }
+                            PathCubic { x: 256; y: 463; control1X: 285; control1Y: 451; control2X: 275; control2Y: 461 }
+                            PathQuad { x: 190; y: 467; controlX: 222; controlY: 467 }
+                            PathQuad { x: 124; y: 463; controlX: 158; controlY: 467 }
+                            PathCubic { x: 95; y: 430; control1X: 105; control1Y: 461; control2X: 95; control2Y: 451 }
+                            PathLine { x: 95; y: 348 }
+                            PathQuad { x: 100; y: 322; controlX: 95; controlY: 332 }
+                            PathLine { x: 100; y: 176 }
+                            PathQuad { x: 95; y: 148; controlX: 95; controlY: 166 }
+                            PathLine { x: 98; y: 54 }
+                            PathCubic { x: 128; y: 16; control1X: 99; control1Y: 32; control2X: 108; control2Y: 19 }
+                            PathQuad { x: 190; y: 12; controlX: 156; controlY: 11 }
+                        }
+                        // hood creases, trunk line and door seams
+                        ShapePath {
+                            strokeColor: Qt.rgba(1, 1, 1, 0.07)
+                            strokeWidth: 1
+                            fillColor: "transparent"
+                            startX: 146; startY: 34
+                            PathQuad { x: 152; y: 166; controlX: 138; controlY: 100 }
+                            PathMove { x: 234; y: 34 }
+                            PathQuad { x: 228; y: 166; controlX: 242; controlY: 100 }
+                            PathMove { x: 118; y: 380 }
+                            PathQuad { x: 262; y: 380; controlX: 190; controlY: 372 }
+                            PathMove { x: 100; y: 204 }
+                            PathLine { x: 112; y: 204 }
+                            PathMove { x: 268; y: 204 }
+                            PathLine { x: 280; y: 204 }
+                            PathMove { x: 100; y: 272 }
+                            PathLine { x: 112; y: 272 }
+                            PathMove { x: 268; y: 272 }
+                            PathLine { x: 280; y: 272 }
+                            PathMove { x: 100; y: 336 }
+                            PathLine { x: 112; y: 336 }
+                            PathMove { x: 268; y: 336 }
+                            PathLine { x: 280; y: 336 }
+                        }
+                        // windscreen
+                        ShapePath {
+                            strokeColor: "#3c4658"
+                            strokeWidth: 1
+                            fillGradient: LinearGradient {
+                                x1: 0; y1: 168; x2: 0; y2: 204
+                                GradientStop { position: 0; color: "#33465c" }
+                                GradientStop { position: 1; color: "#18212c" }
+                            }
+                            startX: 124; startY: 172
+                            PathQuad { x: 256; y: 172; controlX: 190; controlY: 160 }
+                            PathLine { x: 266; y: 204 }
+                            PathQuad { x: 114; y: 204; controlX: 190; controlY: 198 }
+                            PathLine { x: 124; y: 172 }
+                        }
+                        // rear window
+                        ShapePath {
+                            strokeColor: "#3c4658"
+                            strokeWidth: 1
+                            fillGradient: LinearGradient {
+                                x1: 0; y1: 336; x2: 0; y2: 366
+                                GradientStop { position: 0; color: "#18212c" }
+                                GradientStop { position: 1; color: "#2b3b4e" }
+                            }
+                            startX: 116; startY: 338
+                            PathQuad { x: 264; y: 338; controlX: 190; controlY: 344 }
+                            PathLine { x: 254; y: 364 }
+                            PathQuad { x: 126; y: 364; controlX: 190; controlY: 372 }
+                            PathLine { x: 116; y: 338 }
+                        }
+                    }
+
+                    // ---------- cabin (seen through the roof) ----------
+                    Rectangle {
+                        x: 112; y: 204; width: 156; height: 132; radius: 10
+                        color: "#11151b"
+                        border.color: "#2a313c"
+                        // seats
+                        Repeater {
+                            model: [ { x: 14, y: 44, w: 46, h: 46 }, { x: 96, y: 44, w: 46, h: 46 }, { x: 14, y: 98, w: 128, h: 28 } ]
+                            Rectangle {
+                                required property var modelData
+                                x: modelData.x; y: modelData.y; width: modelData.w; height: modelData.h
+                                radius: 8
+                                color: "#171c24"
+                                border.color: "#232a35"
+                            }
+                        }
+                        // dome light while a door is open
+                        Glow {
+                            cx: 78; cy: 70; r: 70
+                            tint: "#ffd892"
+                            strength: 0.28
+                            on: root.doors.indexOf(true) >= 0
+                        }
+                    }
+                    // mirrors
+                    Rectangle { x: 82; y: 196; width: 16; height: 10; radius: 4; color: "#232a35"; border.color: "#5a6478" }
+                    Rectangle { x: 282; y: 196; width: 16; height: 10; radius: 4; color: "#232a35"; border.color: "#5a6478" }
+
+                    // ---------- lamps on the body ----------
+                    // headlamp units (low beam, high beam in the same housing)
+                    Rectangle {
+                        x: 108; y: 19; width: 40; height: 12; radius: 6; rotation: -10
+                        color: "#151a21"; border.color: "#4a5262"; antialiasing: true
+                    }
+                    Rectangle {
+                        x: 232; y: 19; width: 40; height: 12; radius: 6; rotation: 10
+                        color: "#151a21"; border.color: "#4a5262"; antialiasing: true
+                    }
+                    LampLens { x: 126; y: 20; width: 16; height: 8; rotation: -10; tint: root.highBeam ? root.coolWhite : root.warmWhite; on: root.lowLeft || root.highBeam; haloRadius: 16 }
+                    LampLens { x: 238; y: 20; width: 16; height: 8; rotation: 10; tint: root.highBeam ? root.coolWhite : root.warmWhite; on: root.lowRight || root.highBeam; haloRadius: 16 }
+                    // position lamps (daytime strip)
+                    LampLens { x: 112; y: 25; width: 12; height: 4; rotation: -10; tint: root.coolWhite; on: root.parkLamps; level: 0.7; haloRadius: 9 }
+                    LampLens { x: 256; y: 25; width: 12; height: 4; rotation: 10; tint: root.coolWhite; on: root.parkLamps; level: 0.7; haloRadius: 9 }
+                    // front indicators, mirror repeaters, rear indicators
+                    LampLens { x: 100; y: 38; width: 8; height: 10; offColor: "#3a3020"; tint: root.amber; on: root.v.turnLeftLamp; haloRadius: 16 }
+                    LampLens { x: 272; y: 38; width: 8; height: 10; offColor: "#3a3020"; tint: root.amber; on: root.v.turnRightLamp; haloRadius: 16 }
+                    LampLens { x: 83; y: 198; width: 6; height: 6; offColor: "#3a3020"; tint: root.amber; on: root.v.turnLeftLamp; haloRadius: 10 }
+                    LampLens { x: 291; y: 198; width: 6; height: 6; offColor: "#3a3020"; tint: root.amber; on: root.v.turnRightLamp; haloRadius: 10 }
+                    LampLens { x: 100; y: 440; width: 8; height: 10; offColor: "#3a3020"; tint: root.amber; on: root.v.turnLeftLamp; haloRadius: 16 }
+                    LampLens { x: 272; y: 440; width: 8; height: 10; offColor: "#3a3020"; tint: root.amber; on: root.v.turnRightLamp; haloRadius: 16 }
+                    // tail / brake lamps
+                    LampLens {
+                        x: 110; y: 452; width: 34; height: 7; rotation: 8
+                        offColor: "#3a1a1f"; tint: root.tailRed
+                        on: root.parkLamps || root.braking
+                        level: root.braking ? 1.0 : 0.45
+                        haloRadius: root.braking ? 18 : 12
+                    }
+                    LampLens {
+                        x: 236; y: 452; width: 34; height: 7; rotation: -8
+                        offColor: "#3a1a1f"; tint: root.tailRed
+                        on: root.parkLamps || root.braking
+                        level: root.braking ? 1.0 : 0.45
+                        haloRadius: root.braking ? 18 : 12
+                    }
+                    // third brake light on the rear window
+                    LampLens { x: 168; y: 361; width: 44; height: 4; offColor: "#2c1a1e"; tint: root.tailRed; on: root.braking; haloRadius: 12 }
+                    // reversing lamps
+                    LampLens { x: 150; y: 458; width: 12; height: 5; offColor: "#30343c"; tint: "white"; on: root.reversing; haloRadius: 12 }
+                    LampLens { x: 218; y: 458; width: 12; height: 5; offColor: "#30343c"; tint: "white"; on: root.reversing; haloRadius: 12 }
+
+                    // ---------- CAN bus: backbone with stubs ----------
+                    Wire { x: 189; y: 96; width: 2; height: 204 }      // backbone
+                    Wire { x: 172; y: 139; width: 18; height: 2 }      // ABS
+                    Wire { x: 190; y: 163; width: 18; height: 2 }      // TCM
+                    Wire { x: 136; y: 262; width: 54; height: 2 }      // DLC
+                    // frames travelling along the backbone while the bus is busy
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            id: packet
+                            required property int index
+                            readonly property bool active: root.animate && !root.v.busFailure && root.v.busLoad > 0.005
+                            x: 187; y: 96
+                            width: 6; height: 6; radius: 3
+                            color: "#ffe28a"
+                            opacity: 0
+                            visible: active
+                            Glow { cx: 3; cy: 3; r: 7; tint: "#ffd75e"; strength: 0.7; on: true }
+                            SequentialAnimation {
+                                running: packet.active
+                                loops: Animation.Infinite
+                                PauseAnimation { duration: packet.index * 300 }
+                                ParallelAnimation {
+                                    NumberAnimation { target: packet; property: "y"; from: 96; to: 296; duration: 900; easing.type: Easing.InOutSine }
+                                    SequentialAnimation {
+                                        NumberAnimation { target: packet; property: "opacity"; from: 0; to: 1; duration: 150 }
+                                        PauseAnimation { duration: 600 }
+                                        NumberAnimation { target: packet; property: "opacity"; to: 0; duration: 150 }
+                                    }
+                                }
+                                PauseAnimation { duration: (2 - packet.index) * 300 }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        x: 196; y: 274
+                        width: canLabel.implicitWidth + 8; height: 13; radius: 3
+                        color: "#cc0d1015"
+                        border.color: root.v.busFailure ? Theme.error : "#5c4b16"
+                        Text {
+                            id: canLabel
+                            anchors.centerIn: parent
+                            text: root.v.busFailure ? "CAN  ✕ SHORT" : "CAN 500k"
+                            color: root.v.busFailure ? Theme.error : "#e0b93a"
+                            font { pixelSize: 8; bold: true }
+                        }
+                    }
+                    MouseArea {
+                        x: 182; y: 244; width: 76; height: 46
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.targetPicked("can_bus")
+                    }
+
+                    // ---------- control units ----------
+                    EcuBox { name: "ECM"; diagIndex: 0; x: 144; y: 58; width: 92; height: 38 }
+                    EcuBox { name: "ABS"; diagIndex: 2; x: 112; y: 124; width: 60; height: 32 }
+                    EcuBox { name: "TCM"; diagIndex: 1; x: 208; y: 148; width: 60; height: 32 }
+                    EcuBox { name: "IPC"; x: 146; y: 214; width: 88; height: 26 }
+                    EcuBox { name: "BCM"; diagIndex: 3; x: 152; y: 300; width: 76; height: 30 }
+
+                    // OBD connector (scan tool)
+                    Rectangle {
+                        x: 106; y: 252; width: 30; height: 22; radius: 4
+                        color: "#1c2a3a"; border.color: Theme.accent
+                        Text { anchors.centerIn: parent; text: "OBD"; color: Theme.accent; font { pixelSize: 8; bold: true } }
+                    }
+
+                    // ---------- sensors and components ----------
+                    Hotspot { targetId: "wss_fl"; label: "WSS"; x: 81; y: 97; labelLeft: true }
+                    Hotspot { targetId: "wss_fr"; label: "WSS"; x: 285; y: 97 }
+                    Hotspot { targetId: "wss_rl"; label: "WSS"; x: 81; y: 369; labelLeft: true }
+                    Hotspot { targetId: "wss_rr"; label: "WSS"; x: 285; y: 369 }
+                    Hotspot { targetId: "ckp"; label: "CKP"; x: 150; y: 38; labelLeft: true }
+                    Hotspot { targetId: "ect"; label: "ECT"; x: 183; y: 34 }
+                    Hotspot { targetId: "tps"; label: "TPS"; x: 224; y: 38 }
+                    Hotspot { targetId: "tft"; label: "TFT"; x: 266; y: 128; labelLeft: true }
+                    Hotspot { targetId: "alternator"; label: "ALT"; x: 122; y: 100 }
+                    Hotspot { targetId: "cooling"; label: "PUMP"; x: 244; y: 100; labelLeft: true }
+                    Hotspot { targetId: "bulb_low_left"; label: "BULB"; x: 112; y: 2; labelLeft: true }
+                    Hotspot { targetId: "abs_e2e"; label: "E2E"; x: 120; y: 162 }
                 }
-
-                // --- sensors and components ---
-                Hotspot { targetId: "wss_fl"; label: "WSS"; x: 102; y: 96; labelLeft: true }
-                Hotspot { targetId: "wss_fr"; label: "WSS"; x: 264; y: 96 }
-                Hotspot { targetId: "wss_rl"; label: "WSS"; x: 102; y: 366; labelLeft: true }
-                Hotspot { targetId: "wss_rr"; label: "WSS"; x: 264; y: 366 }
-                Hotspot { targetId: "ckp"; label: "CKP"; x: 150; y: 38; labelLeft: true }
-                Hotspot { targetId: "ect"; label: "ECT"; x: 183; y: 36 }
-                Hotspot { targetId: "tps"; label: "TPS"; x: 222; y: 38 }
-                Hotspot { targetId: "tft"; label: "TFT"; x: 246; y: 186 }
-                Hotspot { targetId: "alternator"; label: "ALT"; x: 118; y: 66; labelLeft: true }
-                Hotspot { targetId: "cooling"; label: "PUMP"; x: 246; y: 66 }
-                Hotspot { targetId: "bulb_low_left"; label: "BULB"; x: 100; y: 36; labelLeft: true }
-                Hotspot { targetId: "abs_e2e"; label: "E2E"; x: 120; y: 160; labelLeft: true }
             }
         }
 
         // --- what the sensors really see vs. what the ECU measures ---
-        Rectangle { Layout.fillWidth: true; height: 1; color: Theme.border }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.border }
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 2
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 8
-                Text { text: "SENSOR"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.fillWidth: true }
-                Text { text: "REAL"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 46 }
-                Text { text: "ECU MEASURES"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 78 }
-                Text { text: "PIN"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 46 }
-                Text { text: "STATE"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.preferredWidth: 84 }
+                spacing: 6
+                Text { text: "SENSOR"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.fillWidth: true; Layout.minimumWidth: 66; Layout.leftMargin: 2 }
+                Text { text: "REAL"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 40 }
+                Text { text: "ECU MEASURES"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 74 }
+                Text { text: "PIN"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; horizontalAlignment: Text.AlignRight; Layout.preferredWidth: 44 }
+                Text { text: "STATE"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.fillWidth: true; Layout.minimumWidth: 40; Layout.maximumWidth: 84; Layout.rightMargin: 2 }
             }
             Repeater {
                 model: ["wss_fl", "wss_fr", "wss_rl", "wss_rr", "ckp", "ect", "tps", "tft"]
-                Item {
+                Rectangle {
                     id: cell
                     required property string modelData
+                    required property int index
                     readonly property var s: root.sensorMap[modelData]
                     Layout.fillWidth: true
-                    implicitHeight: 15
+                    implicitHeight: 16
+                    radius: 3
+                    color: cellArea.containsMouse ? Theme.panelAlt : (cell.s && cell.s.faulted ? Qt.rgba(1, 0.3, 0.37, 0.08) : "transparent")
                     RowLayout {
                         anchors.fill: parent
-                        spacing: 8
+                        anchors.leftMargin: 2
+                        anchors.rightMargin: 2
+                        spacing: 6
                         Text {
+                            Layout.minimumWidth: 66
                             text: root.shortNames[cell.modelData] ?? ""
                             color: cell.s && cell.s.faulted ? Theme.error : Theme.text
                             font.pixelSize: 11
@@ -288,38 +750,41 @@ Panel {
                             color: Theme.textDim
                             font { family: Theme.mono; pixelSize: 11 }
                             horizontalAlignment: Text.AlignRight
-                            Layout.preferredWidth: 46
+                            Layout.preferredWidth: 40
                         }
                         Text {
                             text: cell.s ? cell.s.value.toFixed(1) + " " + cell.s.unit : ""
                             color: cell.s && Math.abs(cell.s.value - cell.s.trueValue) > 0.6 ? Theme.error : Theme.text
                             font { family: Theme.mono; pixelSize: 11 }
                             horizontalAlignment: Text.AlignRight
-                            Layout.preferredWidth: 78
+                            Layout.preferredWidth: 74
                         }
                         Text {
                             text: cell.s && !cell.s.digital ? cell.s.voltage.toFixed(2) + " V" : "pulse"
                             color: Theme.textDim
                             font { family: Theme.mono; pixelSize: 11 }
                             horizontalAlignment: Text.AlignRight
-                            Layout.preferredWidth: 46
+                            Layout.preferredWidth: 44
                         }
                         Text {
                             text: cell.s ? (cell.s.faulted ? cell.s.fault : "ok") : ""
                             color: cell.s && cell.s.faulted ? Theme.error : Theme.ok
                             font.pixelSize: 10
                             elide: Text.ElideRight
-                            Layout.preferredWidth: 84
+                            Layout.fillWidth: true
+                            Layout.minimumWidth: 40
+                            Layout.maximumWidth: 84
                         }
                     }
                     MouseArea {
+                        id: cellArea
                         anchors.fill: parent
+                        hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: root.targetPicked(cell.modelData)
                     }
                 }
             }
         }
-        Item { Layout.fillHeight: true; Layout.preferredHeight: 0 } // spare height goes below the table
     }
 }

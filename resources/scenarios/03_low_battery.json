@@ -2,6 +2,8 @@
   "name": "Alternator failure - low system voltage",
   "description": "One root cause, several ECUs: with a dead alternator the battery drains, the charge lamp comes on and both ECM (P0562) and BCM (B1318) log a low-voltage DTC.",
   "lesson": "docs/lessons/03-low-battery.md",
+  "level": "Beginner",
+  "topics": ["Electrical", "OBD-II"],
   "steps": [
     { "action": "ignition", "value": "on" },
     { "action": "warmUp" },
