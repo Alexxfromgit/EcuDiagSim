@@ -6,6 +6,7 @@
 #include "sensors/Sensor.h"
 #include "tester/DiagnosticTester.h"
 #include "trace/TraceRecorder.h"
+#include "vehicle/VehicleConfig.h"
 #include "vehicle/VehicleModel.h"
 
 #include <QHash>
@@ -28,6 +29,7 @@ struct FaultTarget
     Kind kind = Kind::Sensor;
     QString unit;
     QList<FaultType> faultTypes;
+    QString label; ///< short tag on the vehicle drawing, e.g. "WSS", "ALT"
 };
 
 struct ActiveFault
@@ -45,7 +47,7 @@ class Simulation
 public:
     static constexpr qint64 kStepUs = 1000; ///< fixed step: 1 ms
 
-    Simulation();
+    explicit Simulation(const VehicleConfig &config = {});
     ~Simulation();
     Simulation(const Simulation &) = delete;
     Simulation &operator=(const Simulation &) = delete;
@@ -66,6 +68,9 @@ public:
         }
         return done();
     }
+
+    /// The equipment fitted to this vehicle.
+    const VehicleConfig &config() const { return m_config; }
 
     qint64 nowUs() const { return m_timeUs; }
     qint64 nowMs() const { return m_timeUs / 1000; }
@@ -113,6 +118,7 @@ private:
     void buildFaultTargets();
     void applyFault(const QString &targetId, const Fault &fault);
 
+    VehicleConfig m_config;
     QString m_error;
     qint64 m_timeUs = 0;
     qint64 m_startRequestUntilMs = -1;

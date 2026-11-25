@@ -48,7 +48,11 @@ ApplicationWindow {
         link: Theme.accent
     }
 
-    Shortcut { sequence: "Space"; onActivated: App.running = !App.running }
+    Shortcut { sequence: "Space"; enabled: !settings.visible; onActivated: App.running = !App.running }
+    Shortcut { sequence: "Ctrl+,"; onActivated: settings.open() }
+
+    SettingsPage { id: settings }
+    function openSettings() { settings.open() }
     Shortcut { sequence: "F10"; onActivated: App.step(10) }
 
     ColumnLayout {
@@ -56,7 +60,7 @@ ApplicationWindow {
         anchors.margins: 10
         spacing: 10
 
-        SimBar { Layout.fillWidth: true }
+        SimBar { Layout.fillWidth: true; onSettingsRequested: settings.open() }
 
         // Update ready / result of "Check for updates".
         Rectangle {
@@ -181,9 +185,22 @@ ApplicationWindow {
                     }
                 }
                 StackLayout {
+                    id: stack
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     currentIndex: window.currentTab
+                    // The incoming panel fades in, so a tab switch reads as a change, not a flicker.
+                    onCurrentIndexChanged: {
+                        tabFade.stop()
+                        const incoming = stack.children[currentIndex]
+                        if (App.reducedMotion) {
+                            incoming.opacity = 1
+                            return
+                        }
+                        tabFade.target = incoming
+                        tabFade.restart()
+                    }
+                    NumberAnimation { id: tabFade; property: "opacity"; from: 0.0; to: 1.0; duration: 160; easing.type: Easing.OutCubic }
                     FaultsPanel { id: faults }
                     TracePanel {}
                     ScannerPanel { id: scannerPanel }
@@ -204,11 +221,14 @@ ApplicationWindow {
             }
             Text {
                 visible: window.width >= 1360
-                text: window.width >= 1600
-                      ? "Space: run / pause    F10: single step    Click a sensor or control unit in the car to work with it"
-                      : "Space: run / pause    F10: single step"
+                // The status message on the left keeps at least half of the row.
+                Layout.maximumWidth: window.width * 0.5
+                text: window.width >= 1800
+                      ? "Space  run / pause    F10  single step    Ctrl+,  settings    Click a part of the car to work with it"
+                      : "Space  run / pause    F10  single step    Ctrl+,  settings"
                 color: Theme.off
                 font.pixelSize: 11
+                elide: Text.ElideLeft
             }
         }
     }

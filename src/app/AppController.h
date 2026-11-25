@@ -32,6 +32,18 @@ class AppController : public QObject
     Q_PROPERTY(double frameRate READ frameRate NOTIFY slowUpdated)
     Q_PROPERTY(QString errorText READ errorText CONSTANT)
 
+    // --- settings (saved between runs) ---
+    Q_PROPERTY(bool startOnLaunch READ startOnLaunch WRITE setStartOnLaunch NOTIFY settingsChanged)
+    Q_PROPERTY(double defaultSpeed READ defaultSpeed WRITE setDefaultSpeed NOTIFY settingsChanged)
+    Q_PROPERTY(bool reducedMotion READ reducedMotion WRITE setReducedMotion NOTIFY settingsChanged)
+
+    // --- vehicle equipment ---
+    Q_PROPERTY(QVariantList equipmentCatalog READ equipmentCatalog CONSTANT)
+    /// What the user has chosen in Settings.
+    Q_PROPERTY(QStringList equipment READ equipment NOTIFY equipmentChanged)
+    /// What the current vehicle has: the user's choice plus what a running lesson needs.
+    Q_PROPERTY(QStringList fitted READ fitted NOTIFY equipmentChanged)
+
     // --- driver inputs ---
     Q_PROPERTY(int ignition READ ignition WRITE setIgnition NOTIFY inputsChanged)
     Q_PROPERTY(double throttle READ throttle WRITE setThrottle NOTIFY inputsChanged)
@@ -52,7 +64,7 @@ class AppController : public QObject
     Q_PROPERTY(QVariantList sensors READ sensors NOTIFY slowUpdated)
 
     // --- faults ---
-    Q_PROPERTY(QVariantList faultTargets READ faultTargets CONSTANT)
+    Q_PROPERTY(QVariantList faultTargets READ faultTargets NOTIFY equipmentChanged)
     Q_PROPERTY(QVariantList activeFaults READ activeFaults NOTIFY faultsChanged)
 
     // --- scenarios and replay ---
@@ -83,6 +95,24 @@ public:
     double busLoad() const { return m_sim->bus().busLoad(); }
     double frameRate() const { return m_frameRate; }
     QString errorText() const { return m_sim->errorString(); }
+
+    static constexpr const char *kStartOnLaunchKey = "simulation/startOnLaunch";
+    static constexpr const char *kDefaultSpeedKey = "simulation/defaultSpeed";
+    static constexpr const char *kReducedMotionKey = "display/reducedMotion";
+    static constexpr const char *kEquipmentKey = "vehicle/equipment";
+
+    bool startOnLaunch() const;
+    void setStartOnLaunch(bool on);
+    double defaultSpeed() const;
+    void setDefaultSpeed(double factor);
+    bool reducedMotion() const;
+    void setReducedMotion(bool on);
+
+    QVariantList equipmentCatalog() const;
+    QStringList equipment() const { return m_userConfig.ids(); }
+    QStringList fitted() const { return m_sim->config().ids(); }
+    /// Saves the choice and builds a new vehicle with it.
+    Q_INVOKABLE void setEquipment(const QStringList &ids);
 
     int ignition() const { return m_sim->driver().ignition == ecusim::Ignition::Off ? 0 : 1; }
     void setIgnition(int on);
@@ -147,6 +177,8 @@ public:
 
 signals:
     void runningChanged();
+    void settingsChanged();
+    void equipmentChanged();
     void speedFactorChanged();
     void frameUpdated(); ///< after every batch of simulation steps (display rate)
     void slowUpdated();  ///< a few times per second
@@ -156,7 +188,8 @@ signals:
     void messageChanged();
 
 private:
-    void createSimulation();
+    void createSimulation(const ecusim::VehicleConfig &config);
+    void rebuild(const ecusim::VehicleConfig &config);
     void onTimer();
     void advance(int steps);
     void setMessage(const QString &text);
@@ -168,7 +201,8 @@ private:
     QTimer m_timer;
     QElapsedTimer m_clock;
     double m_debtMs = 0.0;
-    bool m_running = true;
+    ecusim::VehicleConfig m_userConfig;
+    bool m_running = false;
     double m_speed = 1.0;
     int m_slowCounter = 0;
     quint64 m_lastFrameCount = 0;

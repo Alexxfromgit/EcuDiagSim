@@ -313,6 +313,7 @@ void tst_Scenarios::faultTargetsAreConsistent()
     QVERIFY(sim.faultTargets().size() >= 15);
     for (const FaultTarget &t : sim.faultTargets()) {
         QVERIFY(!t.faultTypes.isEmpty());
+        QVERIFY2(!t.label.isEmpty(), qPrintable(t.id)); // tag on the vehicle drawing
         for (FaultType type : t.faultTypes) {
             QCOMPARE(faultTypeFromName(faultTypeName(type)), type);
             QVERIFY2(sim.injectFault(t.id, {type}), qPrintable(t.id));

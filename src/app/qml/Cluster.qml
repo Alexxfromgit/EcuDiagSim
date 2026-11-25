@@ -9,6 +9,14 @@ Panel {
     subtitle: c.powered ? "shows what the IPC receives on the bus" : "ignition off"
 
     readonly property var c: App.cluster
+    readonly property bool powered: c.powered
+    // Ignition on: both needles sweep while the cluster runs its bulb check.
+    onPoweredChanged: {
+        if (powered && !App.reducedMotion && !App.replaying) {
+            rpmGauge.selfTest(App.speedFactor)
+            speedGauge.selfTest(App.speedFactor)
+        }
+    }
     // Height at which the two gauges fill their width exactly (no empty bands above and below).
     readonly property real gaugeSize: Math.max(120, (width - 20 - 92 - 8) / 2)
     readonly property real idealHeight: 36 + gaugeSize + 6 + 26 + 14
@@ -23,6 +31,7 @@ Panel {
             spacing: 4
 
             Gauge {
+                id: rpmGauge
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 value: root.c.rpm
@@ -82,6 +91,7 @@ Panel {
             }
 
             Gauge {
+                id: speedGauge
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 value: root.c.speed

@@ -6,7 +6,8 @@
 
 namespace ecusim {
 
-Simulation::Simulation()
+Simulation::Simulation(const VehicleConfig &config)
+    : m_config(config)
 {
     if (!m_dbc.loadFile(QStringLiteral(":/ecusim/dbc/vehicle.dbc")))
         m_error = QStringLiteral("CAN database: ") + m_dbc.errorString();
@@ -111,26 +112,26 @@ void Simulation::buildFaultTargets()
         FaultType::Erratic};
     for (Sensor *s : m_sensors.all()) {
         const Sensor::Config &c = s->config();
-        m_targets.append({c.id, c.name, c.ecu, FaultTarget::Kind::Sensor, c.unit, analog});
+        m_targets.append({c.id, c.name, c.ecu, FaultTarget::Kind::Sensor, c.unit, analog, c.label});
     }
     const QList<FaultType> failure = {FaultType::Failure};
     m_targets.append({QStringLiteral("alternator"), QStringLiteral("Alternator"), QStringLiteral("ECM"),
-        FaultTarget::Kind::Component, {}, failure});
+        FaultTarget::Kind::Component, {}, failure, QStringLiteral("ALT")});
     m_targets.append({QStringLiteral("cooling"), QStringLiteral("Cooling system (water pump)"),
-        QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, failure});
+        QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, failure, QStringLiteral("PUMP")});
     m_targets.append({QStringLiteral("bulb_low_left"), QStringLiteral("Left low beam bulb"), QStringLiteral("BCM"),
-        FaultTarget::Kind::Component, {}, failure});
+        FaultTarget::Kind::Component, {}, failure, QStringLiteral("BULB")});
     const QList<FaultType> ecuFaults = {FaultType::PowerLoss, FaultType::BusOff};
     for (Ecu *e : ecus()) {
         const QString name = e->identity().name;
         m_targets.append({name.toLower(), name + QStringLiteral(" - ") + e->identity().description, name,
-            FaultTarget::Kind::Ecu, {}, ecuFaults});
+            FaultTarget::Kind::Ecu, {}, ecuFaults, name});
     }
     m_targets.append({QStringLiteral("abs_e2e"), QStringLiteral("ABS wheel speed message protection"),
         QStringLiteral("ABS"), FaultTarget::Kind::Network, {},
-        {FaultType::FrozenCounter, FaultType::BadChecksum}});
+        {FaultType::FrozenCounter, FaultType::BadChecksum}, QStringLiteral("E2E")});
     m_targets.append({QStringLiteral("can_bus"), QStringLiteral("CAN bus wiring"), QString(),
-        FaultTarget::Kind::Network, {}, {FaultType::BusShort}});
+        FaultTarget::Kind::Network, {}, {FaultType::BusShort}, QStringLiteral("CAN")});
 }
 
 const FaultTarget *Simulation::faultTarget(const QString &id) const

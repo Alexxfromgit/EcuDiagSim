@@ -106,7 +106,11 @@ python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
 AddressSanitizer and UndefinedBehaviorSanitizer, what CI runs on Linux).
 
 Command line options: `--scenario <file|number>`, `--tab <0..3>`, `--speed <factor>`, `--size <WxH>`,
-`--screenshot <file> --after <ms>`.
+`--settings` (open the settings page), `--screenshot <file> --after <ms>`.
+
+The app opens **paused** at 0 s: nothing happens on the bus until you press **Run** (or Space).
+**Settings** (⚙ in the top bar, or Ctrl+,) can change that, set the speed the app starts with, reduce
+motion, and fit optional equipment to the vehicle. Lessons and `--scenario` always start by themselves.
 
 The window adapts to the screen: it opens no larger than the available desktop and works down to
 1024×600. Below 1200 pixels of width the vehicle view is hidden by default (**Show car** brings it

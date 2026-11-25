@@ -175,18 +175,20 @@ SensorSet::SensorSet()
         c.physMin = 0.0;
         c.physMax = 400.0;
         c.digital = true;
+        c.shortName = QStringLiteral("Wheel ") + QString::fromLatin1(wheelIds[i] + 4).toUpper();
+        c.label = QStringLiteral("WSS");
         wss[i] = Sensor(c);
     }
     // NTC thermistors against a pull-up: cold = high voltage.
     ect = Sensor({QStringLiteral("ect"), QStringLiteral("Coolant temperature sensor"), QStringLiteral("°C"),
-        QStringLiteral("ECM"), -40.0, 150.0, 4.5, 0.5, 5.0, false});
+        QStringLiteral("ECM"), -40.0, 150.0, 4.5, 0.5, 5.0, false, QStringLiteral("Coolant"), QStringLiteral("ECT")});
     tft = Sensor({QStringLiteral("tft"), QStringLiteral("Transmission fluid temp. sensor"), QStringLiteral("°C"),
-        QStringLiteral("TCM"), -40.0, 150.0, 4.5, 0.5, 5.0, false});
+        QStringLiteral("TCM"), -40.0, 150.0, 4.5, 0.5, 5.0, false, QStringLiteral("Trans. fluid"), QStringLiteral("TFT")});
     // Potentiometer with a pull-down in the ECU: unplugged reads 0 V.
     tps = Sensor({QStringLiteral("tps"), QStringLiteral("Throttle position sensor"), QStringLiteral("%"),
-        QStringLiteral("ECM"), 0.0, 100.0, 0.5, 4.5, 0.0, false});
+        QStringLiteral("ECM"), 0.0, 100.0, 0.5, 4.5, 0.0, false, QStringLiteral("Throttle"), QStringLiteral("TPS")});
     ckp = Sensor({QStringLiteral("ckp"), QStringLiteral("Crankshaft position sensor"), QStringLiteral("rpm"),
-        QStringLiteral("ECM"), 0.0, 8000.0, 0.0, 0.0, 0.0, true});
+        QStringLiteral("ECM"), 0.0, 8000.0, 0.0, 0.0, 0.0, true, QStringLiteral("Crankshaft"), QStringLiteral("CKP")});
 }
 
 void SensorSet::update(const VehicleModel &vehicle, qint64 nowMs)
@@ -201,7 +203,8 @@ void SensorSet::update(const VehicleModel &vehicle, qint64 nowMs)
 
 QList<Sensor *> SensorSet::all()
 {
-    return {&wss[0], &wss[1], &wss[2], &wss[3], &ect, &tps, &ckp, &tft};
+    // Table order: wheels, then the engine and transmission sensors.
+    return {&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps, &tft};
 }
 
 Sensor *SensorSet::byId(const QString &id)

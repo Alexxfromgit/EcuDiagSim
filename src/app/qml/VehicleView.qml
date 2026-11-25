@@ -30,10 +30,17 @@ Panel {
             m[e.name] = e
         return m
     }
-    readonly property var shortNames: ({
-        "wss_fl": "Wheel FL", "wss_fr": "Wheel FR", "wss_rl": "Wheel RL", "wss_rr": "Wheel RR",
-        "ckp": "Crankshaft", "ect": "Coolant", "tps": "Throttle", "tft": "Trans. fluid"
+    // Where each fault target sits on the drawing (car coordinates). Targets without a place here
+    // are still in the Faults tab; control units are drawn as boxes below.
+    readonly property var spotPlaces: ({
+        "wss_fl": { x: 81, y: 97, left: true }, "wss_fr": { x: 285, y: 97 },
+        "wss_rl": { x: 81, y: 369, left: true }, "wss_rr": { x: 285, y: 369 },
+        "ckp": { x: 150, y: 38, left: true }, "ect": { x: 183, y: 34 }, "tps": { x: 224, y: 38 },
+        "tft": { x: 266, y: 128, left: true },
+        "alternator": { x: 122, y: 100 }, "cooling": { x: 244, y: 100, left: true },
+        "bulb_low_left": { x: 112, y: 2, left: true }, "abs_e2e": { x: 120, y: 162 }
     })
+    readonly property var spots: App.faultTargets.filter(t => root.spotPlaces[t.id] !== undefined)
     readonly property var faultedIds: App.activeFaults.map(f => f.targetId)
     readonly property var doors: App.doors // changes with the inputs, not on every frame
 
@@ -45,12 +52,21 @@ Panel {
     readonly property bool braking: v.brake > 0.02
     readonly property bool reversing: v.ignition && v.selector === 1
     readonly property bool animate: App.running && root.visible
+    // Purely decorative loops (bus frames, exhaust, pulsing markers) also honour "Reduce motion".
+    readonly property bool decorate: animate && !App.reducedMotion
+    // Decorative motion follows the simulation speed, within limits that stay pleasant to watch.
+    readonly property real timeScale: Math.max(0.5, Math.min(2.5, App.speedFactor))
+    // Fresh vehicle that has never run.
+    readonly property bool waiting: !App.running && App.simTime === 0 && !App.replaying
 
     // Distance rolled, drives the tyre tread animation.
     property real roll: 0
     FrameAnimation {
         running: root.animate && root.v.speed > 0.05
-        onTriggered: root.roll = (root.roll + root.v.speed / 3.6 * frameTime * App.speedFactor * 9) % 8
+        onTriggered: {
+            const r = root.roll + root.v.velocity / 3.6 * frameTime * App.speedFactor * 9
+            root.roll = ((r % 8) + 8) % 8
+        }
     }
 
     // --- colours -------------------------------------------------------------
@@ -75,6 +91,8 @@ Panel {
         visible: opacity > 0.01
         preferredRendererType: Shape.CurveRenderer
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutQuad } }
+        Behavior on r { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on strength { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         ShapePath {
             strokeColor: "transparent"
             fillGradient: RadialGradient {
@@ -151,8 +169,8 @@ Panel {
     component EcuBox: Rectangle {
         id: box
         property string name: ""
-        property int diagIndex: -1
-        readonly property var info: root.ecuMap[name] ?? ({ state: "sleep", dtcCount: 0, description: "" })
+        readonly property var info: root.ecuMap[name] ?? ({ state: "sleep", dtcCount: 0, description: "", diagIndex: -1 })
+        readonly property int diagIndex: info.diagIndex ?? -1
         readonly property color tone: Theme.ecuColor(info.state)
         readonly property bool alert: info.state === "fault" || info.state === "busoff" || info.state === "nopower"
 
@@ -164,21 +182,23 @@ Panel {
         border.color: area.containsMouse ? Qt.lighter(tone, 1.3) : tone
         border.width: area.containsMouse ? 2 : 1
 
-        // Pulsing halo while a fault is active.
+        // Halo while a fault is active: expands and fades like a ping (steady with reduced motion).
         Rectangle {
+            id: halo
             z: -1
             anchors.centerIn: parent
-            width: parent.width + 10; height: parent.height + 10
-            radius: parent.radius + 5
+            width: parent.width + 8; height: parent.height + 8
+            radius: parent.radius + 4
             color: "transparent"
             border.color: box.tone
             border.width: 2
             visible: box.alert
-            opacity: 0
-            SequentialAnimation on opacity {
-                running: box.alert && root.visible
+            opacity: App.reducedMotion ? 0.5 : 0
+            ParallelAnimation {
+                running: box.alert && root.visible && !App.reducedMotion
                 loops: Animation.Infinite
-                NumberAnimation { from: 0.55; to: 0.0; duration: 1100; easing.type: Easing.OutQuad }
+                NumberAnimation { target: halo; property: "opacity"; from: 0.65; to: 0.0; duration: 1300; easing.type: Easing.OutCubic }
+                NumberAnimation { target: halo; property: "scale"; from: 1.0; to: 1.22; duration: 1300; easing.type: Easing.OutCubic }
             }
         }
 
@@ -200,8 +220,8 @@ Panel {
                 color: "#0b0d10"
                 font { pixelSize: 10; bold: true }
             }
-            onVisibleChanged: if (visible) pop.restart()
-            NumberAnimation on scale { id: pop; from: 1.6; to: 1; duration: 260; easing.type: Easing.OutBack }
+            onVisibleChanged: if (visible && !App.reducedMotion) pop.restart()
+            NumberAnimation on scale { id: pop; running: false; from: 1.6; to: 1; duration: 260; easing.type: Easing.OutBack }
         }
         Text {
             visible: box.info.state === "nopower" || box.info.state === "busoff"
@@ -235,6 +255,7 @@ Panel {
         property string targetId: ""
         property string label: ""
         property bool labelLeft: false
+        property string name: ""
         readonly property var sensor: root.sensorMap[targetId]
         readonly property bool faulted: root.faultedIds.indexOf(targetId) >= 0
         z: 5
@@ -248,9 +269,9 @@ Panel {
             border.color: Theme.error
             border.width: 2
             visible: spot.faulted
-            opacity: 0
+            opacity: App.reducedMotion ? 0.6 : 0
             ParallelAnimation {
-                running: spot.faulted && root.visible
+                running: spot.faulted && root.visible && !App.reducedMotion
                 loops: Animation.Infinite
                 NumberAnimation { target: ripple; property: "scale"; from: 1; to: 2.6; duration: 1200; easing.type: Easing.OutCubic }
                 NumberAnimation { target: ripple; property: "opacity"; from: 0.9; to: 0; duration: 1200; easing.type: Easing.OutCubic }
@@ -299,7 +320,7 @@ Panel {
         ToolTip.text: {
             const s = spot.sensor
             if (!s)
-                return spot.label + (spot.faulted ? "\nFAULT ACTIVE" : "") + "\n\nClick to inject a fault"
+                return (spot.name || spot.label) + (spot.faulted ? "\nFAULT ACTIVE" : "") + "\n\nClick to inject a fault"
             let t = s.name + "  →  " + s.ecu
                 + "\nreal value:     " + s.trueValue.toFixed(1) + " " + s.unit
                 + "\nECU measures:   " + s.value.toFixed(1) + " " + s.unit
@@ -400,7 +421,11 @@ Panel {
                     // ---------- exhaust ----------
                     Rectangle { x: 128; y: 462; width: 12; height: 8; radius: 3; color: "#2a2f37"; border.color: "#4a5262" }
                     Repeater {
+                        id: exhaust
                         model: 3
+                        // One cycle per puff; faster and denser with engine speed and load.
+                        readonly property real load: Math.max(0, Math.min(1, root.v.throttle / 100))
+                        readonly property int cycleMs: Math.round(Math.max(520, 1260 - (root.v.rpm - 800) * 0.12) / root.timeScale)
                         Rectangle {
                             id: puff
                             required property int index
@@ -410,16 +435,16 @@ Panel {
                             opacity: 0
                             visible: root.v.engineRunning
                             SequentialAnimation {
-                                running: root.animate && root.v.engineRunning
+                                running: root.decorate && root.v.engineRunning
                                 loops: Animation.Infinite
-                                PauseAnimation { duration: puff.index * 420 }
+                                PauseAnimation { duration: puff.index * exhaust.cycleMs / 3 }
                                 ParallelAnimation {
-                                    NumberAnimation { target: puff; property: "y"; from: 468; to: 498; duration: 1260; easing.type: Easing.OutQuad }
-                                    NumberAnimation { target: puff; property: "x"; from: 128; to: 118 + puff.index * 6; duration: 1260 }
-                                    NumberAnimation { target: puff; property: "opacity"; from: 0.12; to: 0; duration: 1260 }
-                                    NumberAnimation { target: puff; property: "scale"; from: 0.6; to: 2.0; duration: 1260 }
+                                    NumberAnimation { target: puff; property: "y"; from: 468; to: 496 + 8 * exhaust.load; duration: exhaust.cycleMs; easing.type: Easing.OutQuad }
+                                    NumberAnimation { target: puff; property: "x"; from: 128; to: 118 + puff.index * 6; duration: exhaust.cycleMs; easing.type: Easing.OutSine }
+                                    NumberAnimation { target: puff; property: "opacity"; from: 0.10 + 0.14 * exhaust.load; to: 0; duration: exhaust.cycleMs; easing.type: Easing.InQuad }
+                                    NumberAnimation { target: puff; property: "scale"; from: 0.6; to: 1.8 + 0.8 * exhaust.load; duration: exhaust.cycleMs; easing.type: Easing.OutCubic }
                                 }
-                                PauseAnimation { duration: (2 - puff.index) * 420 }
+                                PauseAnimation { duration: (2 - puff.index) * exhaust.cycleMs / 3 }
                             }
                         }
                     }
@@ -630,30 +655,34 @@ Panel {
                     Wire { x: 136; y: 262; width: 54; height: 2 }      // DLC
                     // frames travelling along the backbone while the bus is busy
                     Repeater {
+                        id: frames
                         model: 3
+                        readonly property int travelMs: Math.round(900 / root.timeScale)
+                        // A busier bus gives brighter frames (at least visible at idle traffic).
+                        readonly property real brightness: Math.max(0.55, Math.min(1, 0.45 + root.v.busLoad * 3))
                         Rectangle {
                             id: packet
                             required property int index
-                            readonly property bool active: root.animate && !root.v.busFailure && root.v.busLoad > 0.005
+                            readonly property bool active: root.decorate && !root.v.busFailure && root.v.busLoad > 0.005
                             x: 187; y: 96
                             width: 6; height: 6; radius: 3
                             color: "#ffe28a"
                             opacity: 0
                             visible: active
-                            Glow { cx: 3; cy: 3; r: 7; tint: "#ffd75e"; strength: 0.7; on: true }
+                            Glow { cx: 3; cy: 3; r: 7; tint: "#ffd75e"; strength: 0.7 * frames.brightness; on: true }
                             SequentialAnimation {
                                 running: packet.active
                                 loops: Animation.Infinite
-                                PauseAnimation { duration: packet.index * 300 }
+                                PauseAnimation { duration: packet.index * frames.travelMs / 3 }
                                 ParallelAnimation {
-                                    NumberAnimation { target: packet; property: "y"; from: 96; to: 296; duration: 900; easing.type: Easing.InOutSine }
+                                    NumberAnimation { target: packet; property: "y"; from: 96; to: 296; duration: frames.travelMs; easing.type: Easing.InOutSine }
                                     SequentialAnimation {
-                                        NumberAnimation { target: packet; property: "opacity"; from: 0; to: 1; duration: 150 }
-                                        PauseAnimation { duration: 600 }
-                                        NumberAnimation { target: packet; property: "opacity"; to: 0; duration: 150 }
+                                        NumberAnimation { target: packet; property: "opacity"; from: 0; to: frames.brightness; duration: frames.travelMs / 6 }
+                                        PauseAnimation { duration: frames.travelMs * 2 / 3 }
+                                        NumberAnimation { target: packet; property: "opacity"; to: 0; duration: frames.travelMs / 6 }
                                     }
                                 }
-                                PauseAnimation { duration: (2 - packet.index) * 300 }
+                                PauseAnimation { duration: (2 - packet.index) * frames.travelMs / 3 }
                             }
                         }
                     }
@@ -677,11 +706,11 @@ Panel {
                     }
 
                     // ---------- control units ----------
-                    EcuBox { name: "ECM"; diagIndex: 0; x: 144; y: 58; width: 92; height: 38 }
-                    EcuBox { name: "ABS"; diagIndex: 2; x: 112; y: 124; width: 60; height: 32 }
-                    EcuBox { name: "TCM"; diagIndex: 1; x: 208; y: 148; width: 60; height: 32 }
+                    EcuBox { name: "ECM"; x: 144; y: 58; width: 92; height: 38 }
+                    EcuBox { name: "ABS"; x: 112; y: 124; width: 60; height: 32 }
+                    EcuBox { name: "TCM"; x: 208; y: 148; width: 60; height: 32 }
                     EcuBox { name: "IPC"; x: 146; y: 214; width: 88; height: 26 }
-                    EcuBox { name: "BCM"; diagIndex: 3; x: 152; y: 300; width: 76; height: 30 }
+                    EcuBox { name: "BCM"; x: 152; y: 300; width: 76; height: 30 }
 
                     // OBD connector (scan tool)
                     Rectangle {
@@ -691,18 +720,61 @@ Panel {
                     }
 
                     // ---------- sensors and components ----------
-                    Hotspot { targetId: "wss_fl"; label: "WSS"; x: 81; y: 97; labelLeft: true }
-                    Hotspot { targetId: "wss_fr"; label: "WSS"; x: 285; y: 97 }
-                    Hotspot { targetId: "wss_rl"; label: "WSS"; x: 81; y: 369; labelLeft: true }
-                    Hotspot { targetId: "wss_rr"; label: "WSS"; x: 285; y: 369 }
-                    Hotspot { targetId: "ckp"; label: "CKP"; x: 150; y: 38; labelLeft: true }
-                    Hotspot { targetId: "ect"; label: "ECT"; x: 183; y: 34 }
-                    Hotspot { targetId: "tps"; label: "TPS"; x: 224; y: 38 }
-                    Hotspot { targetId: "tft"; label: "TFT"; x: 266; y: 128; labelLeft: true }
-                    Hotspot { targetId: "alternator"; label: "ALT"; x: 122; y: 100 }
-                    Hotspot { targetId: "cooling"; label: "PUMP"; x: 244; y: 100; labelLeft: true }
-                    Hotspot { targetId: "bulb_low_left"; label: "BULB"; x: 112; y: 2; labelLeft: true }
-                    Hotspot { targetId: "abs_e2e"; label: "E2E"; x: 120; y: 162 }
+                    Repeater {
+                        model: root.spots
+                        Hotspot {
+                            required property var modelData
+                            readonly property var place: root.spotPlaces[modelData.id]
+                            targetId: modelData.id
+                            label: modelData.label || modelData.id.toUpperCase()
+                            name: modelData.name
+                            x: place.x; y: place.y
+                            labelLeft: place.left === true
+                        }
+                    }
+                }
+            }
+
+            // Start prompt: a new vehicle waits, parked with the ignition off, until the user runs it.
+            Rectangle {
+                id: prompt
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 24, 300)
+                implicitHeight: promptColumn.implicitHeight + 28
+                radius: 10
+                color: Qt.rgba(0.06, 0.07, 0.09, 0.9)
+                border.color: Qt.rgba(0.29, 0.66, 1, 0.55)
+                z: 20
+                opacity: root.waiting ? 1 : 0
+                visible: opacity > 0.01
+                scale: root.waiting ? 1 : 0.96
+                Behavior on opacity { NumberAnimation { duration: App.reducedMotion ? 0 : 220; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: App.reducedMotion ? 0 : 220; easing.type: Easing.OutCubic } }
+                ColumnLayout {
+                    id: promptColumn
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 14 }
+                    spacing: 8
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "Simulation paused"
+                        color: Theme.text
+                        font { pixelSize: 15; bold: true }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "The car is parked with the ignition off and the clock stands at 0 s. Start the simulation, then switch the ignition on — or pick a lesson."
+                        color: Theme.textDim
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "▶  Run   (Space)"
+                        highlighted: true
+                        onClicked: App.running = true
+                    }
                 }
             }
         }
@@ -722,7 +794,8 @@ Panel {
                 Text { text: "STATE"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.fillWidth: true; Layout.minimumWidth: 40; Layout.maximumWidth: 84; Layout.rightMargin: 2 }
             }
             Repeater {
-                model: ["wss_fl", "wss_fr", "wss_rl", "wss_rr", "ckp", "ect", "tps", "tft"]
+                // One row per fitted sensor, in the order the simulation lists them.
+                model: App.sensors.map(s => s.id)
                 Rectangle {
                     id: cell
                     required property string modelData
@@ -739,7 +812,7 @@ Panel {
                         spacing: 6
                         Text {
                             Layout.minimumWidth: 66
-                            text: root.shortNames[cell.modelData] ?? ""
+                            text: cell.s ? cell.s.shortName : ""
                             color: cell.s && cell.s.faulted ? Theme.error : Theme.text
                             font.pixelSize: 11
                             elide: Text.ElideRight
