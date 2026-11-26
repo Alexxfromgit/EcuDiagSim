@@ -45,6 +45,9 @@ Panel {
         // tyre pressure monitoring: the sensors sit on the valves
         "tpms_fl": { x: 81, y: 124, left: true }, "tpms_fr": { x: 285, y: 124 },
         "tpms_rl": { x: 81, y: 396, left: true }, "tpms_rr": { x: 285, y: 396 },
+        // airbag system
+        "airbag_driver": { x: 124, y: 214, left: true }, "airbag_passenger": { x: 242, y: 214 },
+        "belt_switch": { x: 118, y: 306, left: true },
         // engine OBD pack
         "maf": { x: 244, y: 52 }, "o2": { x: 150, y: 180 },
         "ignition_coils": { x: 162, y: 12 }, "intake_leak": { x: 214, y: 12 }
@@ -729,6 +732,33 @@ Panel {
                     EcuBox { name: "TCM"; x: 208; y: 148; width: 60; height: 32 }
                     EcuBox { name: "IPC"; x: 146; y: 214; width: 88; height: 26 }
                     EcuBox { name: "BCM"; x: 152; y: 300; width: 76; height: 30 }
+                    // airbag module under the centre console (only when fitted)
+                    Wire { visible: root.ecuMap["SRS"] !== undefined; x: 182; y: 285; width: 8; height: 2 }
+                    EcuBox { visible: root.ecuMap["SRS"] !== undefined; name: "SRS"; x: 138; y: 276; width: 44; height: 20 }
+
+                    // fired airbags: white cushions over the steering wheel and the dashboard
+                    Repeater {
+                        model: [ { x: 149, y: 230 }, { x: 231, y: 230 } ]
+                        Rectangle {
+                            id: cushion
+                            required property int index
+                            required property var modelData
+                            readonly property bool fired: root.v.airbagFired !== undefined && root.v.airbagFired[index] === true
+                            z: 8
+                            x: modelData.x - width / 2; y: modelData.y - height / 2
+                            width: 46; height: 32; radius: 16
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#f4f6fa" }
+                                GradientStop { position: 1.0; color: "#c4cad6" }
+                            }
+                            border.color: "#8a93a3"
+                            visible: fired
+                            scale: fired ? 1 : 0.2
+                            opacity: fired ? 0.95 : 0
+                            Behavior on scale { NumberAnimation { duration: App.reducedMotion ? 0 : 260; easing.type: Easing.OutBack } }
+                            Behavior on opacity { NumberAnimation { duration: 120 } }
+                        }
+                    }
 
                     // OBD connector (scan tool)
                     Rectangle {

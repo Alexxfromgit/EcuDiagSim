@@ -55,6 +55,7 @@ constexpr quint32 EcmRequest = 0x7E0;
 constexpr quint32 TcmRequest = 0x7E1;
 constexpr quint32 AbsRequest = 0x7E2;
 constexpr quint32 BcmRequest = 0x7E3;
+constexpr quint32 SrsRequest = 0x7E4; ///< airbag control module (optional equipment)
 constexpr quint32 ResponseOffset = 8; ///< response ID = request ID + 8
 inline bool isDiagnostic(quint32 id) { return id >= 0x7DF && id <= 0x7EF; }
 } // namespace DiagId

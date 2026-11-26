@@ -47,6 +47,7 @@ QList<quint16> liveDids(int target)
         0xF406, 0xF407, 0xF410, 0xF414, 0x1010}; // the last ones only with the engine OBD pack
     case 1: return {0x2001, 0x2002, 0x2003, 0xF40D, 0xF442};
     case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442};
+    case 4: return {0x5001, 0x5002, 0x5003, 0x5010}; // airbag module
     default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442, 0x4020, 0x4021, 0x4022, 0x4023}; // tyres: TPMS only
     }
 }
@@ -65,13 +66,23 @@ DiagnosticTester &ScannerViewModel::tester() const
 
 QStringList ScannerViewModel::ecuNames() const
 {
-    return {QStringLiteral("ECM  (0x7E0)"), QStringLiteral("TCM  (0x7E1)"), QStringLiteral("ABS  (0x7E2)"),
-        QStringLiteral("BCM  (0x7E3)")};
+    // Every control unit with a diagnostic address, in address order: index = address - 0x7E0.
+    QStringList names;
+    for (Ecu *e : m_app->sim().ecus()) {
+        const quint32 id = e->identity().requestId;
+        if (id < DiagId::EcmRequest || id >= DiagId::EcmRequest + kMaxTargets)
+            continue;
+        const int index = static_cast<int>(id - DiagId::EcmRequest);
+        while (names.size() <= index)
+            names.append(QString());
+        names[index] = QStringLiteral("%1  (0x%2)").arg(e->identity().name).arg(id, 3, 16).toUpper().replace(QLatin1String("0X"), QLatin1String("0x"));
+    }
+    return names;
 }
 
 void ScannerViewModel::setTarget(int target)
 {
-    target = qBound(0, target, 3);
+    target = qBound(0, target, static_cast<int>(ecuNames().size()) - 1);
     if (target == m_target)
         return;
     m_target = target;
@@ -102,6 +113,9 @@ QVariantList ScannerViewModel::codings() const
         return {item(0x0100, QStringLiteral("Variant coding"),
             QStringLiteral("3 bytes: flags (bit0 stability control), rolling circumference in mm, e.g. 07 9C = 1948 mm"),
             QStringLiteral("00 07 9C"))};
+    case 4:
+        return {item(0x0100, QStringLiteral("Variant coding"),
+            QStringLiteral("1 byte: bit0 passenger airbag fitted, bit1 seat belt reminder"), QStringLiteral("03"))};
     case 3: {
         const bool tpms = m_app->sim().bcm().tpmsFitted();
         return {item(0x0100, QStringLiteral("Variant coding"),
@@ -162,11 +176,11 @@ void ScannerViewModel::setPollMode(int mode)
 
 void ScannerViewModel::simulationReset()
 {
-    for (int i = 0; i < 4; ++i) {
-        m_session[i] = 1;
-        m_unlocked[i] = false;
-        m_lastRequestMs[i] = 0;
-    }
+    std::fill(std::begin(m_session), std::end(m_session), 1);
+    std::fill(std::begin(m_unlocked), std::end(m_unlocked), false);
+    std::fill(std::begin(m_lastRequestMs), std::end(m_lastRequestMs), 0);
+    if (m_target >= ecuNames().size())
+        m_target = 0; // the new vehicle has fewer control units
     m_background = false;
     setDtcs({}, {});
     setValues({}, {});
@@ -227,11 +241,14 @@ void ScannerViewModel::resetTargetState(int index)
 
 void ScannerViewModel::updateSessionState()
 {
-    const QList<Ecu *> ecus = m_app->sim().ecus(); // ECM, TCM, ABS, BCM, ...
     const qint64 now = m_app->sim().nowMs();
-    for (int i = 0; i < 4 && i < ecus.size(); ++i) {
-        const bool kept = tester().keepAlive(0x7E0 + static_cast<quint32>(i));
-        if (!ecus.at(i)->awake())
+    for (Ecu *e : m_app->sim().ecus()) {
+        const quint32 id = e->identity().requestId;
+        if (id < DiagId::EcmRequest || id >= DiagId::EcmRequest + kMaxTargets)
+            continue;
+        const auto i = static_cast<int>(id - DiagId::EcmRequest);
+        const bool kept = tester().keepAlive(id);
+        if (!e->awake())
             resetTargetState(i); // power cycle: back to the default session, locked
         else if (m_session[i] != 1 && !kept && now - m_lastRequestMs[i] > DiagnosticServer::kS3TimeoutMs)
             resetTargetState(i); // S3 timeout
@@ -244,7 +261,7 @@ void ScannerViewModel::onResult(const DiagResult &result)
     if (!result.responseExpected)
         return; // TesterPresent without response
     const int target = static_cast<int>(result.requestId) - 0x7E0;
-    if (target >= 0 && target < 4)
+    if (target >= 0 && target < kMaxTargets)
         m_lastRequestMs[target] = m_app->sim().nowMs(); // any request restarts the ECU's S3 timer
     // Polling traffic is not written to the log.
     const bool quiet = result.background;
@@ -267,7 +284,7 @@ void ScannerViewModel::onResult(const DiagResult &result)
             addLog(QStringLiteral("info"), QStringLiteral("%1: %2").arg(r.ecu, explainResponse(result.request, r.data)));
         }
         const int index = static_cast<int>(r.canId) - 0x7E8;
-        if (index < 0 || index > 3 || r.data.isEmpty())
+        if (index < 0 || index >= kMaxTargets || r.data.isEmpty())
             continue;
         if (r.isNegative()) {
             // The ECU says it is not in a session that allows this, or not unlocked.

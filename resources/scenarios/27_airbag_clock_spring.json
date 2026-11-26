@@ -1,0 +1,34 @@
+{
+  "name": "Airbag lamp - open driver squib circuit",
+  "description": "The airbag module checks its squib circuits constantly with a tiny test current: 1 to 4 ohm is right. A broken clock spring in the steering column opens the driver circuit - B0001-1B and the airbag lamp, because the driver airbag could not fire now. Clearing the code does not help while the circuit is open.",
+  "lesson": "docs/lessons/27-airbag-clock-spring.md",
+  "level": "Intermediate",
+  "topics": ["SRS", "Warning lamps", "UDS"],
+  "equipment": ["srs"],
+  "steps": [
+    { "action": "input", "name": "seatBelt", "value": true },
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "expect", "lamp": "airbag", "value": true, "note": "1. Ignition on: the airbag lamp's own 6 s self test" },
+    { "action": "wait", "ms": 5000 },
+    { "action": "expect", "lamp": "airbag", "value": false, "note": "System ready: lamp off" },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 01", "expect": "62 50 01 00 DC", "note": "Driver squib (DID 0x5001): 0x00DC = 2.20 ohm" },
+
+    { "action": "inject", "target": "airbag_driver", "fault": "open", "note": "2. The clock spring - the flat cable that turns with the steering wheel - breaks" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "dtc": "B0001-1B", "ecu": "SRS", "status": "testFailed", "note": "B0001-1B: driver deployment loop, resistance above threshold" },
+    { "action": "expect", "lamp": "airbag", "value": true },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 01", "expect": "62 50 01 FF FF", "note": "FFFF: open circuit" },
+
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "54", "note": "3. Clearing is accepted ..." },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "dtc": "B0001-1B", "ecu": "SRS", "status": "testFailed", "note": "... but the module tests again and sets it again" },
+    { "action": "expect", "lamp": "airbag", "value": true },
+
+    { "action": "clearFault", "target": "airbag_driver", "note": "4. New clock spring" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "airbag", "value": false }
+  ]
+}

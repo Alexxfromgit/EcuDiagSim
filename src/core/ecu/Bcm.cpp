@@ -19,6 +19,7 @@ Bcm::Bcm(SimContext &ctx)
     d.define(networkDtc(U0121));
     d.define(dtcDef(U3000NotConfigured, 5));
     subscribe(msg::EcmEngine, 500);
+    subscribe(msg::SrsStatus, 500);
     m_tpms = ctx.config.has(Equipment::Tpms);
     m_coding = defaultCoding();
 
@@ -261,10 +262,23 @@ void Bcm::task20ms()
     const bool engineRunning = !rxTimedOut(msg::EcmEngine) && rx(msg::EcmEngine, QStringLiteral("EngineRPM")) > 400.0;
     const bool drl = coded(DaytimeLights) && in.ignition != Ignition::Off && engineRunning;
     m_park = in.headlamps >= 1 || m_lowBeam || drl;
-    m_locked = m_lockForced >= 0 ? m_lockForced == 1 : (in.doorLock || m_autoLocked);
+    // Airbags fired: unlock every door for the rescuers and warn the traffic behind, until the
+    // ignition is switched off.
+    // The BCM never sleeps: only messages from this ignition cycle count, not the last one before
+    // the key was turned off.
+    if (in.ignition == Ignition::Off) {
+        m_crashMode = false;
+        m_ignitionOnMs = now();
+    } else if (receivedSince(msg::SrsStatus, m_ignitionOnMs) && !rxTimedOut(msg::SrsStatus)
+               && rx(msg::SrsStatus, QStringLiteral("CrashDetected")) > 0.5) {
+        m_crashMode = true;
+    }
+    if (m_crashMode)
+        m_autoLocked = false;
+    m_locked = m_lockForced >= 0 ? m_lockForced == 1 : (in.doorLock || m_autoLocked) && !m_crashMode;
     m_blink = (now() / 400) % 2 == 0;
-    m_turnLeftOut = (in.turnLeft || in.hazard) && m_blink;
-    m_turnRightOut = (in.turnRight || in.hazard) && m_blink;
+    m_turnLeftOut = (in.turnLeft || in.hazard || m_crashMode) && m_blink;
+    m_turnRightOut = (in.turnRight || in.hazard || m_crashMode) && m_blink;
 }
 
 void Bcm::task100ms()

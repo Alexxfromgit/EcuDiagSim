@@ -85,6 +85,12 @@ public:
     AbsEcu &abs() { return *m_abs; }
     Bcm &bcm() { return *m_bcm; }
     Ipc &ipc() { return *m_ipc; }
+    /// The airbag module, nullptr without Equipment::Srs.
+    Srs *srs() { return m_srs.get(); }
+    /// Frontal crash at the current speed (the airbag module decides whether to deploy).
+    void crash() { m_vehicle.crash(); }
+    /// Workshop: new airbags in place of fired ones.
+    void replaceAirbags() { m_vehicle.airbagFired = {}; }
     QList<Ecu *> ecus() const;
     Ecu *ecu(const QString &name) const;
     DiagnosticTester &tester() { return *m_tester; }
@@ -138,6 +144,7 @@ private:
     std::unique_ptr<AbsEcu> m_abs;
     std::unique_ptr<Bcm> m_bcm;
     std::unique_ptr<Ipc> m_ipc;
+    std::unique_ptr<Srs> m_srs;
     std::unique_ptr<DiagnosticTester> m_tester;
     std::unique_ptr<TraceReplayer> m_replayer;
     std::unique_ptr<ScenarioRunner> m_scenario;

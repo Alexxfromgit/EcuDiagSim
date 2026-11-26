@@ -1,0 +1,50 @@
+{
+  "name": "Crash - deployment and the crash record",
+  "description": "A frontal impact at 50 km/h. The airbag module fires both airbags and tells the bus: the ECM stops the fuel pump, the BCM unlocks the doors and switches the hazards on. It stores a crash record that no scan tool can erase - new airbags are not enough, the module itself must be replaced and coded.",
+  "lesson": "docs/lessons/28-crash-record.md",
+  "level": "Advanced",
+  "topics": ["SRS", "Network", "Coding"],
+  "equipment": ["srs"],
+  "steps": [
+    { "action": "input", "name": "seatBelt", "value": true },
+    { "action": "input", "name": "doorLock", "value": true },
+    { "action": "ignition", "value": "on" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 6500 },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">", "value": 50, "timeout": 20000 },
+    { "action": "throttle", "value": 0 },
+
+    { "action": "crash", "note": "1. Frontal impact" },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "signal": "CrashDetected", "op": "==", "value": 1, "note": "SRS_Status: airbags fired" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "signal": "EngineRunning", "op": "==", "value": 0, "note": "2. The ECM stops the fuel pump: no fuel spills onto a hot engine" },
+    { "action": "expect", "signal": "DoorLock", "op": "==", "value": 0, "note": "The BCM unlocks every door for the rescuers ..." },
+    { "action": "waitFor", "signal": "TurnLeft", "op": "==", "value": 1, "timeout": 1000, "note": "... and switches the hazard lights on" },
+    { "action": "expect", "lamp": "airbag", "value": true },
+
+    { "action": "uds", "ecu": "SRS", "request": "22 50 10", "expect": "62 50 10 01", "note": "3. Crash record (DID 0x5010): stored, delta-v about 50 km/h, driver belted" },
+    { "action": "expect", "dtc": "B0052", "ecu": "SRS", "status": "confirmed", "note": "B0052: deployment commanded" },
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "7F 14 22", "note": "Clear DTCs: conditionsNotCorrect - crash data cannot be erased" },
+
+    { "action": "selector", "value": "P" },
+    { "action": "replaceAirbags", "note": "4. The body shop fits new airbags" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 01", "expect": "62 50 01 00 DC", "note": "The squib circuits measure fine again (2.20 ohm) ..." },
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "7F 14 22", "note": "... but the module still refuses: its record stays" },
+
+    { "action": "inject", "target": "srs", "fault": "unconfigured", "note": "5. A new airbag module - with blank coding" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "U3000-55", "ecu": "SRS", "status": "testFailed" },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 10", "expect": "62 50 10 00", "note": "No crash record in the new module" },
+    { "action": "unlock", "ecu": "SRS" },
+    { "action": "uds", "ecu": "SRS", "request": "2E 01 00 03", "expect": "6E 01 00", "note": "Coding 03: passenger airbag fitted, belt reminder on" },
+    { "action": "wait", "ms": 500 },
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "airbag", "value": false, "note": "6. Airbag system ready again" }
+  ]
+}

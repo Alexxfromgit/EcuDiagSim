@@ -24,7 +24,8 @@ bool sameInputs(const DriverInputs &a, const DriverInputs &b)
     return a.ignition == b.ignition && a.throttlePedal == b.throttlePedal && a.brakePedal == b.brakePedal
         && a.selector == b.selector && a.headlamps == b.headlamps && a.highBeam == b.highBeam
         && a.turnLeft == b.turnLeft && a.turnRight == b.turnRight && a.hazard == b.hazard
-        && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar && a.parkBrake == b.parkBrake;
+        && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar && a.parkBrake == b.parkBrake
+        && a.seatBelt == b.seatBelt;
 }
 
 /// Identifies the set of active faults, so a fault swapped for another one by a scenario
@@ -393,6 +394,27 @@ void AppController::setParkBrake(bool on)
     emit inputsChanged();
 }
 
+void AppController::setSeatBelt(bool on)
+{
+    m_sim->driver().seatBelt = on;
+    emit inputsChanged();
+}
+
+void AppController::crash()
+{
+    const double kph = m_sim->vehicle().speedKph();
+    m_sim->crash();
+    setMessage(QStringLiteral("Frontal crash at %1 km/h").arg(kph, 0, 'f', 0));
+    emit frameUpdated(); // the car stands at once, also while paused
+}
+
+void AppController::replaceAirbags()
+{
+    m_sim->replaceAirbags();
+    setMessage(QStringLiteral("New airbags fitted"));
+    emit frameUpdated(); // the cushions and the button change at once, also while paused
+}
+
 void AppController::refuel(double litres)
 {
     VehicleModel &v = m_sim->vehicle();
@@ -433,6 +455,8 @@ QVariantMap AppController::cluster() const
         {QStringLiteral("mil"), c.mil},
         {QStringLiteral("milFlash"), c.milFlash},
         {QStringLiteral("tpms"), c.tpms},
+        {QStringLiteral("airbag"), c.airbag},
+        {QStringLiteral("seatBelt"), c.seatBelt},
         {QStringLiteral("tpmsFlash"), c.tpmsFlash},
         {QStringLiteral("abs"), c.abs},
         {QStringLiteral("tcs"), c.tcs},
@@ -476,6 +500,7 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("fuel"), v.fuelLevel()},
         {QStringLiteral("fuelRate"), v.fuelRateLph()},
         {QStringLiteral("oilPressure"), v.oilPressureBar()},
+        {QStringLiteral("airbagFired"), QVariantList{v.airbagFired[0], v.airbagFired[1]}},
         {QStringLiteral("tyres"), QVariantList{v.tyrePressureCold(0), v.tyrePressureCold(1), v.tyrePressureCold(2),
                                       v.tyrePressureCold(3)}},
         {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},

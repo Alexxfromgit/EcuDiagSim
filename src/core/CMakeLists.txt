@@ -10,7 +10,7 @@ qt_add_library(ecusim_core STATIC
     diag/UdsDefs.h diag/UdsDefs.cpp
     diag/DiagnosticServer.h diag/DiagnosticServer.cpp
     ecu/Ecu.h ecu/Ecu.cpp
-    ecu/Ecus.h ecu/Ecm.cpp ecu/Tcm.cpp ecu/AbsEcu.cpp ecu/Bcm.cpp ecu/Ipc.cpp
+    ecu/Ecus.h ecu/Ecm.cpp ecu/Tcm.cpp ecu/AbsEcu.cpp ecu/Bcm.cpp ecu/Ipc.cpp ecu/Srs.cpp
     tester/DiagnosticTester.h tester/DiagnosticTester.cpp
     tester/Decode.h tester/Decode.cpp
     trace/TraceRecorder.h trace/TraceRecorder.cpp

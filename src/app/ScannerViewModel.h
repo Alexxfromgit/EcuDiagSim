@@ -15,7 +15,7 @@ class ScannerViewModel : public QObject
     Q_OBJECT
     QML_ELEMENT
     QML_UNCREATABLE("Provided by App")
-    Q_PROPERTY(QStringList ecuNames READ ecuNames CONSTANT)
+    Q_PROPERTY(QStringList ecuNames READ ecuNames NOTIFY targetChanged)
     Q_PROPERTY(int target READ target WRITE setTarget NOTIFY targetChanged)
     Q_PROPERTY(QVariantList log READ log NOTIFY logChanged)
     Q_PROPERTY(QVariantList dtcs READ dtcs NOTIFY dtcsChanged)
@@ -114,7 +114,9 @@ private:
     QVariantList m_values;
     QString m_dtcTitle;
     QString m_valuesTitle;
-    int m_session[4] = {1, 1, 1, 1};
-    bool m_unlocked[4] = {false, false, false, false};
-    qint64 m_lastRequestMs[4] = {0, 0, 0, 0};
+    /// Scan tool state per physical address 0x7E0..0x7E7 (ISO 15765-4).
+    static constexpr int kMaxTargets = 8;
+    int m_session[kMaxTargets] = {1, 1, 1, 1, 1, 1, 1, 1};
+    bool m_unlocked[kMaxTargets] = {};
+    qint64 m_lastRequestMs[kMaxTargets] = {};
 };

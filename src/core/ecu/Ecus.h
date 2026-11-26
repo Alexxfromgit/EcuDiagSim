@@ -66,6 +66,7 @@ private:
     bool m_fuelValid = true;
     double m_oilBar = 0.0;
     bool m_oilWarn = true;
+    bool m_crashCut = false; ///< airbags fired: fuel pump off until the ignition is switched off
     double m_prevRpm = 0.0; ///< last engine speed with a crank signal (stall versus sensor loss)
     // engine OBD pack
     bool m_obdPack = false;
@@ -250,6 +251,57 @@ private:
     bool m_codingBlank = false;
     int m_lowBeamForced = -1;
     int m_lockForced = -1;
+    bool m_crashMode = false; ///< after an airbag deployment: hazards on, doors unlocked
+    qint64 m_ignitionOnMs = 0;
+};
+
+/// Airbag control module (optional equipment): squib circuits, seat belt buckle switch, crash
+/// detection with deployment and a crash record that no scan tool can erase.
+class Srs : public Ecu
+{
+public:
+    enum Coding : quint8 {
+        PassengerAirbag = 0x01,
+        BeltReminder = 0x02,
+    };
+    static constexpr quint8 kDefaultCoding = PassengerAirbag | BeltReminder;
+    static constexpr quint16 kCrashRecordDid = 0x5010;
+    static constexpr double kDeployDeltaV = 20.0; ///< km/h
+    static constexpr int kLampCheckMs = 6000;    ///< airbag lamp self test at ignition on
+
+    explicit Srs(SimContext &ctx);
+    bool hasCoding() const override { return true; }
+    void setCodingBlank(bool blank) override;
+    bool codingBlank() const { return m_codingBlank; }
+    bool crashRecorded() const { return m_crashRecord; }
+    bool lampRequest() const { return m_lamp; }
+    bool buckled() const;
+
+protected:
+    void onWake() override;
+
+private:
+    void task10ms();
+    void task100ms();
+    bool coded(quint8 function) const { return !m_codingBlank && (m_coding & function); }
+
+    quint8 m_coding = kDefaultCoding;
+    bool m_codingBlank = false;
+    int m_seenCrash = 0;
+    bool m_crashRecord = false; ///< non-volatile
+    bool m_crashThisCycle = false;
+    double m_crashDeltaV = 0.0;
+    bool m_crashBelted = false;
+    bool m_lamp = false;
+    /// The module taken out while a blank one is fitted ("unconfigured" fault): a repair puts it back.
+    struct RemovedModule
+    {
+        quint8 coding = kDefaultCoding;
+        bool crashRecord = false;
+        double deltaV = 0.0;
+        bool belted = false;
+    };
+    RemovedModule m_removed;
 };
 
 /// What the instrument cluster currently shows.
@@ -285,6 +337,8 @@ struct ClusterState
     double consumption = -1.0;   ///< l/100 km right now, -1 below walking pace
     double averageConsumption = -1.0; ///< since the trip was reset, -1 for the first 200 m
     double rangeKm = 0.0;
+    bool airbag = false;    ///< airbag warning lamp (only with the SRS)
+    bool seatBelt = false;  ///< belt reminder lit right now (blinks with the chime)
     bool tpms = false;      ///< TPMS lamp lit right now (blinks while tpmsFlash)
     bool tpmsFlash = false; ///< system fault: flashes for 60 s after ignition on, then steady
 };

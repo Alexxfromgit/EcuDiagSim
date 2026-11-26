@@ -6,7 +6,7 @@ namespace ecusim {
 
 namespace {
 constexpr int kEcuCount = 8; // ISO 15765-4 allows eight physical addresses 0x7E0..0x7E7
-const char *kEcuNames[kEcuCount] = {"ECM", "TCM", "ABS", "BCM", "ECU5", "ECU6", "ECU7", "ECU8"};
+const char *kEcuNames[kEcuCount] = {"ECM", "TCM", "ABS", "BCM", "SRS", "ECU6", "ECU7", "ECU8"};
 } // namespace
 
 const DiagResponse *DiagResult::positive() const

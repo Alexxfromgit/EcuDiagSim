@@ -73,6 +73,10 @@ const QList<DidInfo> &didCatalog()
         {0x4010, "Low beam output", DidInfo::U8, 1, 1, 0, ""},
         {0x4011, "Door lock output", DidInfo::U8, 1, 1, 0, ""},
         {0x4004, "Switch inputs (bit0 park brake)", DidInfo::U8, 1, 1, 0, ""},
+        {0x5001, "Driver squib resistance", DidInfo::U16, 2, 0.01, 0, "ohm"},
+        {0x5002, "Passenger squib resistance", DidInfo::U16, 2, 0.01, 0, "ohm"},
+        {0x5003, "Belt switch (bit0 buckled, bit1 circuit open)", DidInfo::U8, 1, 1, 0, ""},
+        {0x5010, "Crash record (stored, delta-v km/h, driver belted)", DidInfo::Raw, 3, 1, 0, ""},
         {0x4020, "Tyre pressure FL", DidInfo::U8, 1, 0.02, 0, "bar"},
         {0x4021, "Tyre pressure FR", DidInfo::U8, 1, 0.02, 0, "bar"},
         {0x4022, "Tyre pressure RL", DidInfo::U8, 1, 0.02, 0, "bar"},
@@ -108,6 +112,11 @@ DecodedValue decodeDid(quint16 did, const QByteArray &data)
     v.name = QString::fromUtf8(info->name);
     v.unit = QString::fromUtf8(info->unit);
 
+    if ((did == 0x5001 || did == 0x5002) && data.size() >= 2 && u8(data, 0) == 0xFF && u8(data, 1) == 0xFF) {
+        v.value = QStringLiteral("open circuit");
+        v.unit.clear();
+        return v;
+    }
     if (did == 0xF414 && data.size() >= 2) {
         // PID 14: A = sensor voltage (0.005 V), B = short term trim it drives, FF = not used for trim.
         v.number = u8(data, 0) * 0.005;

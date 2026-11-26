@@ -1,0 +1,42 @@
+{
+  "name": "Seat belt reminder and an open buckle switch",
+  "description": "The buckle switch is not a plain on/off switch: it has a resistor for buckled and another for unbuckled, so the airbag module can tell an open wire from an unbuckled belt. An open circuit sets B0050 - and the module assumes the worst: unbuckled.",
+  "lesson": "docs/lessons/29-seat-belt-switch.md",
+  "level": "Beginner",
+  "topics": ["SRS", "Sensors", "Warning lamps"],
+  "equipment": ["srs"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 6500 },
+    { "action": "expect", "lamp": "seatBelt", "value": true, "note": "1. Not buckled: the reminder is on" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 30 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">", "value": 25, "timeout": 15000 },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "signal": "BeltChime", "op": "==", "value": 1, "note": "Above 20 km/h it flashes and chimes" },
+    { "action": "input", "name": "seatBelt", "value": true, "note": "2. Buckle up" },
+    { "action": "wait", "ms": 300 },
+    { "action": "expect", "lamp": "seatBelt", "value": false },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 03", "expect": "62 50 03 01", "note": "DID 0x5003: buckled, circuit fine" },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 60 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<", "value": 1, "timeout": 15000 },
+    { "action": "selector", "value": "P" },
+
+    { "action": "inject", "target": "belt_switch", "fault": "open", "note": "3. The connector under the seat comes loose" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "dtc": "B0050-13", "ecu": "SRS", "status": "testFailed", "note": "B0050-13: buckle switch circuit open" },
+    { "action": "expect", "lamp": "seatBelt", "value": true, "note": "Belted - but the module cannot know, so it warns" },
+    { "action": "expect", "lamp": "airbag", "value": true, "note": "... and the airbag lamp: the belt status decides how the airbags fire" },
+    { "action": "uds", "ecu": "SRS", "request": "22 50 03", "expect": "62 50 03 02", "note": "Bit 1: circuit open" },
+
+    { "action": "clearFault", "target": "belt_switch", "note": "4. Connector plugged in" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "uds", "ecu": "SRS", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "seatBelt", "value": false },
+    { "action": "expect", "lamp": "airbag", "value": false }
+  ]
+}

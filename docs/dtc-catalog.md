@@ -94,6 +94,20 @@ cycle after the fault has gone (or until the DTC is cleared). Also U0100-87 and 
 coding (DID 0x0100) is blank. Without the rolling circumference the ABS cannot compute any wheel
 speed: all wheels invalid, `VehicleSpeedValid` = 0, ABS and TCS lamps on, P0500 in the TCM.
 
+## SRS — airbag module (optional equipment)
+
+| Code | Description | Detection |
+|---|---|---|
+| B0001-1A / -1B | Driver frontal stage 1 deployment control: resistance below / above threshold | squib circuit < 1.0 Ω (leads touching) / > 4.0 Ω (open: connector, clock spring, fired airbag) for 2 s |
+| B0010-1A / -1B | Passenger frontal stage 1 deployment control | as above; only tested when the passenger airbag is coded |
+| B0050-13 | Driver seat belt buckle switch circuit open | neither the buckled nor the unbuckled resistance for 2 s |
+| B0052 | Deployment commanded | the airbags fired; stored with the crash record |
+| U3000-55 | Control module not configured | blank coding (new module) |
+
+Every SRS fault lights the airbag lamp. **Clear DTCs is refused (`7F 14 22`) while a crash record is
+stored**; only a new module starts without one. The codes follow the SAE J2012 restraint range
+B0001–B00FF; the descriptions are the ones this simulator uses.
+
 ## BCM — body
 
 | Code | Description | Detection |

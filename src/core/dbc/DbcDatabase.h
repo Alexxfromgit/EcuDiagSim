@@ -21,6 +21,7 @@ constexpr quint32 EcmFuel = 0x310;
 constexpr quint32 EcmMixture = 0x320;
 constexpr quint32 BcmStatus = 0x350;
 constexpr quint32 BcmTpms = 0x360;
+constexpr quint32 SrsStatus = 0x370;
 } // namespace msg
 
 /// The CAN database: single source of truth for message layout.

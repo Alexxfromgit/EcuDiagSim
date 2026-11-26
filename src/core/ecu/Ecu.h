@@ -92,6 +92,8 @@ protected:
     void sendRaw(const QCanBusFrame &frame);
     double rx(quint32 id, const QString &signal, double fallback = 0.0) const;
     bool rxTimedOut(quint32 id) const;
+    /// The message arrived after this time: its values are not left over from an earlier cycle.
+    bool receivedSince(quint32 id, qint64 sinceMs) const;
     /// True once the startup grace period after wake-up is over.
     bool monitoringEnabled() const { return m_cycle && m_now - monitorStartMs() >= kStartupGraceMs; }
     qint64 now() const { return m_now; }

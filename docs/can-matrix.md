@@ -16,6 +16,7 @@ definition is [`resources/dbc/vehicle.dbc`](../resources/dbc/vehicle.dbc); it op
 | 0x320 | ECM_Mixture | ECM | 100 ms | IPC — only with the *Engine OBD pack* |
 | 0x350 | BCM_Status | BCM | 100 ms | ECM, ABS, IPC |
 | 0x360 | BCM_Tpms | BCM | 500 ms | IPC — only with *Tyre pressure monitoring* |
+| 0x370 | SRS_Status | SRS | 100 ms | ECM, BCM, IPC — only with the *Airbag system* |
 
 Lower identifiers have higher priority: safety relevant chassis data comes first. With the ignition
 on the bus carries 330 frames per second, about 8 % load.
@@ -116,6 +117,19 @@ since the trip reset, and the range from the tank level.
 
 The BCM is on permanent supply and sends this message with the ignition off as well.
 
+### 0x370 SRS_Status (airbag system)
+
+| Signal | Start bit | Length | Notes |
+|---|---|---|---|
+| AirbagLampReq | 0 | 1 | fault, blank coding or crash record |
+| BeltWarn / BeltChime | 1 / 2 | 1 | driver not buckled (or buckle circuit open); chime above 20 km/h |
+| DriverBuckled | 3 | 1 | |
+| CrashDetected | 4 | 1 | airbags fired in this ignition cycle: the ECM stops the fuel pump, the BCM unlocks and switches the hazards on |
+| DeltaV | 8 | 8 | km/h of the last deployment |
+
+Receivers only act on `CrashDetected` from a message of the current ignition cycle, never on the value
+left in their receive buffer from before the key was turned off.
+
 ### 0x360 BCM_Tpms (tyre pressure monitoring)
 
 | Signal | Start bit | Length | Notes |
@@ -134,6 +148,7 @@ The BCM is on permanent supply and sends this message with the ignition off as w
 | 0x7E1 / 0x7E9 | TCM request / response |
 | 0x7E2 / 0x7EA | ABS request / response |
 | 0x7E3 / 0x7EB | BCM request / response |
+| 0x7E4 / 0x7EC | SRS request / response (only with the airbag system) |
 
 The response identifier is always the request identifier + 8. The instrument cluster has no
 diagnostic server.

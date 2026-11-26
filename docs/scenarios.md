@@ -25,7 +25,7 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 shows them as tags and filters by level.
 
 `equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`,
-`tpms` (available), `srs`, `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
+`tpms`, `srs` (available), `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
 these, so a lesson always finds what it needs; the lesson card shows them as chips. Base-car lessons
 leave it out.
 
@@ -44,9 +44,11 @@ as *failed* if at least one expectation was not met.
 | `headlamps` | `value`: `"off"`, `"park"`, `"low"` |
 | `parkBrake` | `value`: true / false |
 | `tyre` | `wheel`: `FL`, `FR`, `RL`, `RR`; `value`: cold pressure in bar (placard 2.4) |
+| `crash` | frontal impact at the current speed; the airbag module fires above 20 km/h delta-v |
+| `replaceAirbags` | workshop: new airbags in place of fired ones (the module keeps its crash record) |
 | `fuel` | `value`: litres in the tank (0…55) — empty it, or refuel |
 | `log` | `text`: a line for the lesson log, nothing else happens |
-| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`; `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
+| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`, `seatBelt` (driver buckled, airbag system); `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
 
 ## Time
 
@@ -78,6 +80,9 @@ completed); `clearFault` instead puts the old, configured part back.
 | `ignition_coils` | `misfire`, `p1` = cylinder 1…4 (default 3) — engine OBD pack only |
 | `tyres` | `leak`, `p1` = tyre 1 FL, 2 FR, 3 RL, 4 RR (default 1), 0.6 bar a minute; `clearFault` plugs and inflates |
 | `tpms_fl` `tpms_fr` `tpms_rl` `tpms_rr` | `failure` (flat battery: silent), `unconfigured` (new sensor, new ID) — TPMS only |
+| `airbag_driver` `airbag_passenger` | `open`, `short_gnd` (squib circuit) — airbag system only |
+| `belt_switch` | `open` (buckle switch circuit) — airbag system only |
+| `srs` | `power_loss`, `bus_off`, `unconfigured` (new module: blank coding, no crash record) — airbag system only |
 | `alternator` `cooling` `bulb_low_left` `oil_pump` `park_brake_switch` | `failure` (the switch sticks closed) |
 | `throttle_body` | `unconfigured` — new part, adaptation not learned (run routine 0x0201) |
 | `ecm` `tcm` `abs` `bcm` `ipc` | `power_loss`, `bus_off` |
@@ -91,13 +96,13 @@ completed); `clearFault` instead puts the old, configured part back.
 |---|---|
 | `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
 | `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `notConfirmed`, `absent` |
-| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing); `mil` counts a flashing MIL as on, `milFlashing` checks the flashing alone; `tpms` and `tpmsFlashing` the same way |
+| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing); `mil` counts a flashing MIL as on, `milFlashing` checks the flashing alone; `tpms` and `tpmsFlashing` the same way; `airbag`, `seatBelt` (also while flashing) |
 
 ## Scan tool
 
 | Action | Fields |
 |---|---|
-| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM` or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes), `expectContains`, `expectNotContains`, `expectNoResponse`. A check that is not valid hex fails the step. |
+| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM`, `SRS` (airbag system) or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes), `expectContains`, `expectNotContains`, `expectNoResponse`. A check that is not valid hex fails the step. |
 | `unlock` | `ecu` — extended session plus security access with the correct key |
 
 OBD-II modes go through `uds` as well: `{ "action": "uds", "ecu": "ALL", "request": "03" }`.
