@@ -13,11 +13,18 @@ quint8 crc8J1850(const QByteArray &data);
 class Ecm : public Ecu
 {
 public:
+    static constexpr quint16 kThrottleAdaptation = 0x0201; ///< routine id
+    static constexpr int kAdaptationMs = 3000;
+
     explicit Ecm(SimContext &ctx);
     bool engineRunning() const { return m_running; }
     bool milOn() const { return m_mil; }
     bool limp() const { return m_limp; }
     double coolantUsed() const { return m_coolant; }
+    /// The throttle body's closed position has been learned (false after it was replaced).
+    bool throttleAdapted() const { return m_throttleAdapted; }
+    void setThrottleAdapted(bool adapted) { m_throttleAdapted = adapted; }
+    bool adaptationRunning() const { return m_learn == Learn::Running; }
 
 protected:
     void onWake() override;
@@ -25,9 +32,20 @@ protected:
     void onMessage(quint32 id, const QCanBusFrame &frame) override;
 
 private:
+    enum class Learn : quint8 { Idle = 0, Running = 1, Completed = 2, Aborted = 3, Failed = 4 };
+
     void task10ms();
     void task100ms();
+    /// Drives the throttle plate through its range and learns the closed position.
+    void runAdaptation(double pedal);
+    void abortAdaptation();
+    QByteArray adaptationStatus() const;
 
+    Learn m_learn = Learn::Idle;
+    qint64 m_learnStartMs = 0;
+    double m_learnMaxError = 0.0;
+    double m_learnedClosedVolts = 0.5;
+    bool m_throttleAdapted = true; ///< non-volatile: survives ignition cycles
     double m_rpm = 0.0;
     double m_coolant = 20.0;
     double m_throttlePct = 0.0;
@@ -77,7 +95,14 @@ private:
 class AbsEcu : public Ecu
 {
 public:
+    static constexpr int kDefaultCircumferenceMm = 1948; ///< 2 pi x 0.31 m, the fitted tyres
+    static constexpr quint8 kDefaultFlags = 0x00;
+
     explicit AbsEcu(SimContext &ctx);
+    bool hasCoding() const override { return true; }
+    void setCodingBlank(bool blank) override;
+    bool codingBlank() const { return m_codingBlank; }
+    int circumferenceMm() const { return m_circumferenceMm; }
     bool lampOn() const { return m_lamp; }
     double vehicleSpeed() const { return m_speed; }
     bool wheelValid(int i) const { return m_valid[static_cast<size_t>(i)]; }
@@ -92,6 +117,10 @@ protected:
 private:
     void task10ms();
 
+    // Variant coding, DID 0x0100: flags (bit0 stability control fitted), rolling circumference in mm.
+    quint8 m_codingFlags = kDefaultFlags;
+    int m_circumferenceMm = kDefaultCircumferenceMm;
+    bool m_codingBlank = false;
     std::array<double, 4> m_wheel{};
     std::array<bool, 4> m_valid{true, true, true, true};
     double m_speed = 0.0;
@@ -106,7 +135,19 @@ private:
 class Bcm : public Ecu
 {
 public:
+    /// Variant coding, DID 0x0100.
+    enum Coding : quint8 {
+        LampMonitoring = 0x01, ///< current monitoring of the low beams (B1601, BULB lamp)
+        AutoLock = 0x02,       ///< locks the doors above 15 km/h
+        DaytimeLights = 0x04,  ///< position lamps on while the engine runs
+    };
+    static constexpr quint8 kDefaultCoding = LampMonitoring;
+
     explicit Bcm(SimContext &ctx);
+    bool hasCoding() const override { return true; }
+    void setCodingBlank(bool blank) override;
+    bool codingBlank() const { return m_codingBlank; }
+    quint8 coding() const { return m_coding; }
     // Lamp driver outputs: what the exterior lamps really do (all dark without BCM supply).
     bool lowBeamOn() const { return m_lowBeam; }
     bool highBeamOn() const { return m_highBeam; }
@@ -128,7 +169,12 @@ private:
     bool m_turnLeftOut = false;
     bool m_turnRightOut = false;
     bool m_locked = false;
+    bool m_autoLocked = false;
+    bool m_autoLockArmed = true; ///< auto-lock may fire (once per trip)
+    bool m_lastLockSwitch = false;
     bool m_blink = false;
+    quint8 m_coding = kDefaultCoding;
+    bool m_codingBlank = false;
     int m_lowBeamForced = -1;
     int m_lockForced = -1;
 };

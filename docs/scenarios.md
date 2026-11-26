@@ -63,11 +63,16 @@ check fails; set `"maxAgeMs"` on the step to allow older values.
 | `inject` | `target`, `fault`, optional `p1`, `p2` |
 | `clearFault` | `target`, or `"all"` |
 
+An `unconfigured` fault ends when the scan tool configures the part (coding written, routine
+completed); `clearFault` instead puts the old, configured part back.
+
 | Target | Faults |
 |---|---|
 | `wss_fl` `wss_fr` `wss_rl` `wss_rr` `ckp` `ect` `tps` `tft` | `open`, `short_gnd`, `short_bat`, `stuck` (p1 = value), `offset` (p1), `gain` (p1), `noise` (p1 = sigma), `intermittent` (p1 = period ms, p2 = open share 0…1), `erratic` |
 | `alternator` `cooling` `bulb_low_left` | `failure` |
+| `throttle_body` | `unconfigured` — new part, adaptation not learned (run routine 0x0201) |
 | `ecm` `tcm` `abs` `bcm` `ipc` | `power_loss`, `bus_off` |
+| `abs` `bcm` | also `unconfigured` — replaced module with blank coding (write DID 0x0100) |
 | `abs_e2e` | `frozen_counter`, `bad_checksum` |
 | `can_bus` | `bus_short` |
 

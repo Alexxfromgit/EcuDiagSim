@@ -26,6 +26,7 @@ until the DTC is confirmed and the lamp is requested; before that it is only *pe
 | P0335 | Crankshaft position sensor circuit | no speed signal while cranking or running | 1 | injection off: stall / no start |
 | P0562 | System voltage low | < 11.0 V with engine running for 3 s | 1 | |
 | P0700 | Transmission control system (MIL request) | TCM sets `TcmMilReq` | 1 | MIL |
+| P2176 | Throttle actuator control system, idle position not learned | new throttle body, adaptation (routine 0x0201) not run, 0.2 s | 1 | limp: throttle ≤ 25 %, MIL |
 | U0101-87 | Lost communication with TCM | TCM_Status missing | 1 | no lamp |
 | U0121-87 | Lost communication with ABS | ABS_Status missing | 1 | no lamp |
 | U0140-87 | Lost communication with BCM | BCM_Status missing | 1 | no lamp |
@@ -62,12 +63,17 @@ Reaction: the wheel is flagged invalid on 0x0B0 and left out of the vehicle spee
 control are switched off and both lamps requested. The lamp stays on until the end of the ignition
 cycle after the fault has gone (or until the DTC is cleared). Also U0100-87 and U0140-87.
 
+**U3000-55** — control module not configured (FTB 0x55 = *not configured*, SAE J2012): the variant
+coding (DID 0x0100) is blank. Without the rolling circumference the ABS cannot compute any wheel
+speed: all wheels invalid, `VehicleSpeedValid` = 0, ABS and TCS lamps on, P0500 in the TCM.
+
 ## BCM — body
 
 | Code | Description | Detection |
 |---|---|---|
 | B1318-16 | Battery voltage low | < 11.0 V with ignition on for 3 s |
-| B1601-13 | Left low beam circuit open | no lamp current while the output is on |
+| B1601-13 | Left low beam circuit open | no lamp current while the output is on (only with lamp monitoring coded) |
+| U3000-55 | Control module not configured | variant coding blank for 0.5 s; every coded function is off |
 | U0100-87, U0101-87, U0121-87 | Lost communication with ECM / TCM / ABS | message timeout |
 
 B1318 and B1601 are manufacturer specific examples.

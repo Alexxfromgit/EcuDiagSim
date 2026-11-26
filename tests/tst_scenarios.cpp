@@ -34,6 +34,9 @@ private slots:
     void silentEcmClearsCoolantWarning();
     void runnerInputsAndLamps();
     void dtcExpectationNeedsAKnownDtc();
+    void replacedPartsAndCoding();
+    void throttleAdaptationAbortsAndFails();
+    void autoLockOncePerTrip();
 };
 
 void tst_Scenarios::simulationIsValid()
@@ -324,6 +327,136 @@ void tst_Scenarios::faultTargetsAreConsistent()
     QVERIFY(sim.activeFaults().isEmpty());
     QVERIFY(!sim.injectFault(QStringLiteral("nope"), {FaultType::OpenCircuit}));
     QVERIFY(!sim.injectFault(QStringLiteral("alternator"), {FaultType::OpenCircuit}));
+}
+
+namespace {
+/// Extended session and security access, as the scan tool does it.
+void unlockEcu(Simulation &sim, quint32 requestId)
+{
+    QCOMPARE(ask(sim, requestId, "10 03").left(2), hex("50 03"));
+    const QByteArray seed = ask(sim, requestId, "27 01");
+    QCOMPARE(seed.size(), 6);
+    quint32 s = 0;
+    for (int i = 2; i < 6; ++i)
+        s = (s << 8) | static_cast<quint8>(seed[i]);
+    const quint32 key = securityKeyFromSeed(s);
+    QByteArray request = hex("27 02");
+    for (int shift = 24; shift >= 0; shift -= 8)
+        request.append(static_cast<char>((key >> shift) & 0xFF));
+    QCOMPARE(exchange(sim, requestId, request).responses.value(0).data, hex("67 02"));
+}
+} // namespace
+
+// A replaced module loses its coding; writing it ends the fault, Repair restores the old module,
+// and a custom coding is not touched by unrelated faults on the same control unit.
+void tst_Scenarios::replacedPartsAndCoding()
+{
+    Simulation sim;
+    startEngine(sim);
+    QVERIFY(sim.faultTarget(QStringLiteral("abs"))->faultTypes.contains(FaultType::Unconfigured));
+    QVERIFY(!sim.faultTarget(QStringLiteral("tcm"))->faultTypes.contains(FaultType::Unconfigured));
+
+    // BCM: blank coding switches every coded function off.
+    QVERIFY(sim.injectFault(QStringLiteral("bcm"), {FaultType::Unconfigured}));
+    sim.run(700); // debounced in the 100 ms task
+    QVERIFY(sim.bcm().codingBlank());
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "22 01 00"), hex("62 01 00 FF"));
+    QVERIFY(sim.bcm().dtcs().testFailed(dtc::U3000NotConfigured));
+    unlockEcu(sim, DiagId::BcmRequest);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "2E 01 00 04"), hex("6E 01 00"));
+    QVERIFY(!sim.bcm().codingBlank());
+    QVERIFY(sim.activeFaults().isEmpty()); // configured by the scan tool, not repaired
+    sim.run(700);
+    QVERIFY(!sim.bcm().dtcs().testFailed(dtc::U3000NotConfigured));
+    QVERIFY(sim.bcm().parkLampsOn()); // daytime running lights coded, engine running
+
+    // Power loss and its repair leave the custom coding alone.
+    QVERIFY(sim.injectFault(QStringLiteral("bcm"), {FaultType::PowerLoss}));
+    sim.run(200);
+    sim.clearFault(QStringLiteral("bcm"));
+    sim.run(500);
+    QCOMPARE(sim.bcm().coding(), quint8(Bcm::DaytimeLights));
+
+    // Repair of a blank module = the old one is back with the factory coding.
+    QVERIFY(sim.injectFault(QStringLiteral("abs"), {FaultType::Unconfigured}));
+    sim.run(200);
+    QVERIFY(!sim.abs().wheelValid(0));
+    sim.clearFault(QStringLiteral("abs"));
+    sim.run(200);
+    QVERIFY(!sim.abs().codingBlank());
+    QCOMPARE(sim.abs().circumferenceMm(), AbsEcu::kDefaultCircumferenceMm);
+    QVERIFY(sim.abs().wheelValid(0));
+
+    // A wrong tyre size: no DTC, but every wheel speed is off by the same factor.
+    driveTo(sim, 50.0);
+    unlockEcu(sim, DiagId::AbsRequest);
+    QCOMPARE(ask(sim, DiagId::AbsRequest, "2E 01 00 00 06 D6"), hex("6E 01 00")); // 1750 mm
+    sim.run(200);
+    const double ratio = sim.signal(QStringLiteral("WheelSpeed_FL")) / sim.vehicle().speedKph();
+    QVERIFY2(std::abs(ratio - 1750.0 / 1948.0) < 0.02, qPrintable(QString::number(ratio)));
+    QCOMPARE(sim.signal(QStringLiteral("VehicleSpeedValid")), 1.0);
+}
+
+// Review finding: above 15 km/h the auto-lock locked the doors again 100 ms after the driver
+// unlocked them. It locks once per trip.
+void tst_Scenarios::autoLockOncePerTrip()
+{
+    Simulation sim;
+    startEngine(sim);
+    unlockEcu(sim, DiagId::BcmRequest);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "2E 01 00 03"), hex("6E 01 00")); // + auto-lock
+    driveTo(sim, 30.0);
+    sim.run(300);
+    QVERIFY(sim.bcm().doorsLocked());
+    // The driver locks and unlocks with the switch while driving: it stays unlocked.
+    sim.driver().doorLock = true;
+    sim.run(300);
+    sim.driver().doorLock = false;
+    sim.run(1000);
+    QVERIFY(!sim.bcm().doorsLocked());
+    QVERIFY(sim.vehicle().speedKph() > 15.0);
+}
+
+void tst_Scenarios::throttleAdaptationAbortsAndFails()
+{
+    Simulation sim;
+    sim.driver().ignition = Ignition::On;
+    sim.run(1500);
+    QVERIFY(sim.ecm().throttleAdapted());
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "10 03").left(2), hex("50 03"));
+
+    // The pedal pressed during the routine aborts it.
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 01 02 01").startsWith(hex("71 01 02 01 01")));
+    QVERIFY(sim.ecm().adaptationRunning());
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "31 01 02 01"), hex("7F 31 24")); // already running
+    sim.run(300);
+    QVERIFY(sim.vehicle().throttlePos() > 0.1); // the motor moves the plate with the engine off
+    sim.driver().throttlePedal = 0.5;
+    sim.run(50);
+    QVERIFY(!sim.ecm().adaptationRunning());
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 03 02 01").startsWith(hex("71 03 02 01 03")));
+    sim.driver().throttlePedal = 0.0;
+    sim.run(300);
+    QVERIFY(sim.vehicle().throttlePos() < 0.05);
+
+    // A new throttle body with an unplugged sensor cannot be learned.
+    QVERIFY(sim.injectFault(QStringLiteral("throttle_body"), {FaultType::Unconfigured}));
+    QVERIFY(sim.injectFault(QStringLiteral("tps"), {FaultType::OpenCircuit}));
+    QVERIFY(!sim.ecm().throttleAdapted());
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 01 02 01").startsWith(hex("71 01 02 01 01")));
+    sim.run(Ecm::kAdaptationMs + 100);
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 03 02 01").startsWith(hex("71 03 02 01 04")));
+    QVERIFY(!sim.ecm().throttleAdapted());
+    QCOMPARE(sim.activeFaults().size(), 2);
+
+    // With the sensor repaired it works, and the "replaced" fault is over.
+    sim.clearFault(QStringLiteral("tps"));
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 01 02 01").startsWith(hex("71 01 02 01 01")));
+    sim.run(Ecm::kAdaptationMs + 100);
+    QVERIFY(ask(sim, DiagId::EcmRequest, "31 03 02 01").startsWith(hex("71 03 02 01 02")));
+    QVERIFY(sim.ecm().throttleAdapted());
+    QVERIFY(sim.activeFaults().isEmpty());
+    QVERIFY(ask(sim, DiagId::EcmRequest, "22 10 04").startsWith(hex("62 10 04 01")));
 }
 
 // A blinking turn signal and an open door must not stay lit in the cluster when the BCM

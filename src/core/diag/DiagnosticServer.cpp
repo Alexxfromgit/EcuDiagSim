@@ -45,6 +45,16 @@ void DiagnosticServer::addIoControl(quint16 did, IoApplyFn apply, ReadFn status)
     m_ioControls.insert(did, {std::move(apply), std::move(status)});
 }
 
+void DiagnosticServer::addWritableDid(quint16 did, int length, WriteFn write, bool needsSecurity)
+{
+    m_writable.insert(did, {length, std::move(write), needsSecurity});
+}
+
+void DiagnosticServer::addRoutine(quint16 id, Routine routine)
+{
+    m_routines.insert(id, std::move(routine));
+}
+
 void DiagnosticServer::addObdPid(quint8 pid, ReadFn read)
 {
     m_obdPids.insert(pid, read);
@@ -88,6 +98,7 @@ void DiagnosticServer::powerOnReset()
     // The failed-attempt counter and a running delay survive a reset (they live in
     // non-volatile memory on a real ECU); otherwise resetting would defeat the lockout.
     enterSession(Session::Default);
+    m_startedRoutines.clear();
 }
 
 void DiagnosticServer::tick(qint64 nowMs)
@@ -135,7 +146,8 @@ QByteArray DiagnosticServer::dispatch(const QByteArray &request, bool &suppress)
     // Services with a sub-function carry the suppressPosRspMsgIndicationBit in bit 7.
     QByteArray req = request;
     const bool hasSubFunction = sid == Sid::DiagnosticSessionControl || sid == Sid::EcuReset
-        || sid == Sid::ReadDtcInformation || sid == Sid::SecurityAccess || sid == Sid::TesterPresent;
+        || sid == Sid::ReadDtcInformation || sid == Sid::SecurityAccess || sid == Sid::TesterPresent
+        || sid == Sid::RoutineControl;
     if (hasSubFunction && req.size() >= 2) {
         suppress = u8(req, 1) & 0x80;
         req[1] = static_cast<char>(u8(req, 1) & 0x7F);
@@ -148,7 +160,9 @@ QByteArray DiagnosticServer::dispatch(const QByteArray &request, bool &suppress)
     case Sid::ReadDtcInformation: return readDtcInfo(req);
     case Sid::ReadDataByIdentifier: return readDataById(req);
     case Sid::SecurityAccess: return securityAccess(req);
+    case Sid::WriteDataByIdentifier: return writeDataById(req);
     case Sid::InputOutputControlByIdentifier: return ioControl(req);
+    case Sid::RoutineControl: return routineControl(req);
     case Sid::TesterPresent: return testerPresent(req);
     default: return negative(sid, Nrc::ServiceNotSupported);
     }
@@ -365,6 +379,74 @@ QByteArray DiagnosticServer::ioControl(const QByteArray &req)
     put16(rsp, did);
     rsp.append(static_cast<char>(param));
     rsp.append(it->status());
+    return rsp;
+}
+
+// --- 0x2E -----------------------------------------------------------------
+// Checks in the order of ISO 14229-1 figure 15: session, length, identifier, security, data.
+QByteArray DiagnosticServer::writeDataById(const QByteArray &req)
+{
+    const quint8 sid = Sid::WriteDataByIdentifier;
+    if (m_session == Session::Default)
+        return negative(sid, Nrc::ServiceNotSupportedInActiveSession);
+    if (req.size() < 4)
+        return negative(sid, Nrc::IncorrectMessageLength);
+    const quint16 did = static_cast<quint16>((u8(req, 1) << 8) | u8(req, 2));
+    auto it = m_writable.find(did);
+    if (it == m_writable.end())
+        return negative(sid, Nrc::RequestOutOfRange);
+    if (it->needsSecurity && !m_unlocked)
+        return negative(sid, Nrc::SecurityAccessDenied);
+    const QByteArray data = req.mid(3);
+    if (it->length > 0 && data.size() != it->length)
+        return negative(sid, Nrc::IncorrectMessageLength);
+    if (const quint8 nrc = it->write(data))
+        return negative(sid, nrc);
+    QByteArray rsp = bytes({0x6E});
+    put16(rsp, did);
+    return rsp;
+}
+
+// --- 0x31 -----------------------------------------------------------------
+QByteArray DiagnosticServer::routineControl(const QByteArray &req)
+{
+    const quint8 sid = Sid::RoutineControl;
+    if (m_session == Session::Default)
+        return negative(sid, Nrc::ServiceNotSupportedInActiveSession);
+    if (req.size() < 4)
+        return negative(sid, Nrc::IncorrectMessageLength);
+    const quint8 type = u8(req, 1);
+    if (type < 0x01 || type > 0x03) // start, stop, requestResults
+        return negative(sid, Nrc::SubFunctionNotSupported);
+    const quint16 id = static_cast<quint16>((u8(req, 2) << 8) | u8(req, 3));
+    auto it = m_routines.find(id);
+    if (it == m_routines.end())
+        return negative(sid, Nrc::RequestOutOfRange);
+    if (it->needsSecurity && !m_unlocked)
+        return negative(sid, Nrc::SecurityAccessDenied);
+
+    QByteArray status;
+    if (type == 0x01) {
+        if (const quint8 nrc = it->start(req.mid(4), status))
+            return negative(sid, nrc);
+        m_startedRoutines.insert(id);
+    } else {
+        if (req.size() != 4)
+            return negative(sid, Nrc::IncorrectMessageLength);
+        if ((type == 0x02 && !it->stop) || (type == 0x03 && !it->results))
+            return negative(sid, Nrc::SubFunctionNotSupported);
+        if (!m_startedRoutines.contains(id))
+            return negative(sid, Nrc::RequestSequenceError);
+        if (type == 0x02) {
+            if (const quint8 nrc = it->stop(status))
+                return negative(sid, nrc);
+        } else {
+            status = it->results();
+        }
+    }
+    QByteArray rsp = bytes({0x71, type});
+    put16(rsp, id);
+    rsp.append(status);
     return rsp;
 }
 

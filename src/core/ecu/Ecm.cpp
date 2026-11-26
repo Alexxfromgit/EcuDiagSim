@@ -37,6 +37,7 @@ Ecm::Ecm(SimContext &ctx)
     d.define(dtcDef(P0335, 10, true));
     d.define(dtcDef(P0562, 30, true));
     d.define(dtcDef(P0700, 3, true));
+    d.define(dtcDef(P2176, 20, true));
     d.define(networkDtc(U0101));
     d.define(networkDtc(U0121));
     d.define(networkDtc(U0140));
@@ -74,6 +75,38 @@ Ecm::Ecm(SimContext &ctx)
     s.addDid(0x1003, [this] {
         return encU8((m_running ? 0x01 : 0x00) | (m_limp ? 0x02 : 0x00) | (m_mil ? 0x04 : 0x00));
     });
+    s.addDid(0x1004, [this] {
+        QByteArray a = encU8(m_throttleAdapted ? 1 : 0);
+        a.append(encU16(m_learnedClosedVolts * 1000.0));
+        return a;
+    });
+
+    // --- throttle adaptation: learns the closed position of a new throttle body ---
+    DiagnosticServer::Routine adaptation;
+    adaptation.start = [this](const QByteArray &option, QByteArray &status) -> quint8 {
+        if (!option.isEmpty())
+            return Nrc::IncorrectMessageLength;
+        if (m_learn == Learn::Running)
+            return Nrc::RequestSequenceError;
+        // Ignition on, engine stopped, foot off the pedal, vehicle at rest.
+        const bool moving = !rxTimedOut(msg::AbsStatus) && rx(msg::AbsStatus, QStringLiteral("VehicleSpeed")) > 1.0;
+        if (m_running || m_rpm > 50.0 || m_ctx.driver.throttlePedal > 0.02 || moving)
+            return Nrc::ConditionsNotCorrect;
+        m_learn = Learn::Running;
+        m_learnStartMs = now();
+        m_learnMaxError = 0.0;
+        status = adaptationStatus();
+        return 0;
+    };
+    adaptation.stop = [this](QByteArray &status) -> quint8 {
+        if (m_learn != Learn::Running)
+            return Nrc::RequestSequenceError;
+        abortAdaptation();
+        status = adaptationStatus();
+        return 0;
+    };
+    adaptation.results = [this] { return adaptationStatus(); };
+    s.addRoutine(kThrottleAdaptation, adaptation);
     setSnapshotDids({0xF404, 0xF405, 0xF40C, 0xF40D, 0xF411, 0xF442});
 
     every(10, [this] { task10ms(); });
@@ -93,9 +126,61 @@ void Ecm::onWake()
 void Ecm::onSleep()
 {
     // Without supply the injectors and the throttle actuator are dead.
+    if (m_learn == Learn::Running)
+        abortAdaptation();
     m_ctx.vehicle.fuelEnable = false;
     m_ctx.vehicle.throttleCmd = 0.0;
+    m_ctx.vehicle.throttleMotorOn = false;
     m_running = false;
+}
+
+QByteArray Ecm::adaptationStatus() const
+{
+    QByteArray a = encU8(static_cast<int>(m_learn));
+    a.append(encU16(m_learnedClosedVolts * 1000.0));
+    return a;
+}
+
+void Ecm::abortAdaptation()
+{
+    m_learn = Learn::Aborted;
+    m_ctx.vehicle.throttleMotorOn = false;
+    m_ctx.vehicle.throttleCmd = 0.0;
+}
+
+void Ecm::runAdaptation(double pedal)
+{
+    auto &v = m_ctx.vehicle;
+    const Sensor &tps = m_ctx.sensors.tps;
+    // Somebody pressed the pedal or turned the key to start: the learn is invalid.
+    if (pedal > 0.05 || v.starterEngaged() || m_running) {
+        abortAdaptation();
+        return;
+    }
+    const qint64 t = now() - m_learnStartMs;
+    // Open fully in 1 s, close again in 1 s, then rest closed and measure the stop.
+    const double cmd = t < 1000 ? t / 1000.0 : (t < 2000 ? 1.0 - (t - 1000) / 1000.0 : 0.0);
+    v.throttleMotorOn = true;
+    v.throttleCmd = cmd;
+    // The sensor must follow the plate (the motor needs ~50 ms, hence the tolerance).
+    if (t > 100)
+        m_learnMaxError = std::max(m_learnMaxError, std::abs(tps.value() - cmd * 100.0));
+    if (t < kAdaptationMs)
+        return;
+
+    v.throttleMotorOn = false;
+    v.throttleCmd = 0.0;
+    const double closed = tps.voltage();
+    const bool ok = m_learnMaxError <= 15.0 && closed > 0.2 && closed < 1.0;
+    m_learn = ok ? Learn::Completed : Learn::Failed;
+    if (ok) {
+        m_learnedClosedVolts = closed;
+        if (!m_throttleAdapted) {
+            m_throttleAdapted = true;
+            if (onConfigured)
+                onConfigured(QStringLiteral("throttle_body"));
+        }
+    }
 }
 
 void Ecm::onMessage(quint32 id, const QCanBusFrame &frame)
@@ -156,9 +241,14 @@ void Ecm::task10ms()
         || dtcs().testFailed(P0123);
 
     // Limp home: without a trustworthy throttle feedback the opening is limited.
-    m_limp = tpsFault;
+    // A throttle body whose closed position is unknown cannot be trusted at idle either.
+    dtcs().report(P2176, !m_throttleAdapted);
+    m_limp = tpsFault || !m_throttleAdapted;
     const double pedal = std::clamp(driver.throttlePedal, 0.0, 1.0);
-    v.throttleCmd = m_limp ? std::min(pedal, 0.25) : pedal;
+    if (m_learn == Learn::Running)
+        runAdaptation(pedal);
+    else
+        v.throttleCmd = m_limp ? std::min(pedal, 0.25) : pedal;
     m_throttlePct = tpsFault ? v.throttleCmd * 100.0 : sensors.tps.value();
 
     send(msg::EcmEngine, {{QStringLiteral("EngineRPM"), m_rpm},

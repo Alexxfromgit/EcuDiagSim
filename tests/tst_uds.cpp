@@ -112,6 +112,8 @@ private slots:
     void obdServicesDisabledByDefault();
     void responseTooLong();
     void helperFunctions();
+    void writeDataByIdentifier();
+    void routineControl();
 };
 
 void tst_Uds::sessionControl()
@@ -144,10 +146,10 @@ void tst_Uds::suppressPositiveResponse()
 void tst_Uds::unknownServiceAndFunctionalAddressing()
 {
     Fixture f;
-    QCOMPARE(f.ask("31 01 FF 00"), hex("7F 31 11"));
+    QCOMPARE(f.ask("85 02"), hex("7F 85 11")); // ControlDTCSetting is not implemented
     QCOMPARE(f.ask("22 99 99"), hex("7F 22 31"));
     // Functionally addressed: "not supported" answers are not sent ...
-    QVERIFY(f.ask("31 01 FF 00", true).isEmpty());
+    QVERIFY(f.ask("85 02", true).isEmpty());
     QVERIFY(f.ask("22 99 99", true).isEmpty());
     QVERIFY(f.ask("10 02", true).isEmpty());
     QVERIFY(f.ask("2F 30 10 03 01", true).isEmpty()); // serviceNotSupportedInActiveSession
@@ -199,6 +201,98 @@ void tst_Uds::readDataByIdentifier()
     QCOMPARE(f.ask("22 12 34 F1"), hex("7F 22 13"));
     QVERIFY(f.server.hasDid(0x1234));
     QVERIFY(f.server.readDid(0x9999).isEmpty());
+}
+
+// 0x2E: session, length, identifier, security, data length, value - in this order.
+void tst_Uds::writeDataByIdentifier()
+{
+    Fixture f;
+    QByteArray coding = hex("01");
+    f.server.addWritableDid(0x0100, 1, [&coding](const QByteArray &data) -> quint8 {
+        if (static_cast<quint8>(data[0]) > 0x07)
+            return Nrc::RequestOutOfRange;
+        coding = data;
+        return 0;
+    });
+    f.server.addWritableDid(0x0200, 0, [](const QByteArray &) -> quint8 { return 0; }, false);
+    f.server.addDid(0x0100, [&coding] { return coding; });
+    QVERIFY(f.server.isWritable(0x0100) && !f.server.isWritable(0x1234));
+
+    QCOMPARE(f.ask("2E 01 00 05"), hex("7F 2E 7F"));  // default session
+    f.ask("10 03");
+    QCOMPARE(f.ask("2E 01 00"), hex("7F 2E 13"));     // no data
+    QCOMPARE(f.ask("2E 12 34 00"), hex("7F 2E 31"));  // readable, but not writable
+    QCOMPARE(f.ask("2E 01 00 05"), hex("7F 2E 33"));  // locked
+    QCOMPARE(f.ask("2E 02 00 AA BB CC"), hex("6E 02 00")); // needs no security, any length
+    f.unlock();
+    QCOMPARE(f.ask("2E 01 00 05 06"), hex("7F 2E 13")); // wrong data length
+    QCOMPARE(f.ask("2E 01 00 09"), hex("7F 2E 31"));    // value rejected by the ECU
+    QCOMPARE(coding, hex("01"));
+    QCOMPARE(f.ask("2E 01 00 05"), hex("6E 01 00"));
+    QCOMPARE(f.ask("22 01 00"), hex("62 01 00 05"));
+    // Not answered on the functional address when unsupported.
+    QVERIFY(f.ask("2E 12 34 00", true).isEmpty());
+}
+
+// 0x31: start / stop / results, sequence errors and routine conditions.
+void tst_Uds::routineControl()
+{
+    Fixture f;
+    bool conditionsOk = false;
+    int state = 0; // 0 idle, 1 running, 2 done
+    DiagnosticServer::Routine r;
+    r.start = [&](const QByteArray &option, QByteArray &status) -> quint8 {
+        if (option.size() > 1)
+            return Nrc::IncorrectMessageLength;
+        if (!conditionsOk)
+            return Nrc::ConditionsNotCorrect;
+        state = 1;
+        status = QByteArray(1, static_cast<char>(DiagnosticServer::RoutineRunning));
+        return 0;
+    };
+    r.stop = [&](QByteArray &status) -> quint8 {
+        state = 0;
+        status = QByteArray(1, static_cast<char>(DiagnosticServer::RoutineAborted));
+        return 0;
+    };
+    r.results = [&] { return QByteArray(1, static_cast<char>(state == 2 ? 0x02 : state)); };
+    f.server.addRoutine(0x0201, r);
+    DiagnosticServer::Routine secure;
+    secure.start = [](const QByteArray &, QByteArray &) -> quint8 { return 0; };
+    secure.needsSecurity = true;
+    f.server.addRoutine(0x0401, secure);
+    QVERIFY(f.server.hasRoutine(0x0201) && !f.server.hasRoutine(0x0202));
+
+    QCOMPARE(f.ask("31 01 02 01"), hex("7F 31 7F"));  // default session
+    f.ask("10 03");
+    QCOMPARE(f.ask("31 01 02"), hex("7F 31 13"));
+    QCOMPARE(f.ask("31 04 02 01"), hex("7F 31 12"));  // unknown routine control type
+    QCOMPARE(f.ask("31 01 02 02"), hex("7F 31 31"));  // unknown routine
+    QCOMPARE(f.ask("31 03 02 01"), hex("7F 31 24"));  // results before start
+    QCOMPARE(f.ask("31 02 02 01"), hex("7F 31 24"));  // stop before start
+    QCOMPARE(f.ask("31 01 02 01"), hex("7F 31 22"));  // conditions not met
+    QCOMPARE(f.ask("31 01 02 01 AA BB"), hex("7F 31 13"));
+    conditionsOk = true;
+    QCOMPARE(f.ask("31 01 02 01"), hex("71 01 02 01 01"));
+    QCOMPARE(f.ask("31 03 02 01"), hex("71 03 02 01 01"));
+    QCOMPARE(f.ask("31 03 02 01 00"), hex("7F 31 13")); // results take no option record
+    state = 2;
+    QCOMPARE(f.ask("31 03 02 01"), hex("71 03 02 01 02"));
+    QCOMPARE(f.ask("31 02 02 01"), hex("71 02 02 01 03"));
+    QVERIFY(f.ask("31 81 02 01").isEmpty()); // suppressPosRspMsgIndicationBit
+    QCOMPARE(state, 1);
+
+    // Routines without stop / results, and the security requirement.
+    QCOMPARE(f.ask("31 01 04 01"), hex("7F 31 33"));
+    f.unlock();
+    QCOMPARE(f.ask("31 01 04 01"), hex("71 01 04 01"));
+    QCOMPARE(f.ask("31 02 04 01"), hex("7F 31 12"));
+    QCOMPARE(f.ask("31 03 04 01"), hex("7F 31 12"));
+
+    // A power-on reset forgets which routines ran.
+    f.server.powerOnReset();
+    f.ask("10 03");
+    QCOMPARE(f.ask("31 03 02 01"), hex("7F 31 24"));
 }
 
 void tst_Uds::securityAccess()

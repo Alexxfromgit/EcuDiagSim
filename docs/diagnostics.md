@@ -64,7 +64,9 @@ All four ECUs. A positive response is the service + 0x40; a negative one is `7F 
 | 0x19 ReadDTCInformation | `19 01 mask` count, `19 02 mask` list, `19 0A` all supported, `19 04 DTC 01` snapshot, `19 06 DTC 01` extended data | extended data = occurrence counter, aging counter |
 | 0x22 ReadDataByIdentifier | `22 DID [DID…]` | unsupported identifiers are left out; 0x31 only if none is supported |
 | 0x27 SecurityAccess | `27 01` request seed, `27 02 key` | extended session only |
+| 0x2E WriteDataByIdentifier | `2E DID data` | extended session and unlocked; the ECU checks the length (0x13) and the value (0x31) |
 | 0x2F InputOutputControlByIdentifier | `2F DID 03 state` force, `2F DID 00` release | extended session and unlocked |
+| 0x31 RoutineControl | `31 01 id [option]` start, `31 02 id` stop, `31 03 id` results | extended session; 0x22 when the routine's conditions are not met, 0x24 for stop / results before a start |
 | 0x3E TesterPresent | `3E 00`, or `3E 80` without response | |
 
 Bit 7 of a sub-function suppresses the positive response (`10 83`, `3E 80`).
@@ -88,7 +90,8 @@ key = rotl32(seed XOR 0x5EC0DE5A, 5) + 0x1234ABCD
 | 0x12 | subFunctionNotSupported | `10 02`, `19 55` |
 | 0x13 | incorrectMessageLengthOrInvalidFormat | bytes missing or too many |
 | 0x14 | responseTooLong | the answer would exceed 4095 bytes, the ISO-TP limit |
-| 0x24 | requestSequenceError | key sent without requesting a seed |
+| 0x22 | conditionsNotCorrect | throttle adaptation started with the engine running |
+| 0x24 | requestSequenceError | key sent without requesting a seed; routine results before the routine ran |
 | 0x31 | requestOutOfRange | unknown identifier or DTC |
 | 0x33 | securityAccessDenied | IO control while locked |
 | 0x35 | invalidKey | |
@@ -110,6 +113,9 @@ ECU would reject a request meant for one of them.
 | F40D, F442 | ABS, BCM (F442) | vehicle speed, supply voltage | as PID 0D / 42 |
 | 1001 / 1002 | ECM | coolant / throttle sensor voltage | 2 bytes, mV |
 | 1003 | ECM | state: bit 0 running, bit 1 limp, bit 2 MIL | 1 byte |
+| 1004 | ECM | throttle adaptation: learned (0/1), closed position in mV | 3 bytes |
+| 0100 | ABS | variant coding, **writable**: flags (bit 0 stability control), rolling circumference in mm (1600…2400) | 3 bytes, `FF FF FF` = blank |
+| 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights | 1 byte, `FF` = blank |
 | 2001 / 2002 / 2003 | TCM | gear / fluid temperature (−40) / sensor voltage mV | |
 | 3001…3004 | ABS | wheel speed FL, FR, RL, RR | 2 bytes, 0.01 km/h |
 | 3005 | ABS | brake pressure | 1 byte, bar |
@@ -119,3 +125,12 @@ ECU would reject a request meant for one of them.
 
 IO control identifiers: `3010` ABS warning lamp (ABS), `4010` low beam, `4011` door lock (BCM);
 state `00` off, `01` on.
+
+### Routines
+
+| Routine | ECU | What it does | Conditions | Status record |
+|---|---|---|---|---|
+| 0201 | ECM | throttle adaptation: opens the plate fully, closes it, learns the closed stop (3 s) | ignition on, engine stopped, pedal released, car at rest | status (01 running, 02 completed, 03 aborted, 04 failed), closed position mV (2 bytes) |
+
+Pressing the pedal or cranking aborts the adaptation; it fails if the throttle sensor does not
+follow the plate within 15 %.

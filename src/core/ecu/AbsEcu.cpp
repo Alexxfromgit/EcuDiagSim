@@ -22,8 +22,31 @@ AbsEcu::AbsEcu(SimContext &ctx)
     }
     d.define(networkDtc(U0100));
     d.define(networkDtc(U0140));
+    d.define(dtcDef(U3000NotConfigured, 5));
 
     auto &s = diag();
+    // Variant coding: flags (bit0 stability control fitted), rolling circumference in mm (big endian).
+    s.addDid(0x0100, [this] {
+        if (m_codingBlank)
+            return QByteArray(3, static_cast<char>(0xFF));
+        QByteArray a = encU8(m_codingFlags);
+        a.append(encU16(m_circumferenceMm));
+        return a;
+    });
+    s.addWritableDid(0x0100, 3, [this](const QByteArray &data) -> quint8 {
+        const quint8 flags = static_cast<quint8>(data[0]);
+        const int circumference = (static_cast<quint8>(data[1]) << 8) | static_cast<quint8>(data[2]);
+        if ((flags & 0xFE) != 0 || circumference < 1600 || circumference > 2400)
+            return Nrc::RequestOutOfRange;
+        m_codingFlags = flags;
+        m_circumferenceMm = circumference;
+        if (m_codingBlank) {
+            m_codingBlank = false;
+            if (onConfigured)
+                onConfigured(QStringLiteral("abs"));
+        }
+        return 0;
+    });
     for (int i = 0; i < 4; ++i) {
         s.addDid(static_cast<quint16>(0x3001 + i),
             [this, i] { return encU16(m_wheel[static_cast<size_t>(i)] * 100.0); });
@@ -49,6 +72,18 @@ AbsEcu::AbsEcu(SimContext &ctx)
     every(10, [this] { task10ms(); });
 }
 
+void AbsEcu::setCodingBlank(bool blank)
+{
+    if (blank) {
+        m_codingBlank = true;
+    } else if (m_codingBlank) {
+        // The original module is back, with its coding.
+        m_codingBlank = false;
+        m_codingFlags = kDefaultFlags;
+        m_circumferenceMm = kDefaultCircumferenceMm;
+    }
+}
+
 void AbsEcu::onWake()
 {
     m_valid = {true, true, true, true};
@@ -60,12 +95,16 @@ void AbsEcu::task10ms()
     using namespace dtc;
     auto &wss = m_ctx.sensors.wss;
 
+    // Without a rolling circumference the pulses cannot be turned into a speed.
+    dtcs().report(U3000NotConfigured, m_codingBlank);
+    const double perMm = m_codingBlank ? 0.0 : m_circumferenceMm / static_cast<double>(kDefaultCircumferenceMm);
+
     // --- electrical diagnosis of the sensor lines --------------------------
     std::array<bool, 4> electricalOk{};
     for (int i = 0; i < 4; ++i) {
         const auto idx = static_cast<size_t>(i);
         const CircuitState c = wss[idx].circuit();
-        m_wheel[idx] = wss[idx].value();
+        m_wheel[idx] = wss[idx].value() * perMm;
         electricalOk[idx] = c == CircuitState::Ok;
         dtcs().report(wheel(i, FtbOpen), c == CircuitState::Open);
         dtcs().report(wheel(i, FtbShortGround), c == CircuitState::ShortGround);
@@ -99,7 +138,7 @@ void AbsEcu::task10ms()
         const auto idx = static_cast<size_t>(i);
         const bool stored = dtcs().testFailed(wheel(i, FtbOpen)) || dtcs().testFailed(wheel(i, FtbShortGround))
             || dtcs().testFailed(wheel(i, FtbShortBattery)) || dtcs().testFailed(wheel(i, FtbSignalInvalid));
-        m_valid[idx] = electricalOk[idx] && plausible[idx] && !stored;
+        m_valid[idx] = !m_codingBlank && electricalOk[idx] && plausible[idx] && !stored;
         if (m_valid[idx]) {
             sum += m_wheel[idx];
             ++validCount;

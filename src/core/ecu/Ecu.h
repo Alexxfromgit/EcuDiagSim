@@ -66,6 +66,15 @@ public:
     DiagnosticServer &diag() { return m_server; }
     bool awake() const { return m_awake; }
 
+    /// Called with the fault target id when the scan tool has configured a replaced part
+    /// (coding written, adaptation done), so the simulation can drop that fault.
+    std::function<void(const QString &targetId)> onConfigured;
+
+    /// Control units with a variant coding (DID 0x0100) can be "replaced" with a blank one.
+    virtual bool hasCoding() const { return false; }
+    /// blank = true: coding erased (new module). false: the original coding is back, if it was blank.
+    virtual void setCodingBlank(bool) {}
+
     // fault injection
     void setPowerFault(bool lost) { m_powerFault = lost; }
     bool powerFault() const { return m_powerFault; }

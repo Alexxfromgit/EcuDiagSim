@@ -53,6 +53,11 @@ ApplicationWindow {
 
     SettingsPage { id: settings }
     function openSettings() { settings.open() }
+    function openUds(index) {
+        App.scanner.target = index
+        scannerPanel.showUds()
+        window.currentTab = 2
+    }
     Shortcut { sequence: "F10"; enabled: !settings.visible; onActivated: App.step(10) }
 
     ColumnLayout {

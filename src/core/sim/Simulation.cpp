@@ -33,6 +33,18 @@ Simulation::Simulation(const VehicleConfig &config)
         }
     });
 
+    // The scan tool configured a replaced part (coding written, adaptation learned): the
+    // "unconfigured" fault is over without a repair.
+    for (Ecu *e : ecus())
+        e->onConfigured = [this](const QString &targetId) {
+            for (qsizetype i = 0; i < m_activeFaults.size(); ++i)
+                if (m_activeFaults.at(i).targetId == targetId
+                    && m_activeFaults.at(i).fault.type == FaultType::Unconfigured) {
+                    m_activeFaults.removeAt(i);
+                    return;
+                }
+        };
+
     buildFaultTargets();
 }
 
@@ -121,9 +133,13 @@ void Simulation::buildFaultTargets()
         QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, failure, QStringLiteral("PUMP")});
     m_targets.append({QStringLiteral("bulb_low_left"), QStringLiteral("Left low beam bulb"), QStringLiteral("BCM"),
         FaultTarget::Kind::Component, {}, failure, QStringLiteral("BULB")});
-    const QList<FaultType> ecuFaults = {FaultType::PowerLoss, FaultType::BusOff};
+    m_targets.append({QStringLiteral("throttle_body"), QStringLiteral("Throttle body (electronic throttle)"),
+        QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, {FaultType::Unconfigured}, QStringLiteral("THR")});
     for (Ecu *e : ecus()) {
         const QString name = e->identity().name;
+        QList<FaultType> ecuFaults = {FaultType::PowerLoss, FaultType::BusOff};
+        if (e->hasCoding())
+            ecuFaults.append(FaultType::Unconfigured);
         m_targets.append({name.toLower(), name + QStringLiteral(" - ") + e->identity().description, name,
             FaultTarget::Kind::Ecu, {}, ecuFaults, name});
     }
@@ -153,6 +169,9 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         m_vehicle.coolingFailed = on;
     } else if (id == QLatin1String("bulb_low_left")) {
         m_vehicle.bulbLowLeftOpen = on;
+    } else if (id == QLatin1String("throttle_body")) {
+        // New throttle body: its closed position is unknown. Repair = the old, adapted one is back.
+        m_ecm->setThrottleAdapted(!on);
     } else if (id == QLatin1String("abs_e2e")) {
         m_abs->faultFrozenCounter = fault.type == FaultType::FrozenCounter;
         m_abs->faultBadChecksum = fault.type == FaultType::BadChecksum;
@@ -161,6 +180,7 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
     } else if (Ecu *e = ecu(id)) {
         e->setPowerFault(fault.type == FaultType::PowerLoss);
         e->setBusOff(fault.type == FaultType::BusOff);
+        e->setCodingBlank(fault.type == FaultType::Unconfigured);
     }
 }
 

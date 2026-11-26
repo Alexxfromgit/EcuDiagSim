@@ -1,0 +1,47 @@
+{
+  "name": "Replacement ABS module - variant coding",
+  "description": "A new ABS module arrives with blank coding: without the rolling circumference it cannot turn wheel pulses into a speed. U3000-55, ABS lamp, no vehicle speed - and the TCM complains too. Read the coding, then write it with UDS 0x2E (extended session and security access).",
+  "lesson": "docs/lessons/14-abs-module-coding.md",
+  "level": "Intermediate",
+  "topics": ["ABS", "UDS", "Coding"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+
+    { "action": "inject", "target": "abs", "fault": "unconfigured", "note": "The workshop fits a new ABS module: same part number, but its variant coding is blank" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "dtc": "U3000-55", "ecu": "ABS", "status": "testFailed", "note": "1. The module knows it is not configured: U3000-55" },
+    { "action": "expect", "lamp": "abs", "value": true },
+    { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 0, "note": "Without a rolling circumference there is no vehicle speed" },
+    { "action": "uds", "ecu": "ABS", "request": "22 01 00", "expect": "62 01 00 FF FF FF", "note": "2. Read the coding (DID 0x0100): all FF, blank" },
+
+    { "action": "uds", "ecu": "ABS", "request": "2E 01 00 00 07 9C", "expect": "7F 2E 7F", "note": "3. Writing in the default session is refused" },
+    { "action": "uds", "ecu": "ABS", "request": "10 03", "expect": "50 03" },
+    { "action": "uds", "ecu": "ABS", "request": "2E 01 00 00 07 9C", "expect": "7F 2E 33", "note": "... and without security access too" },
+    { "action": "unlock", "ecu": "ABS" },
+    { "action": "uds", "ecu": "ABS", "request": "2E 01 00 00 09 9C", "expect": "7F 2E 31", "note": "4. 2460 mm is no tyre this car can have: requestOutOfRange" },
+    { "action": "uds", "ecu": "ABS", "request": "2E 01 00 00 07 9C", "expect": "6E 01 00", "note": "Flags 00 (no stability control), circumference 0x079C = 1948 mm" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1, "note": "5. Speed is back at once" },
+    { "action": "expect", "dtc": "U3000-55", "ecu": "ABS", "status": "confirmed", "note": "... but the DTC stays stored" },
+    { "action": "expect", "dtc": "P0500", "ecu": "TCM", "status": "confirmed", "note": "Knock-on: the TCM had no vehicle speed meanwhile" },
+
+    { "action": "uds", "ecu": "ABS", "request": "14 FF FF FF", "expect": "54", "note": "6. Clear the ABS fault memory ..." },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44", "note": "... and the OBD codes of ECM and TCM" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "dtc": "U3000-55", "ecu": "ABS", "status": "absent" },
+    { "action": "expect", "lamp": "abs", "value": false },
+    { "action": "expect", "lamp": "mil", "value": false },
+
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 30 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">", "value": 30, "timeout": 15000, "note": "7. Test drive: the speedometer works" },
+    { "action": "throttle", "value": 0 },
+    { "action": "brake", "value": 60 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": "<", "value": 1, "timeout": 15000 },
+    { "action": "selector", "value": "P" }
+  ]
+}

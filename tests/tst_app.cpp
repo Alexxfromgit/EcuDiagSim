@@ -49,6 +49,7 @@ private slots:
     void settingsArePersisted();
     void equipmentCatalogAndChoice();
     void viewModelsDescribeTheVehicle();
+    void codingReadFillsTheField();
     void pollingDoesNotLeakIntoDtcTable();
     void overlappingRequestsKeepTheirOwnRows();
     void userRequestsAreLoggedAfterResetDuringPoll();
@@ -178,6 +179,19 @@ void tst_App::viewModelsDescribeTheVehicle()
 }
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
+// Review finding: "Read" showed the coding in the values table only; the field to edit kept the example.
+void tst_App::codingReadFillsTheField()
+{
+    Rig r;
+    r.scanner->setTarget(3); // BCM
+    QSignalSpy read(r.scanner, &ScannerViewModel::didRead);
+    r.scanner->udsReadDid(0x0100);
+    r.app.step(200);
+    QCOMPARE(read.size(), 1);
+    QCOMPARE(read.at(0).at(0).toInt(), 0x0100);
+    QCOMPARE(read.at(0).at(1).toString(), QStringLiteral("01"));
+}
+
 void tst_App::pollingDoesNotLeakIntoDtcTable()
 {
     Rig r;

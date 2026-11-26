@@ -156,6 +156,81 @@ Panel {
                 }
                 Item { Layout.fillWidth: true }
             }
+            // Variant coding: read the identifier, edit, write it back (extended session + unlock).
+            Repeater {
+                model: root.scanner.codings
+                RowLayout {
+                    id: coding
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Text { text: "Coding  · 2E"; color: Theme.textDim; font.pixelSize: 12 }
+                    Text { text: coding.modelData.name; color: Theme.text; font.pixelSize: 12; Layout.leftMargin: 8 }
+                    Button {
+                        text: "Read"
+                        onClicked: root.scanner.udsReadDid(coding.modelData.did)
+                    }
+                    TextField {
+                        id: codingValue
+                        Layout.preferredWidth: 110
+                        text: coding.modelData.example
+                        font.family: Theme.mono
+                        selectByMouse: true
+                        onAccepted: root.scanner.udsWriteDid(coding.modelData.did, text)
+                        ToolTip.visible: hovered || activeFocus
+                        ToolTip.text: coding.modelData.hint
+                        // Read puts the current coding into the field, ready to edit and write back.
+                        Connections {
+                            target: root.scanner
+                            function onDidRead(did, hexValue) {
+                                if (did === coding.modelData.did)
+                                    codingValue.text = hexValue
+                            }
+                        }
+                    }
+                    Button {
+                        text: "Write"
+                        onClicked: root.scanner.udsWriteDid(coding.modelData.did, codingValue.text)
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "needs extended session + unlock"
+                        color: Theme.off
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+            // Routines: start, stop, ask for the result.
+            Repeater {
+                model: root.scanner.routines
+                RowLayout {
+                    id: routine
+                    required property var modelData
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Text { text: "Routine  · 31"; color: Theme.textDim; font.pixelSize: 12 }
+                    Text {
+                        text: routine.modelData.name
+                        color: Theme.text
+                        font.pixelSize: 12
+                        Layout.leftMargin: 8
+                        HoverHandler { id: routineHover }
+                        ToolTip.visible: routineHover.hovered
+                        ToolTip.text: routine.modelData.hint
+                    }
+                    Button { text: "Start"; highlighted: true; onClicked: root.scanner.udsRoutine(routine.modelData.id, 1) }
+                    Button { text: "Stop"; onClicked: root.scanner.udsRoutine(routine.modelData.id, 2) }
+                    Button { text: "Result"; onClicked: root.scanner.udsRoutine(routine.modelData.id, 3) }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "needs extended session · " + routine.modelData.hint
+                        color: Theme.off
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+            }
             RowLayout {
                 spacing: 6
                 Text { text: "Raw request"; color: Theme.textDim; font.pixelSize: 12 }
