@@ -981,6 +981,16 @@ void tst_Vehicle::tpmsReplacedSensorAndRelearn()
     driveTo(sim, 20.0);
     QCOMPARE(ask(sim, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
     QCOMPARE(ask(sim, DiagId::BcmRequest, "31 01 03 01"), hex("7F 31 22"));
+
+    // Switching the ignition off ends a relearn: aborted, not "running" with the receiver off.
+    Simulation off(withTpms());
+    off.driver().ignition = Ignition::On;
+    off.run(1500);
+    QCOMPARE(ask(off, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(off, DiagId::BcmRequest, "31 01 03 01").left(5), hex("71 01 03 01 01"));
+    off.driver().ignition = Ignition::Off;
+    off.run(300);
+    QCOMPARE(ask(off, DiagId::BcmRequest, "31 03 03 01").left(5), hex("71 03 03 01 03"));
 }
 
 void tst_Vehicle::tpmsDeadSensorAndManualId()

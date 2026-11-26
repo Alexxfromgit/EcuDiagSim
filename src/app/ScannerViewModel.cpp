@@ -608,10 +608,18 @@ void ScannerViewModel::udsRoutine(int id, int type)
         const QByteArray &d = rsp->data;
         QVariantList rows{valueRow(ecu, QStringLiteral("Routine 0x%1").arg(id, 4, 16, QLatin1Char('0')),
             routineStatusText(static_cast<quint8>(d[4])), {})};
-        if (d.size() >= 7)
+        if (id == Bcm::kTpmsRelearn && d.size() >= 6) {
+            // Status record: state, then one bit per wheel whose sensor ID was learned.
+            static const char *kWheels[4] = {"FL", "FR", "RL", "RR"};
+            QStringList learned;
+            for (int i = 0; i < 4; ++i)
+                learned << (static_cast<quint8>(d[5]) & (1u << i) ? QLatin1String(kWheels[i]) : QLatin1String("--"));
+            rows.append(valueRow(ecu, QStringLiteral("Sensors learned"), learned.join(QLatin1Char(' ')), {}));
+        } else if (d.size() >= 7) {
             rows.append(valueRow(ecu, QStringLiteral("Learned value"),
                 QString::number(((static_cast<quint8>(d[5]) << 8) | static_cast<quint8>(d[6])) / 1000.0, 'f', 3),
                 QStringLiteral("V")));
+        }
         setValues(QStringLiteral("%1: routine control (UDS 31)").arg(ecu), rows);
     });
 }

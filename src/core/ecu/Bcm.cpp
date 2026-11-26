@@ -159,6 +159,10 @@ void Bcm::tpms100ms(bool ignition, double speed)
     }
     m_lastIgnition = ignition;
     if (!ignition || !tpmsActive()) {
+        // The receiver is off: a relearn cannot go on (otherwise it would still report
+        // "running" with the key out, and "failed" at the next ignition on).
+        if (m_tpmsLearn == Learn::Running)
+            m_tpmsLearn = Learn::Aborted;
         m_tpmsLamp = 0;
         return;
     }
