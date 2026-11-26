@@ -403,6 +403,7 @@ void AppController::refuel(double litres)
 void AppController::resetTrip()
 {
     m_sim->ipc().resetTrip();
+    setMessage(QStringLiteral("Trip computer reset"));
 }
 
 QVariantList AppController::doors() const

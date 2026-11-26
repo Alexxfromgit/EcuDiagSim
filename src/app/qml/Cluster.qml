@@ -124,12 +124,15 @@ Panel {
                           : root.c.fuelLevel.toFixed(0) + " l  " + root.c.range.toFixed(0) + " km"
                     color: Theme.textDim
                     font { family: Theme.mono; pixelSize: 10 }
-                    HoverHandler { id: tripHover }
+                    HoverHandler { id: tripHover; cursorShape: root.c.powered ? Qt.PointingHandCursor : Qt.ArrowCursor }
+                    // Like the trip button on a real stalk: a click starts a new trip (average and range).
+                    TapHandler { enabled: root.c.powered; onTapped: App.resetTrip() }
                     ToolTip.visible: tripHover.hovered && root.c.powered
                     ToolTip.text: "Trip computer (IPC, from ECM_Fuel)\n"
                         + "tank " + root.c.fuelLevel.toFixed(1) + " l, range " + root.c.range.toFixed(0) + " km\n"
                         + "fuel rate " + root.c.fuelRate.toFixed(2) + " l/h\n"
                         + "average " + (root.c.averageConsumption < 0 ? "--" : root.c.averageConsumption.toFixed(1) + " l/100 km")
+                        + "\n\nClick to reset the trip"
                 }
                 Text {
                     Layout.alignment: Qt.AlignHCenter
