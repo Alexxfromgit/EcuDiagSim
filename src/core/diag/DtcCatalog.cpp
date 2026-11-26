@@ -70,8 +70,16 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             list.append({wheel(i, FtbShortBattery), "ABS", kWheelText[i], "Sensor line shorted to battery for 0.2 s."});
             list.append({wheel(i, FtbOpen), "ABS", kWheelText[i], "Sensor circuit open for 0.2 s."});
             list.append({wheel(i, FtbSignalInvalid), "ABS", kWheelText[i],
-                "Speed deviates more than 25 % from the median of the other wheels above 10 km/h for 0.5 s."});
+                "Speed deviates more than 25 % from the median of the other wheels and from the other wheel on its side "
+                "(cornering) above 10 km/h for 0.5 s."});
         }
+        list.append({C0460Low, "ABS", "Steering angle sensor circuit low", "Sensor voltage below 0.2 V for 0.2 s."});
+        list.append({C0460Calibration, "ABS", "Steering angle sensor missing calibration",
+            "No zero point learned (new module or sensor). Run routine 0x0401 with the wheels straight."});
+        list.append({C0460Plausibility, "ABS", "Steering angle sensor signal plausibility failure",
+            "Above 30 km/h with no yaw for 3 s the steering angle reads more than 8 deg (e.g. after a wheel alignment)."});
+        list.append({C0196Low, "ABS", "Yaw rate sensor circuit low", "Sensor voltage below 0.2 V for 0.2 s."});
+        list.append({C0196High, "ABS", "Yaw rate sensor circuit high", "Sensor voltage above 4.8 V for 0.2 s."});
         for (int i = 0; i < 2; ++i) {
             const char *text = i == 0 ? "Driver frontal stage 1 deployment control" : "Passenger frontal stage 1 deployment control";
             list.append({squib(i, FtbResistanceLow), "SRS", text, "Squib circuit below 1.0 ohm for 2 s (short between the leads)."});

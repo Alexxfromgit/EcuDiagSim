@@ -169,6 +169,16 @@ void tst_App::equipmentCatalogAndChoice()
     QCOMPARE(scanner->codings().size(), 1);
     app.setEquipment({});
     QCOMPARE(scanner->target(), 0); // the module is gone
+
+    // The ABS offers the steering angle calibration only with stability control.
+    scanner->setTarget(2);
+    QCOMPARE(scanner->routines().size(), 0);
+    QCOMPARE(scanner->codings().value(0).toMap().value(QStringLiteral("example")).toString(), QStringLiteral("00 07 9C"));
+    app.setEquipment({QStringLiteral("esc")});
+    QCOMPARE(scanner->routines().size(), 1);
+    // The coding example keeps the ESC flag: writing it must not code the stability control out.
+    QCOMPARE(scanner->codings().value(0).toMap().value(QStringLiteral("example")).toString(), QStringLiteral("01 07 9C"));
+    app.setEquipment({});
 }
 
 void tst_App::viewModelsDescribeTheVehicle()

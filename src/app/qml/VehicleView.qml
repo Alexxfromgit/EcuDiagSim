@@ -45,6 +45,8 @@ Panel {
         // tyre pressure monitoring: the sensors sit on the valves
         "tpms_fl": { x: 81, y: 124, left: true }, "tpms_fr": { x: 285, y: 124 },
         "tpms_rl": { x: 81, y: 396, left: true }, "tpms_rr": { x: 285, y: 396 },
+        // stability control
+        "sas": { x: 150, y: 188, left: true }, "yaw": { x: 240, y: 250 },
         // airbag system
         "airbag_driver": { x: 124, y: 214, left: true }, "airbag_passenger": { x: 242, y: 214 },
         "belt_switch": { x: 118, y: 306, left: true },
@@ -71,13 +73,19 @@ Panel {
     // Fresh vehicle that has never run.
     readonly property bool waiting: !App.running && App.simTime === 0 && !App.replaying
 
-    // Distance rolled, drives the tyre tread animation.
-    property real roll: 0
+    // Distance each tyre has rolled, drives its tread animation: a locked wheel stands still
+    // while the car slides, the inner wheels of a corner turn slower.
+    property var rolls: [0, 0, 0, 0]
     FrameAnimation {
         running: root.animate && root.v.speed > 0.05
         onTriggered: {
-            const r = root.roll + root.v.velocity / 3.6 * frameTime * App.speedFactor * 9
-            root.roll = ((r % 8) + 8) % 8
+            const sign = root.v.velocity < 0 ? -1 : 1
+            const next = []
+            for (let i = 0; i < 4; ++i) {
+                const r = root.rolls[i] + sign * root.v.wheels[i] / 3.6 * frameTime * App.speedFactor * 9
+                next.push(((r % 8) + 8) % 8)
+            }
+            root.rolls = next
         }
     }
 
@@ -354,6 +362,10 @@ Panel {
     component Wheel: Rectangle {
         id: tyre
         property real bar: 2.4 // cold pressure
+        property real roll: 0
+        property real steer: 0 // degrees, + = left
+        rotation: -steer
+        Behavior on rotation { NumberAnimation { duration: App.reducedMotion ? 0 : 120 } }
         readonly property bool soft: bar < 2.1
         readonly property bool flat: bar < 1.8
         width: 24; height: 64; radius: 7
@@ -369,7 +381,7 @@ Panel {
             Rectangle {
                 required property int index
                 x: 3; width: tyre.width - 6; height: 2; radius: 1
-                y: index * 8 + root.roll - 8
+                y: index * 8 + tyre.roll - 8
                 color: "#262c36"
             }
         }
@@ -468,10 +480,10 @@ Panel {
                     }
 
                     // ---------- wheels ----------
-                    Wheel { x: 76; y: 72; bar: root.v.tyres[0] }
-                    Wheel { x: 280; y: 72; bar: root.v.tyres[1] }
-                    Wheel { x: 76; y: 344; bar: root.v.tyres[2] }
-                    Wheel { x: 280; y: 344; bar: root.v.tyres[3] }
+                    Wheel { x: 76; y: 72; bar: root.v.tyres[0]; roll: root.rolls[0]; steer: root.v.roadWheelAngle }
+                    Wheel { x: 280; y: 72; bar: root.v.tyres[1]; roll: root.rolls[1]; steer: root.v.roadWheelAngle }
+                    Wheel { x: 76; y: 344; bar: root.v.tyres[2]; roll: root.rolls[2] }
+                    Wheel { x: 280; y: 344; bar: root.v.tyres[3]; roll: root.rolls[3] }
                     // park brake: the rear brakes glow while it is applied
                     Glow { cx: 88; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }
                     Glow { cx: 292; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }

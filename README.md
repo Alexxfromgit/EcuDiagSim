@@ -19,13 +19,13 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 
 | Area | Details |
 |---|---|
-| Vehicle | Longitudinal model with a 6-speed automatic and a park brake, coolant / transmission temperature, battery and alternator, fuel tank with consumption and overrun cut-off, oil pressure; trip computer in the cluster |
-| Sensors | 4 wheel speed, crankshaft, coolant temperature, throttle position, oil pressure, fuel level, transmission fluid temperature; optional mass air flow and oxygen sensor, optional TPMS radio sensors in the wheels, optional airbag squibs and belt buckle switch — analog ones modelled as a voltage at the ECU pin |
+| Vehicle | Longitudinal and lateral model (steering, yaw, understeer, per-wheel brake slip on dry / wet / snow / ice) with a 6-speed automatic and a park brake, coolant / transmission temperature, battery and alternator, fuel tank with consumption and overrun cut-off, oil pressure; trip computer in the cluster |
+| Sensors | 4 wheel speed, crankshaft, coolant temperature, throttle position, oil pressure, fuel level, transmission fluid temperature; optional mass air flow and oxygen sensor, optional TPMS radio sensors in the wheels, optional airbag squibs and belt buckle switch, optional steering angle and yaw rate sensors — analog ones modelled as a voltage at the ECU pin |
 | Faults | Open circuit, short to ground / battery, stuck, offset, gain, noise, intermittent, erratic; alternator, water pump, oil pump and bulb failures, stuck park brake switch; replaced parts without coding or adaptation; ECU power loss and bus-off; wrong checksum / frozen alive counter; CAN wiring short |
 | CAN | ID-priority arbitration, real bit timing and bus load, signals defined in [`resources/dbc/vehicle.dbc`](resources/dbc/vehicle.dbc), end-to-end protection (CRC-8 + alive counter) |
 | Fault memory | ISO 14229 status byte, counter debounce, pending / confirmed with one- and two-trip DTCs, lamp healing, aging, snapshots (freeze frames) |
 | Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2E (coding), 0x2F, 0x31 (routines), 0x3E with negative response codes and S3 timeout |
-| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, twenty-nine scripted lessons in JSON |
+| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, thirty-two scripted lessons in JSON |
 
 ## Download
 
@@ -166,8 +166,11 @@ step. The same lessons run as automated tests.
 | 27 | [Airbag lamp, open squib circuit](docs/lessons/27-airbag-clock-spring.md) ✚ | Intermediate | squib monitoring, the clock spring, codes that come back |
 | 28 | [Crash and the crash record](docs/lessons/28-crash-record.md) ✚ | Advanced | one message, three ECUs react; data no tool can erase; module replacement |
 | 29 | [Seat belt buckle switch](docs/lessons/29-seat-belt-switch.md) ✚ | Beginner | resistor-coded switches, the safe assumption |
+| 30 | [Braking on ice, ABS at work](docs/lessons/30-abs-on-ice.md) | Intermediate | slip control, steering while braking, what an ABS lamp means |
+| 31 | [Steering angle calibration](docs/lessons/31-steering-angle-calibration.md) ◆ | Intermediate | plausibility of two sensors, calibration with preconditions |
+| 32 | [ESC on snow, yaw sensor failure](docs/lessons/32-esc-on-snow.md) ◆ | Advanced | understeer, torque reduction over CAN, layered degradation |
 
-⚙ needs the *Engine OBD pack*, ◎ *Tyre pressure monitoring*, ✚ the *Airbag system*; the lesson fits it for its run.
+⚙ needs the *Engine OBD pack*, ◎ *Tyre pressure monitoring*, ✚ the *Airbag system*, ◆ *Stability control (ESC)*; the lesson fits it for its run.
 
 ## Documentation
 
@@ -176,7 +179,7 @@ step. The same lessons run as automated tests.
 - [DTC catalog](docs/dtc-catalog.md) — every fault code and how it is detected
 - [Diagnostics reference](docs/diagnostics.md) — supported OBD-II and UDS services, identifiers, security access
 - [Scenario format](docs/scenarios.md) — write your own lessons
-- [Lessons](#lessons) — twenty-nine guided lessons, from a first sensor fault to fuel trims, TPMS and airbags
+- [Lessons](#lessons) — thirty-two guided lessons, from a first sensor fault to fuel trims, TPMS, airbags and ESC
 
 ## Scope and simplifications
 

@@ -135,6 +135,10 @@ struct SensorSet
     // engine OBD pack (fitted only with Equipment::EngineObd)
     Sensor maf;                ///< mass air flow (ECM)
     Sensor o2;                 ///< upstream oxygen sensor, bank 1 sensor 1 (ECM)
+    // stability control (fitted only with Equipment::Esc)
+    Sensor sas;                ///< steering angle sensor in the column (ABS/ESC)
+    Sensor yaw;                ///< yaw rate sensor under the centre console (ABS/ESC)
+    void fitEsc(bool fitted);
     std::array<TpmsSensor, 4> tpms{{{0x1A2B3C11, 0x1A2B3C11, 0x1A2B3C11}, {0x1A2B3C22, 0x1A2B3C22, 0x1A2B3C22},
         {0x1A2B3C33, 0x1A2B3C33, 0x1A2B3C33}, {0x1A2B3C44, 0x1A2B3C44, 0x1A2B3C44}}}; ///< FL, FR, RL, RR
 

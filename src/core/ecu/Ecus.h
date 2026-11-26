@@ -140,6 +140,14 @@ class AbsEcu : public Ecu
 public:
     static constexpr int kDefaultCircumferenceMm = 1948; ///< 2 pi x 0.31 m, the fitted tyres
     static constexpr quint8 kDefaultFlags = 0x00;
+    static constexpr quint8 kFlagEsc = 0x01;
+    static constexpr quint16 kSasCalibration = 0x0401; ///< routine id
+    quint8 defaultFlags() const { return m_esc ? kFlagEsc : kDefaultFlags; }
+    bool escFitted() const { return m_esc; }
+    bool escActive() const { return m_escActive; }
+    bool escOff() const { return m_escOff; }
+    bool absActive() const { return m_absActive; }
+    bool sasCalibrated() const { return m_sasCalibrated; }
 
     explicit AbsEcu(SimContext &ctx);
     bool hasCoding() const override { return true; }
@@ -156,6 +164,7 @@ public:
 
 protected:
     void onWake() override;
+    void onSleep() override;
 
 private:
     void task10ms();
@@ -172,6 +181,21 @@ private:
     int m_lampForced = -1; ///< IO control: -1 = ECU in control, 0/1 = forced state
     int m_counter = 0;
     int m_txCycle = 0;
+    // anti-lock control
+    double m_vRef = 0.0; ///< reference speed: what the car does, estimated from the wheels
+    std::array<double, 4> m_pressure{1.0, 1.0, 1.0, 1.0};
+    std::array<double, 4> m_lockLevel{1.0, 1.0, 1.0, 1.0}; ///< pressure at which each wheel last let go
+    bool m_absActive = false;
+    // stability control
+    void esc10ms();
+    bool m_esc = false;
+    double m_sasZero = 0.0;      ///< learned straight-ahead reading (non-volatile)
+    bool m_sasCalibrated = true;
+    int m_straightMs = 0;
+    bool m_escActive = false;
+    bool m_escOff = false;
+    double m_angle = 0.0;
+    double m_yaw = 0.0;
 };
 
 /// Body control module: ignition state, exterior lights, doors, battery voltage.
@@ -339,6 +363,8 @@ struct ClusterState
     double rangeKm = 0.0;
     bool airbag = false;    ///< airbag warning lamp (only with the SRS)
     bool seatBelt = false;  ///< belt reminder lit right now (blinks with the chime)
+    bool esc = false;       ///< ESC lamp: steady = off/fault, blinking = intervening
+    bool escFlash = false;
     bool tpms = false;      ///< TPMS lamp lit right now (blinks while tpmsFlash)
     bool tpmsFlash = false; ///< system fault: flashes for 60 s after ignition on, then steady
 };

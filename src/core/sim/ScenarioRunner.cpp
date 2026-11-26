@@ -188,6 +188,18 @@ void ScenarioRunner::execute(const QJsonObject &step)
     } else if (action == QLatin1String("parkBrake")) {
         driver.parkBrake = value.toBool() || value.toString() == QLatin1String("on");
         act(QStringLiteral("Park brake %1").arg(driver.parkBrake ? QLatin1String("applied") : QLatin1String("released")));
+    } else if (action == QLatin1String("steering")) {
+        driver.steering = std::clamp(value.toDouble(), -540.0, 540.0);
+        act(QStringLiteral("Steering wheel at %1 deg").arg(driver.steering));
+    } else if (action == QLatin1String("surface")) {
+        const qsizetype index = QStringList{QStringLiteral("dry"), QStringLiteral("wet"), QStringLiteral("snow"),
+            QStringLiteral("ice")}.indexOf(value.toString().toLower());
+        if (index < 0) {
+            fail(QStringLiteral("Unknown road surface '%1'").arg(value.toString()));
+        } else {
+            driver.surface = static_cast<int>(index);
+            act(QStringLiteral("Road: %1").arg(value.toString()));
+        }
     } else if (action == QLatin1String("crash")) {
         act(QStringLiteral("Frontal crash at %1 km/h").arg(m_sim.vehicle().speedKph(), 0, 'f', 0));
         m_sim.crash();
@@ -354,6 +366,10 @@ void ScenarioRunner::expect(const QJsonObject &step)
             actual = c.mil || c.milFlash; // flashing counts as on
         else if (lamp == QLatin1String("milFlashing"))
             actual = c.milFlash;
+        else if (lamp == QLatin1String("esc"))
+            actual = c.esc || c.escFlash;
+        else if (lamp == QLatin1String("escFlashing"))
+            actual = c.escFlash;
         else if (lamp == QLatin1String("airbag"))
             actual = c.airbag;
         else if (lamp == QLatin1String("seatBelt"))

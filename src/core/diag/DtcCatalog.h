@@ -59,6 +59,12 @@ constexpr quint8 FtbShortBattery = 0x12;
 constexpr quint8 FtbOpen = 0x13;
 constexpr quint8 FtbSignalInvalid = 0x29;
 constexpr quint32 wheel(int index, quint8 ftb) { return saeDtc('C', kWheelBase[index], ftb); }
+// ABS/ESC: steering angle sensor (C0460) and yaw rate sensor (C0196)
+constexpr quint32 C0460Low = saeDtc('C', 0x0460, 0x11);
+constexpr quint32 C0460Calibration = saeDtc('C', 0x0460, 0x54);
+constexpr quint32 C0460Plausibility = saeDtc('C', 0x0460, 0x64);
+constexpr quint32 C0196Low = saeDtc('C', 0x0196, 0x11);
+constexpr quint32 C0196High = saeDtc('C', 0x0196, 0x12);
 // SRS: driver / passenger frontal squib (SAE J2012 B0001 / B0010) with FTB 1A low / 1B high
 // resistance, driver belt buckle switch circuit open, deployment commanded (crash record)
 constexpr quint8 FtbResistanceLow = 0x1A;

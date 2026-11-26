@@ -71,7 +71,7 @@ const QList<EquipmentInfo> &VehicleConfig::catalog()
                            "control and a steering angle calibration routine."),
             {QStringLiteral("Steering angle sensor"), QStringLiteral("Yaw rate sensor"), QStringLiteral("ESC lamp"),
                 QStringLiteral("C0196, C0460")},
-            false},
+            true},
     };
     return kCatalog;
 }

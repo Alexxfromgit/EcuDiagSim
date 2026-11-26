@@ -13,6 +13,7 @@ Simulation::Simulation(const VehicleConfig &config)
         m_error = QStringLiteral("CAN database: ") + m_dbc.errorString();
 
     m_sensors.fitEngineObd(m_config.has(Equipment::EngineObd));
+    m_sensors.fitEsc(m_config.has(Equipment::Esc));
     m_ctx = std::make_unique<SimContext>(SimContext{m_bus, m_dbc, m_vehicle, m_driver, m_sensors, m_config});
     m_abs = std::make_unique<AbsEcu>(*m_ctx);
     m_ecm = std::make_unique<Ecm>(*m_ctx);
@@ -132,7 +133,10 @@ void Simulation::buildFaultTargets()
         FaultType::Erratic};
     for (Sensor *s : m_sensors.all()) {
         const Sensor::Config &c = s->config();
-        m_targets.append({c.id, c.name, c.ecu, FaultTarget::Kind::Sensor, c.unit, analog, c.label});
+        QList<FaultType> types = analog;
+        if (c.id == QLatin1String("sas"))
+            types.append(FaultType::Unconfigured); // wheel alignment: steering wheel re-centred, sensor not
+        m_targets.append({c.id, c.name, c.ecu, FaultTarget::Kind::Sensor, c.unit, types, c.label});
     }
     const QList<FaultType> failure = {FaultType::Failure};
     m_targets.append({QStringLiteral("alternator"), QStringLiteral("Alternator"), QStringLiteral("ECM"),
@@ -198,7 +202,10 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
 {
     const bool on = fault.type != FaultType::None;
     if (Sensor *s = m_sensors.byId(id)) {
-        s->setFault(fault);
+        if (id == QLatin1String("sas") && fault.type == FaultType::Unconfigured)
+            m_vehicle.sasMountOffset += 15.0; // the sensor now reads 15 deg more with the wheel straight
+        else
+            s->setFault(fault);
     } else if (id == QLatin1String("alternator")) {
         m_vehicle.alternatorFailed = on;
     } else if (id == QLatin1String("cooling")) {
@@ -270,6 +277,10 @@ void Simulation::clearFault(const QString &targetId)
 {
     for (qsizetype i = 0; i < m_activeFaults.size(); ++i) {
         if (m_activeFaults.at(i).targetId == targetId) {
+            // Undoing the wheel alignment puts the steering wheel back where the sensor expects it.
+            // Relative, because a calibration in between may have learned an earlier offset.
+            if (targetId == QLatin1String("sas") && m_activeFaults.at(i).fault.type == FaultType::Unconfigured)
+                m_vehicle.sasMountOffset -= 15.0;
             m_activeFaults.removeAt(i);
             applyFault(targetId, {});
             return;

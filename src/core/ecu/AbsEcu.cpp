@@ -23,8 +23,37 @@ AbsEcu::AbsEcu(SimContext &ctx)
     d.define(networkDtc(U0100));
     d.define(networkDtc(U0140));
     d.define(dtcDef(U3000NotConfigured, 5));
+    m_esc = ctx.config.has(Equipment::Esc);
+    m_codingFlags = defaultFlags();
 
     auto &s = diag();
+    if (m_esc) {
+        d.define(dtcDef(C0460Low, 20));
+        d.define(dtcDef(C0460Calibration, 1));
+        d.define(dtcDef(C0460Plausibility, 50));
+        d.define(dtcDef(C0196Low, 20));
+        d.define(dtcDef(C0196High, 20));
+        s.addDid(0x3020, [this] { return encU16((m_angle + 3276.8) * 10.0); });
+        s.addDid(0x3021, [this] { return encU16((m_yaw + 327.68) * 100.0); });
+        s.addDid(0x3022, [this] { return encU8(m_sasCalibrated ? 1 : 0); });
+        // Steering angle calibration: learns the current reading as straight ahead.
+        DiagnosticServer::Routine calibration;
+        calibration.needsSecurity = true;
+        calibration.start = [this](const QByteArray &option, QByteArray &status) -> quint8 {
+            if (!option.isEmpty())
+                return Nrc::IncorrectMessageLength;
+            if (m_speed > 1.0 || m_ctx.sensors.sas.voltage() < 0.2)
+                return Nrc::ConditionsNotCorrect;
+            m_sasZero = m_ctx.sensors.sas.value();
+            m_sasCalibrated = true;
+            m_straightMs = 0;
+            if (onConfigured)
+                onConfigured(QStringLiteral("sas")); // a re-centred steering wheel is configured now
+            status = encU8(DiagnosticServer::RoutineCompleted);
+            return 0;
+        };
+        s.addRoutine(kSasCalibration, calibration);
+    }
     // Variant coding: flags (bit0 stability control fitted), rolling circumference in mm (big endian).
     s.addDid(0x0100, [this] {
         if (m_codingBlank)
@@ -36,7 +65,7 @@ AbsEcu::AbsEcu(SimContext &ctx)
     s.addWritableDid(0x0100, 3, [this](const QByteArray &data) -> quint8 {
         const quint8 flags = static_cast<quint8>(data[0]);
         const int circumference = (static_cast<quint8>(data[1]) << 8) | static_cast<quint8>(data[2]);
-        if ((flags & 0xFE) != 0 || circumference < 1600 || circumference > 2400)
+        if ((flags & ~kFlagEsc) != 0 || ((flags & kFlagEsc) && !m_esc) || circumference < 1600 || circumference > 2400)
             return Nrc::RequestOutOfRange;
         m_codingFlags = flags;
         m_circumferenceMm = circumference;
@@ -72,16 +101,74 @@ AbsEcu::AbsEcu(SimContext &ctx)
     every(10, [this] { task10ms(); });
 }
 
+void AbsEcu::onSleep()
+{
+    // Without supply the hydraulic unit is passive: plain brakes, no ESC.
+    m_ctx.vehicle.absPressure = {1.0, 1.0, 1.0, 1.0};
+    m_ctx.vehicle.escBrakeDecel = 0.0;
+    m_pressure = {1.0, 1.0, 1.0, 1.0};
+    m_absActive = m_escActive = false;
+}
+
 void AbsEcu::setCodingBlank(bool blank)
 {
     if (blank) {
         m_codingBlank = true;
+        m_sasCalibrated = false; // a new module has never seen this steering wheel
     } else if (m_codingBlank) {
         // The original module is back, with its coding.
         m_codingBlank = false;
-        m_codingFlags = kDefaultFlags;
+        m_codingFlags = defaultFlags();
+        m_sasCalibrated = true;
+        m_sasZero = 0.0;
         m_circumferenceMm = kDefaultCircumferenceMm;
     }
+}
+
+void AbsEcu::esc10ms()
+{
+    using namespace dtc;
+    const Sensor &sas = m_ctx.sensors.sas;
+    const Sensor &yaw = m_ctx.sensors.yaw;
+    const bool sasLow = sas.voltage() < 0.2;
+    const bool yawLow = yaw.voltage() < 0.2;
+    const bool yawHigh = yaw.voltage() > 4.8;
+    dtcs().report(C0460Low, sasLow);
+    dtcs().report(C0196Low, yawLow);
+    dtcs().report(C0196High, yawHigh);
+    dtcs().report(C0460Calibration, !m_sasCalibrated);
+    m_angle = sas.value() - m_sasZero;
+    m_yaw = yaw.value();
+
+    // Driving straight on (no yaw) above 30 km/h for 3 s: the steering wheel must be straight too.
+    const bool sensorsOk = !sasLow && !yawLow && !yawHigh;
+    if (sensorsOk && m_sasCalibrated && m_speed > 30.0) {
+        m_straightMs = std::abs(m_yaw) < 1.5 ? m_straightMs + 10 : 0;
+        if (m_straightMs >= 3000)
+            dtcs().report(C0460Plausibility, std::abs(m_angle) > 8.0);
+    } else {
+        m_straightMs = 0;
+    }
+
+    bool escWarning = false;
+    for (quint32 code : {C0460Low, C0460Calibration, C0460Plausibility, C0196Low, C0196High})
+        escWarning = escWarning || (dtcs().status(code) & DtcStatus::WarningIndicatorRequested);
+    m_escOff = m_codingBlank || !(m_codingFlags & kFlagEsc) || !m_sasCalibrated || !sensorsOk || escWarning;
+
+    // What the driver asks for (steering angle and speed) against what the car does (yaw rate).
+    // Clearly less yaw than asked: the car pushes wide (understeer) - brake and cut the torque.
+    const double wheelRad = m_angle / VehicleModel::kSteeringRatio * 3.141592653589793 / 180.0;
+    const double expected = m_speed / 3.6 / VehicleModel::kWheelbase * std::tan(wheelRad) * 180.0 / 3.141592653589793;
+    const bool understeer = m_speed > 15.0 && std::abs(expected) > 3.0 && std::abs(m_yaw) < std::abs(expected) - 4.0;
+    m_escActive = !m_escOff && understeer;
+    m_ctx.vehicle.escBrakeDecel = m_escActive ? 2.5 : 0.0;
+
+    if (m_txCycle % 2 == 0)
+        send(msg::AbsChassis, {{QStringLiteral("SteeringAngle"), m_angle},
+                                  {QStringLiteral("YawRate"), m_yaw},
+                                  {QStringLiteral("EscActive"), m_escActive ? 1 : 0},
+                                  {QStringLiteral("EscOff"), m_escOff ? 1 : 0},
+                                  {QStringLiteral("SasCalibrated"), m_sasCalibrated ? 1 : 0}});
 }
 
 void AbsEcu::onWake()
@@ -112,6 +199,9 @@ void AbsEcu::task10ms()
     }
 
     // --- plausibility: compare each wheel with the median of the others ----
+    // In a tight corner the inner wheels turn up to a third slower than the outer ones. The two
+    // wheels on one side run on nearly the same radius, so a wheel that matches the other wheel
+    // on its side is cornering, not a sensor fault.
     std::array<bool, 4> plausible{true, true, true, true};
     for (int i = 0; i < 4; ++i) {
         const auto idx = static_cast<size_t>(i);
@@ -126,7 +216,10 @@ void AbsEcu::task10ms()
         std::sort(others.begin(), others.end());
         const double reference = others[others.size() / 2];
         if (reference > 10.0 || m_wheel[idx] > 10.0) {
-            plausible[idx] = std::abs(m_wheel[idx] - reference) <= 0.25 * std::max(reference, 10.0);
+            const auto within = [](double a, double b) { return std::abs(a - b) <= 0.25 * std::max(b, 10.0); };
+            const size_t sameSide = idx ^ 2u; // FL <-> RL, FR <-> RR
+            plausible[idx] = within(m_wheel[idx], reference)
+                || (electricalOk[sameSide] && within(m_wheel[idx], m_wheel[sameSide]));
             dtcs().report(wheel(i, FtbSignalInvalid), !plausible[idx]);
         }
     }
@@ -148,9 +241,49 @@ void AbsEcu::task10ms()
     m_speed = validCount > 0 ? sum / validCount : 0.0;
 
     // With any wheel speed in doubt ABS and traction control are switched off and the lamp is lit.
-    const bool degraded = validCount < 4 || dtcs().warningRequested();
+    // Only the wheel sensors and the coding take the ABS down; a stability control fault does not.
+    bool absWarning = dtcs().status(U3000NotConfigured) & DtcStatus::WarningIndicatorRequested;
+    for (int i = 0; i < 4; ++i)
+        for (quint8 ftb : {FtbOpen, FtbShortGround, FtbShortBattery, FtbSignalInvalid})
+            absWarning = absWarning || (dtcs().status(wheel(i, ftb)) & DtcStatus::WarningIndicatorRequested);
+    const bool degraded = validCount < 4 || absWarning;
     m_lamp = m_lampForced >= 0 ? m_lampForced == 1 : degraded;
-    const bool absActive = !degraded && m_ctx.driver.brakePedal > 0.8 && m_speed > 20.0;
+
+    // --- anti-lock control: hold every wheel within 15 % of the car's speed -----------------
+    // The reference speed comes from the fastest trustworthy wheel; the car itself cannot slow
+    // down faster than about 1.3 g, so all wheels locking together does not fool it.
+    double fastest = 0.0;
+    for (int i = 0; i < 4; ++i)
+        if (electricalOk[static_cast<size_t>(i)])
+            fastest = std::max(fastest, m_wheel[static_cast<size_t>(i)]);
+    m_vRef = std::max(fastest, m_vRef - 1.3 * 9.81 * 3.6 * 0.01);
+    const bool braking = m_ctx.vehicle.brakePressureBar() > 5.0;
+    m_absActive = false;
+    for (int i = 0; i < 4; ++i) {
+        const auto idx = static_cast<size_t>(i);
+        double &p = m_pressure[idx];
+        if (!degraded && braking && m_vRef > 5.0) {
+            const double slip = (m_vRef - m_wheel[idx]) / m_vRef;
+            // Dump while the wheel slips and remember the level where it let go; then rebuild
+            // quickly to just below that level and creep up slowly: most of the time is spent
+            // right under the grip limit, which is what makes ABS stop shorter than locked wheels.
+            double &limit = m_lockLevel[idx];
+            if (slip > 0.15) {
+                limit = p;
+                p = std::max(0.0, p * 0.5);
+            } else if (slip < 0.05) {
+                p = std::min(1.0, p < 0.9 * limit ? p + 0.05 : p + 0.002);
+            }
+        } else {
+            p = 1.0;
+            m_lockLevel[idx] = 1.0;
+        }
+        m_absActive = m_absActive || p < 0.98;
+    }
+    m_ctx.vehicle.absPressure = m_pressure;
+    const bool absActive = m_absActive;
+    if (m_esc)
+        esc10ms();
 
     // --- ABS_WheelSpeeds with end-to-end protection -------------------------
     if (!faultFrozenCounter)
@@ -180,7 +313,7 @@ void AbsEcu::task10ms()
                                  {QStringLiteral("VehicleSpeedValid"), m_speedValid ? 1 : 0},
                                  {QStringLiteral("AbsActive"), absActive ? 1 : 0},
                                  {QStringLiteral("AbsLampReq"), m_lamp ? 1 : 0},
-                                 {QStringLiteral("TcsLampReq"), m_lamp ? 1 : 0}});
+                                 {QStringLiteral("TcsLampReq"), m_lamp || (m_esc && m_escOff) ? 1 : 0}});
     }
 }
 

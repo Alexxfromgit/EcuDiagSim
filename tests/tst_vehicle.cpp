@@ -44,6 +44,11 @@ private slots:
     void srsLampCheckAndSquibs();
     void srsCrashDeploysAndLocksTheRecord();
     void srsSeatBelt();
+    void absOnIce();
+    void steeringAndUndersteer();
+    void tightTurnIsNoWheelSensorFault();
+    void escInterventionAndDegradation();
+    void escSteeringAngleCalibration();
 };
 
 namespace {
@@ -52,6 +57,38 @@ VehicleConfig obdPack()
     VehicleConfig c;
     c.fit(Equipment::EngineObd);
     return c;
+}
+
+VehicleConfig withEsc()
+{
+    VehicleConfig c;
+    c.fit(Equipment::Esc);
+    return c;
+}
+
+/// Full braking on ice from 50 km/h: returns the stopping distance in metres and counts the
+/// milliseconds above 10 km/h in which the front left wheel stood still (at walking pace ABS
+/// lets the wheels lock, as real systems do).
+double brakeOnIce(Simulation &sim, int &lockedMs, double &maxYaw)
+{
+    startEngine(sim);
+    driveTo(sim, 50.0, 0.6);
+    sim.driver().throttlePedal = 0.0;
+    sim.driver().surface = 3;
+    sim.driver().brakePedal = 1.0;
+    sim.driver().steering = 60.0; // and try to steer round the obstacle
+    double distance = 0.0;
+    lockedMs = 0;
+    maxYaw = 0.0;
+    for (int i = 0; i < 30000 && sim.vehicle().speedKph() > 0.5; ++i) {
+        distance += sim.vehicle().speedKph() / 3.6 * 0.001;
+        if (sim.vehicle().speedKph() > 10.0) {
+            lockedMs += sim.vehicle().wheelLocked(0) ? 1 : 0;
+            maxYaw = std::max(maxYaw, sim.vehicle().yawRate());
+        }
+        sim.step();
+    }
+    return distance;
 }
 
 VehicleConfig withSrs()
@@ -1182,6 +1219,179 @@ void tst_Vehicle::srsSeatBelt()
     QVERIFY(sim.srs()->dtcs().testFailed(dtc::B0050BeltSwitch));
     QCOMPARE(sim.signal(QStringLiteral("BeltWarn")), 1.0);
     QCOMPARE(ask(sim, DiagId::SrsRequest, "22 50 03"), hex("62 50 03 02"));
+}
+
+// The ABS is base equipment: on ice it keeps the wheels turning and stops shorter than locked wheels.
+void tst_Vehicle::absOnIce()
+{
+    Simulation sim;
+    int lockedMs = 0;
+    double yawAbs = 0.0;
+    const double withAbs = brakeOnIce(sim, lockedMs, yawAbs);
+    QVERIFY2(withAbs > 40.0 && withAbs < 120.0, qPrintable(QString::number(withAbs))); // about 0.1-0.2 g on ice
+
+    // A wheel speed sensor fault switches the ABS off (lamp on): the wheels lock.
+    Simulation broken;
+    QVERIFY(broken.injectFault(QStringLiteral("wss_fl"), {FaultType::OpenCircuit}));
+    int brokenLockedMs = 0;
+    double yawLocked = 0.0;
+    brakeOnIce(broken, brokenLockedMs, yawLocked);
+    QVERIFY(broken.ipc().state().abs);
+    // With ABS a wheel only touches the lock for a few milliseconds per cycle; without, it stays locked.
+    QVERIFY2(lockedMs * 3 < brokenLockedMs, qPrintable(QStringLiteral("%1 ms vs %2 ms").arg(lockedMs).arg(brokenLockedMs)));
+    // That is the point of ABS: the car can still be steered while braking. Locked front wheels cannot.
+    QVERIFY2(yawAbs > 2.0, qPrintable(QString::number(yawAbs)));
+    QVERIFY2(yawLocked < 0.5, qPrintable(QString::number(yawLocked)));
+    QCOMPARE(sim.abs().dtcs().storedCount(), 0); // modulation is no fault
+
+    // On a dry road a full pedal never locks anything, ABS or not.
+    Simulation dry;
+    startEngine(dry);
+    driveTo(dry, 80.0, 0.8);
+    dry.driver().throttlePedal = 0.0;
+    dry.driver().brakePedal = 1.0;
+    bool anyLock = false, anyAbs = false;
+    for (int i = 0; i < 5000; ++i) {
+        dry.step();
+        anyLock = anyLock || dry.vehicle().wheelLocked(0);
+        anyAbs = anyAbs || dry.abs().absActive();
+    }
+    QVERIFY(!anyLock && !anyAbs);
+}
+
+void tst_Vehicle::steeringAndUndersteer()
+{
+    Simulation sim;
+    startEngine(sim);
+    driveTo(sim, 50.0);
+    sim.driver().steering = 90.0; // 6 deg at the road wheels, a left turn
+    sim.run(2000);
+    const double v = sim.vehicle().speedKph() / 3.6;
+    const double kinematic = v / VehicleModel::kWheelbase * std::tan(6.0 * 3.14159265 / 180.0) * 180.0 / 3.14159265;
+    QVERIFY2(std::abs(sim.vehicle().yawRate() - kinematic) < 2.0, qPrintable(QString::number(sim.vehicle().yawRate())));
+    // Left turn: the left wheels run on the inside.
+    QVERIFY(sim.vehicle().wheelSpeedKph(0) < sim.vehicle().wheelSpeedKph(1));
+    QCOMPARE(sim.abs().dtcs().storedCount(), 0);
+
+    // The same on snow: the tyres cannot hold the corner, the car turns less than steered.
+    sim.driver().surface = 2;
+    sim.run(2000);
+    const double vSnow = sim.vehicle().speedKph() / 3.6;
+    const double asked = vSnow / VehicleModel::kWheelbase * std::tan(6.0 * 3.14159265 / 180.0) * 180.0 / 3.14159265;
+    QVERIFY(sim.vehicle().yawRate() < asked - 4.0);
+}
+
+// Parking-speed manoeuvring at full lock: the inner wheels turn a third slower than the outer
+// ones. That is cornering, not a broken wheel speed sensor.
+void tst_Vehicle::tightTurnIsNoWheelSensorFault()
+{
+    Simulation sim;
+    startEngine(sim);
+    driveTo(sim, 16.0, 0.3);
+    sim.driver().throttlePedal = 0.12;
+    sim.driver().steering = 540.0;
+    sim.run(4000);
+    QVERIFY2(sim.vehicle().wheelSpeedKph(0) < 0.8 * sim.vehicle().wheelSpeedKph(1),
+        qPrintable(QStringLiteral("%1 / %2").arg(sim.vehicle().wheelSpeedKph(0)).arg(sim.vehicle().wheelSpeedKph(1))));
+    QVERIFY(sim.vehicle().speedKph() > 10.0);
+    QCOMPARE(sim.abs().dtcs().storedCount(), 0);
+    QVERIFY(!sim.ipc().state().abs);
+
+    // A sensor that really reads wrong is still caught in the same corner.
+    QVERIFY(sim.injectFault(QStringLiteral("wss_rl"), {FaultType::Gain, 0.4, 0.0, true}));
+    sim.run(1500);
+    QVERIFY(sim.abs().dtcs().testFailed(dtc::wheel(2, dtc::FtbSignalInvalid)));
+}
+
+void tst_Vehicle::escInterventionAndDegradation()
+{
+    Simulation sim(withEsc());
+    QVERIFY(sim.sensors().byId(QStringLiteral("sas")));
+    QCOMPARE(sim.abs().defaultFlags(), quint8(AbsEcu::kFlagEsc));
+    sim.driver().surface = 2;
+    startEngine(sim);
+    driveTo(sim, 60.0, 0.8);
+    sim.run(1000);
+    QVERIFY(!sim.abs().escOff());
+    QVERIFY(!sim.ipc().state().esc);
+    const double before = sim.vehicle().speedKph();
+    sim.driver().steering = 120.0;
+    QVERIFY(sim.runUntil([&] { return sim.abs().escActive(); }, 2000));
+    sim.run(100);
+    QCOMPARE(sim.signal(QStringLiteral("EscActive")), 1.0);
+    QVERIFY(sim.ipc().state().escFlash);
+    sim.run(1500);
+    QVERIFY(sim.vehicle().speedKph() < before - 5.0);   // braked and torque cut
+    QVERIFY(sim.vehicle().throttlePos() < 0.2);
+    sim.driver().steering = 0.0;
+    QVERIFY(sim.runUntil([&] { return !sim.abs().escActive(); }, 3000));
+
+    // Yaw rate sensor unplugged: ESC switches off, the ABS stays on.
+    QVERIFY(sim.injectFault(QStringLiteral("yaw"), {FaultType::OpenCircuit}));
+    sim.run(500);
+    QVERIFY(sim.abs().dtcs().testFailed(dtc::C0196Low));
+    QVERIFY(sim.abs().escOff());
+    QVERIFY(sim.ipc().state().esc && !sim.ipc().state().escFlash);
+    QVERIFY(!sim.ipc().state().abs);
+    sim.driver().steering = 120.0;
+    sim.run(1500);
+    QVERIFY(!sim.abs().escActive()); // no help any more
+    sim.driver().steering = 0.0;
+    sim.driver().brakePedal = 1.0;
+    QVERIFY(sim.runUntil([&] { return sim.abs().absActive(); }, 1000));
+}
+
+// A wheel alignment re-centres the steering wheel; the sensor's zero point must follow.
+void tst_Vehicle::escSteeringAngleCalibration()
+{
+    Simulation sim(withEsc());
+    QVERIFY(sim.faultTarget(QStringLiteral("sas"))->faultTypes.contains(FaultType::Unconfigured));
+    startEngine(sim);
+    QVERIFY(sim.injectFault(QStringLiteral("sas"), {FaultType::Unconfigured}));
+    driveTo(sim, 40.0, 0.5);
+    sim.run(5000); // straight on, no yaw - but the sensor reads 15 deg
+    QVERIFY(sim.abs().dtcs().testFailed(dtc::C0460Plausibility));
+    QVERIFY(sim.abs().escOff());
+    QVERIFY(sim.ipc().state().esc);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle")) - 15.0) < 0.5);
+
+    // Not while moving, and only unlocked.
+    QCOMPARE(ask(sim, DiagId::AbsRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(sim, DiagId::AbsRequest, "31 01 04 01"), hex("7F 31 33"));
+    QCOMPARE(unlockAndAsk(sim, DiagId::AbsRequest, "31 01 04 01"), hex("7F 31 22"));
+    sim.driver().throttlePedal = 0.0;
+    sim.driver().brakePedal = 0.6;
+    QVERIFY(sim.runUntil([&] { return sim.vehicle().speedKph() < 0.5; }, 20000));
+    sim.driver().brakePedal = 0.0;
+    sim.run(200);
+    QCOMPARE(unlockAndAsk(sim, DiagId::AbsRequest, "31 01 04 01"), hex("71 01 04 01 02"));
+    QVERIFY(sim.activeFaults().isEmpty());
+    sim.run(100);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle"))) < 0.5);
+    QCOMPARE(ask(sim, DiagId::AbsRequest, "14 FF FF FF"), hex("54"));
+    driveTo(sim, 40.0, 0.5);
+    sim.run(5000);
+    QVERIFY(!sim.abs().dtcs().testFailed(dtc::C0460Plausibility));
+    QVERIFY(!sim.abs().escOff());
+
+    // Review finding: a second alignment after the calibration, then Repair, left the sensor 15 deg
+    // off the other way. The offset is relative to what was calibrated.
+    QVERIFY(sim.injectFault(QStringLiteral("sas"), {FaultType::Unconfigured}));
+    sim.run(100);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle")) - 15.0) < 0.5);
+    sim.clearFault(QStringLiteral("sas"));
+    sim.run(100);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle"))) < 0.5);
+
+    // A new ABS module has never seen this steering wheel.
+    QVERIFY(sim.injectFault(QStringLiteral("abs"), {FaultType::Unconfigured}));
+    sim.run(200);
+    QVERIFY(sim.abs().dtcs().testFailed(dtc::C0460Calibration));
+    // Without ESC the flag cannot be coded.
+    Simulation base;
+    base.driver().ignition = Ignition::On;
+    base.run(1500);
+    QCOMPARE(unlockAndAsk(base, DiagId::AbsRequest, "2E 01 00 01 07 9C"), hex("7F 2E 31"));
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

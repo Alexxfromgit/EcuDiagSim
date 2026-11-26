@@ -43,7 +43,7 @@ void tst_Scenarios::simulationIsValid()
 {
     Simulation sim;
     QVERIFY2(sim.isValid(), qPrintable(sim.errorString()));
-    QCOMPARE(sim.dbc().messages().size(), 10);
+    QCOMPARE(sim.dbc().messages().size(), 11);
 }
 
 // The verification flow from the project plan, step by step.

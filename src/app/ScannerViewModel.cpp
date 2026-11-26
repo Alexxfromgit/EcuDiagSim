@@ -46,7 +46,7 @@ QList<quint16> liveDids(int target)
     case 0: return {0xF40C, 0xF40D, 0xF405, 0xF411, 0xF404, 0xF442, 0xF42F, 0x1001, 0x1002, 0x1003, 0x1005,
         0xF406, 0xF407, 0xF410, 0xF414, 0x1010}; // the last ones only with the engine OBD pack
     case 1: return {0x2001, 0x2002, 0x2003, 0xF40D, 0xF442};
-    case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442};
+    case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442, 0x3020, 0x3021, 0x3022}; // last: ESC only
     case 4: return {0x5001, 0x5002, 0x5003, 0x5010}; // airbag module
     default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442, 0x4020, 0x4021, 0x4022, 0x4023}; // tyres: TPMS only
     }
@@ -109,10 +109,14 @@ QVariantList ScannerViewModel::codings() const
             {QStringLiteral("hint"), hint}, {QStringLiteral("example"), example}};
     };
     switch (m_target) {
-    case 2:
+    case 2: {
+        // With ESC fitted the factory flags are 01: an example of 00 would code the ESC out.
+        const bool esc = m_app->sim().abs().escFitted();
         return {item(0x0100, QStringLiteral("Variant coding"),
-            QStringLiteral("3 bytes: flags (bit0 stability control), rolling circumference in mm, e.g. 07 9C = 1948 mm"),
-            QStringLiteral("00 07 9C"))};
+            QStringLiteral("3 bytes: flags (bit0 stability control%1), rolling circumference in mm, e.g. 07 9C = 1948 mm")
+                .arg(esc ? QStringLiteral(", fitted: keep it set") : QStringLiteral(", not fitted: 00")),
+            esc ? QStringLiteral("01 07 9C") : QStringLiteral("00 07 9C"))};
+    }
     case 4:
         return {item(0x0100, QStringLiteral("Variant coding"),
             QStringLiteral("1 byte: bit0 passenger airbag fitted, bit1 seat belt reminder"), QStringLiteral("03"))};
@@ -141,6 +145,11 @@ QVariantList ScannerViewModel::routines() const
                 QStringLiteral("Forgets the learned long-term fuel trim, e.g. after fixing a vacuum leak.")));
         return list;
     }
+    case 2:
+        if (m_app->sim().abs().escFitted())
+            return {item(AbsEcu::kSasCalibration, QStringLiteral("Steering angle calibration"),
+                QStringLiteral("Wheels straight, car at rest, extended session + unlock: learns straight ahead."))};
+        return {};
     case 3:
         if (m_app->sim().bcm().tpmsFitted())
             return {item(Bcm::kTpmsRelearn, QStringLiteral("TPMS sensor relearn"),

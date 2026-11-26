@@ -58,6 +58,8 @@ class AppController : public QObject
     Q_PROPERTY(QVariantList doors READ doors NOTIFY inputsChanged)
     Q_PROPERTY(bool parkBrake READ parkBrake WRITE setParkBrake NOTIFY inputsChanged)
     Q_PROPERTY(bool seatBelt READ seatBelt WRITE setSeatBelt NOTIFY inputsChanged)
+    Q_PROPERTY(double steering READ steering WRITE setSteering NOTIFY inputsChanged)
+    Q_PROPERTY(int surface READ surface WRITE setSurface NOTIFY inputsChanged)
 
     // --- vehicle state for the views ---
     Q_PROPERTY(QVariantMap cluster READ cluster NOTIFY frameUpdated)
@@ -143,6 +145,10 @@ public:
     void setParkBrake(bool on);
     bool seatBelt() const { return m_sim->driver().seatBelt; }
     void setSeatBelt(bool on);
+    double steering() const { return m_sim->driver().steering; }
+    void setSteering(double degrees);
+    int surface() const { return m_sim->driver().surface; }
+    void setSurface(int surface);
 
     QVariantMap cluster() const;
     QVariantMap vehicle() const;
