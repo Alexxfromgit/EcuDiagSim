@@ -170,6 +170,7 @@ private:
     bool m_turnRightOut = false;
     bool m_locked = false;
     bool m_autoLocked = false;
+    bool m_autoLockArmed = true; ///< auto-lock may fire (once per trip)
     bool m_lastLockSwitch = false;
     bool m_blink = false;
     quint8 m_coding = kDefaultCoding;

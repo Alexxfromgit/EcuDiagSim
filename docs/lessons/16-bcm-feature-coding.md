@@ -9,7 +9,7 @@ byte) has a bit per function:
 | Bit | Function |
 |---|---|
 | 0 (`01`) | lamp monitoring — current check of the low beams, **B1601** and the **BULB** tell-tale |
-| 1 (`02`) | auto-lock — locks the doors above 15 km/h; an opened door or the central locking switch ends it |
+| 1 (`02`) | auto-lock — locks the doors once per trip above 15 km/h; an opened door or the central locking switch ends it |
 | 2 (`04`) | daytime running lights — the position lamps light while the engine runs |
 
 ## Steps

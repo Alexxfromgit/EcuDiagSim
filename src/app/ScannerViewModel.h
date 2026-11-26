@@ -92,6 +92,8 @@ signals:
     void valuesChanged();
     void stateChanged();
     void pollModeChanged();
+    /// A data identifier was read (UDS 22): its value as hex, e.g. for the coding field.
+    void didRead(int did, const QString &hexValue);
 
 private:
     quint32 targetId() const { return 0x7E0 + static_cast<quint32>(m_target); }

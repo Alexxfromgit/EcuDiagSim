@@ -61,10 +61,10 @@ check fails; set `"maxAgeMs"` on the step to allow older values.
 | Action | Fields |
 |---|---|
 | `inject` | `target`, `fault`, optional `p1`, `p2` |
+| `clearFault` | `target`, or `"all"` |
 
 An `unconfigured` fault ends when the scan tool configures the part (coding written, routine
 completed); `clearFault` instead puts the old, configured part back.
-| `clearFault` | `target`, or `"all"` |
 
 | Target | Faults |
 |---|---|

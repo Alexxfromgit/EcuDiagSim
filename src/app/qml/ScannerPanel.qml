@@ -179,6 +179,14 @@ Panel {
                         onAccepted: root.scanner.udsWriteDid(coding.modelData.did, text)
                         ToolTip.visible: hovered || activeFocus
                         ToolTip.text: coding.modelData.hint
+                        // Read puts the current coding into the field, ready to edit and write back.
+                        Connections {
+                            target: root.scanner
+                            function onDidRead(did, hexValue) {
+                                if (did === coding.modelData.did)
+                                    codingValue.text = hexValue
+                            }
+                        }
                     }
                     Button {
                         text: "Write"

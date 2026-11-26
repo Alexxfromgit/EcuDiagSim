@@ -36,6 +36,7 @@ private slots:
     void dtcExpectationNeedsAKnownDtc();
     void replacedPartsAndCoding();
     void throttleAdaptationAbortsAndFails();
+    void autoLockOncePerTrip();
 };
 
 void tst_Scenarios::simulationIsValid()
@@ -394,6 +395,26 @@ void tst_Scenarios::replacedPartsAndCoding()
     const double ratio = sim.signal(QStringLiteral("WheelSpeed_FL")) / sim.vehicle().speedKph();
     QVERIFY2(std::abs(ratio - 1750.0 / 1948.0) < 0.02, qPrintable(QString::number(ratio)));
     QCOMPARE(sim.signal(QStringLiteral("VehicleSpeedValid")), 1.0);
+}
+
+// Review finding: above 15 km/h the auto-lock locked the doors again 100 ms after the driver
+// unlocked them. It locks once per trip.
+void tst_Scenarios::autoLockOncePerTrip()
+{
+    Simulation sim;
+    startEngine(sim);
+    unlockEcu(sim, DiagId::BcmRequest);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "2E 01 00 03"), hex("6E 01 00")); // + auto-lock
+    driveTo(sim, 30.0);
+    sim.run(300);
+    QVERIFY(sim.bcm().doorsLocked());
+    // The driver locks and unlocks with the switch while driving: it stays unlocked.
+    sim.driver().doorLock = true;
+    sim.run(300);
+    sim.driver().doorLock = false;
+    sim.run(1000);
+    QVERIFY(!sim.bcm().doorsLocked());
+    QVERIFY(sim.vehicle().speedKph() > 15.0);
 }
 
 void tst_Scenarios::throttleAdaptationAbortsAndFails()

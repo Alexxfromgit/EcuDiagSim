@@ -118,13 +118,18 @@ void Bcm::task100ms()
         dtcs().report(B1601, v.bulbLowLeftOpen);
 
     // Auto-lock above 15 km/h with all doors shut; ends with ignition off, an opened door or
-    // a press on the central locking switch.
+    // a press on the central locking switch. It locks once per trip: a driver who unlocks while
+    // driving stays unlocked until a door was opened or the ignition switched off.
     const bool anyDoorOpen = in.doorAjar[0] || in.doorAjar[1] || in.doorAjar[2] || in.doorAjar[3];
     const double speed = rxTimedOut(msg::AbsStatus) ? 0.0 : rx(msg::AbsStatus, QStringLiteral("VehicleSpeed"));
-    if (!ignition || anyDoorOpen || in.doorLock != m_lastLockSwitch || !coded(AutoLock))
+    if (!ignition || anyDoorOpen)
+        m_autoLockArmed = true;
+    if (!ignition || anyDoorOpen || in.doorLock != m_lastLockSwitch || !coded(AutoLock)) {
         m_autoLocked = false;
-    else if (speed > 15.0 && !in.doorLock)
+    } else if (m_autoLockArmed && speed > 15.0 && !in.doorLock) {
         m_autoLocked = true;
+        m_autoLockArmed = false;
+    }
     m_lastLockSwitch = in.doorLock;
 
     send(msg::BcmStatus, {{QStringLiteral("IgnitionState"), static_cast<int>(in.ignition)},

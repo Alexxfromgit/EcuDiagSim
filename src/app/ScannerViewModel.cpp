@@ -550,11 +550,14 @@ void ScannerViewModel::udsReadDid(int did)
     request.append(static_cast<char>(did >> 8));
     request.append(static_cast<char>(did & 0xFF));
     const QString ecu = DiagnosticTester::ecuName(targetId());
-    send(targetId(), request, [this, ecu](const DiagResult &r) {
+    send(targetId(), request, [this, ecu, did](const DiagResult &r) {
         QVariantList rows;
-        if (const DiagResponse *rsp = r.positive())
+        if (const DiagResponse *rsp = r.positive()) {
             for (const DecodedValue &v : parseDataResponse(rsp->data))
                 rows.append(valueRow(ecu, v.name, v.value, v.unit));
+            if (rsp->data.size() > 3)
+                emit didRead(did, QString::fromLatin1(rsp->data.mid(3).toHex(' ').toUpper()));
+        }
         if (!rows.isEmpty())
             setValues(QStringLiteral("%1: read data (UDS 22)").arg(ecu), rows);
     });
