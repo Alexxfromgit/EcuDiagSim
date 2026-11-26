@@ -43,7 +43,8 @@ QVariantMap dtcRow(const DtcInfo &d, const QString &ecu, bool obd)
 QList<quint16> liveDids(int target)
 {
     switch (target) {
-    case 0: return {0xF40C, 0xF40D, 0xF405, 0xF411, 0xF404, 0xF442, 0xF42F, 0x1001, 0x1002, 0x1003, 0x1005};
+    case 0: return {0xF40C, 0xF40D, 0xF405, 0xF411, 0xF404, 0xF442, 0xF42F, 0x1001, 0x1002, 0x1003, 0x1005,
+        0xF406, 0xF407, 0xF410, 0xF414, 0x1010}; // the last ones only with the engine OBD pack
     case 1: return {0x2001, 0x2002, 0x2003, 0xF40D, 0xF442};
     case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442};
     default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442};
@@ -115,9 +116,14 @@ QVariantList ScannerViewModel::routines() const
         return QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("name"), name}, {QStringLiteral("hint"), hint}};
     };
     switch (m_target) {
-    case 0:
-        return {item(Ecm::kThrottleAdaptation, QStringLiteral("Throttle adaptation"),
+    case 0: {
+        QVariantList list{item(Ecm::kThrottleAdaptation, QStringLiteral("Throttle adaptation"),
             QStringLiteral("Ignition on, engine off, foot off the pedal, car at rest. Takes 3 s."))};
+        if (m_app->sim().ecm().hasObdPack())
+            list.append(item(Ecm::kResetFuelTrims, QStringLiteral("Reset fuel trims"),
+                QStringLiteral("Forgets the learned long-term fuel trim, e.g. after fixing a vacuum leak.")));
+        return list;
+    }
     default: return {};
     }
 }
@@ -157,6 +163,7 @@ void ScannerViewModel::simulationReset()
     setDtcs({}, {});
     setValues({}, {});
     emit stateChanged();
+    emit targetChanged(); // a new vehicle may have other equipment: other routines and codings
 }
 
 void ScannerViewModel::addLog(const QString &kind, const QString &text)
@@ -301,6 +308,8 @@ void ScannerViewModel::obdLiveData()
                 rows->append(valueRow(rsp.ecu, v.name, v.value, v.unit));
     };
     send(DiagId::Functional, hex("01 01 04 05 0C 0D 11"), collect);
+    if (m_app->sim().ecm().hasObdPack())
+        send(DiagId::Functional, hex("01 06 07 10 14"), collect);
     send(DiagId::Functional, hex("01 1F 2F 42 5E"), [this, rows, collect](const DiagResult &r) {
         collect(r);
         setValues(QStringLiteral("OBD-II live data (Mode 01)"), *rows);

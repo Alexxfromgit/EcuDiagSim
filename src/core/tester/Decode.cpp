@@ -32,7 +32,11 @@ const QList<DidInfo> &didCatalog()
         {0xF405, "Engine coolant temperature", DidInfo::U8, 1, 1, -40, "°C"},
         {0xF40C, "Engine speed", DidInfo::U16, 2, 0.25, 0, "rpm"},
         {0xF40D, "Vehicle speed", DidInfo::U8, 1, 1, 0, "km/h"},
+        {0xF406, "Short term fuel trim B1", DidInfo::U8, 1, 100.0 / 128.0, -100, "%"},
+        {0xF407, "Long term fuel trim B1", DidInfo::U8, 1, 100.0 / 128.0, -100, "%"},
+        {0xF410, "Mass air flow", DidInfo::U16, 2, 0.01, 0, "g/s"},
         {0xF411, "Throttle position", DidInfo::U8, 1, 100.0 / 255.0, 0, "%"},
+        {0xF414, "O2 sensor B1S1 voltage", DidInfo::Raw, 2, 1, 0, ""},
         {0xF41F, "Run time since engine start", DidInfo::U16, 2, 1, 0, "s"},
         {0xF42F, "Fuel tank level input", DidInfo::U8, 1, 100.0 / 255.0, 0, "%"},
         {0xF45E, "Engine fuel rate", DidInfo::U16, 2, 0.05, 0, "l/h"},
@@ -47,6 +51,8 @@ const QList<DidInfo> &didCatalog()
         {0x1003, "Engine state (bit0 running, bit1 limp, bit2 MIL)", DidInfo::U8, 1, 1, 0, ""},
         {0x1004, "Throttle adaptation (learned flag, closed position mV)", DidInfo::Raw, 3, 1, 0, ""},
         {0x1005, "Oil pressure", DidInfo::U8, 1, 0.05, 0, "bar"},
+        {0x1010, "Misfires per cylinder 1-4 (last 200 revolutions)", DidInfo::Raw, 4, 1, 0, ""},
+        {0x1011, "Air flow sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         {0x1006, "Oil pressure sensor voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         {0x1007, "Fuel level sender voltage", DidInfo::U16, 2, 0.001, 0, "V"},
         // TCM
@@ -92,6 +98,14 @@ DecodedValue decodeDid(quint16 did, const QByteArray &data)
     v.name = QString::fromUtf8(info->name);
     v.unit = QString::fromUtf8(info->unit);
 
+    if (did == 0xF414 && data.size() >= 2) {
+        // PID 14: A = sensor voltage (0.005 V), B = short term trim it drives, FF = not used for trim.
+        v.number = u8(data, 0) * 0.005;
+        v.value = QString::number(v.number, 'f', 3) + QStringLiteral(" V, ")
+            + (u8(data, 1) == 0xFF ? QStringLiteral("open loop")
+                                   : QStringLiteral("trim %1 %").arg((u8(data, 1) - 128) * 100.0 / 128.0, 0, 'f', 1));
+        return v;
+    }
     if (did == 0xF401 && data.size() >= 1) {
         const quint8 a = u8(data, 0);
         v.number = a & 0x7F;

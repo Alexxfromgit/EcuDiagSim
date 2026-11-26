@@ -431,6 +431,7 @@ QVariantMap AppController::cluster() const
         {QStringLiteral("voltage"), c.batteryVoltage},
         {QStringLiteral("gear"), c.powered ? gear : QString()},
         {QStringLiteral("mil"), c.mil},
+        {QStringLiteral("milFlash"), c.milFlash},
         {QStringLiteral("abs"), c.abs},
         {QStringLiteral("tcs"), c.tcs},
         {QStringLiteral("battery"), c.battery},
@@ -649,6 +650,8 @@ QString AppController::faultHint(const QString &targetId, const QString &faultTy
     case FaultType::FrozenCounter: return QStringLiteral("The sender task hangs: same alive counter in every frame.");
     case FaultType::BadChecksum: return QStringLiteral("Data corrupted between application and bus: CRC does not match.");
     case FaultType::BusShort: return QStringLiteral("CAN-H shorted to CAN-L: no frame gets through.");
+    case FaultType::Misfire:
+        return QStringLiteral("A coil or plug fails: the cylinder does not fire. Cylinder 1–4 (empty = 3).");
     case FaultType::Unconfigured:
         return QStringLiteral("A new part is fitted, but its coding or adaptation is missing. Configure it with the "
                               "scan tool (Coding · 2E, Routines · 31). Repair puts the old part back.");

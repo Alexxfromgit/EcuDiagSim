@@ -1,0 +1,46 @@
+{
+  "name": "Vacuum leak - fuel trims and P0171",
+  "description": "A cracked intake hose lets in air the flow meter never measures. The oxygen sensor reads lean, the short-term trim adds fuel and the long-term trim learns it; at the limit P0171 sets, pending first, confirmed in the second trip. After the repair the learned value is wrong the other way round - reset it with a routine.",
+  "lesson": "docs/lessons/21-vacuum-leak.md",
+  "level": "Intermediate",
+  "topics": ["ECM", "Fuel trims", "OBD-II"],
+  "equipment": ["engine_obd"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 8000, "note": "1. Warm idle: the ECM runs in closed loop, the O2 sensor switches between about 0.2 and 0.7 V" },
+    { "action": "expect", "signal": "ClosedLoop", "op": "==", "value": 1 },
+    { "action": "expect", "signal": "LongTermFuelTrim", "op": "<", "value": 6, "note": "A few percent learned: the injectors flow slightly less than nominal" },
+    { "action": "uds", "ecu": "ALL", "request": "01 06 07", "expect": "41 06", "note": "PIDs 06 / 07: short and long term fuel trim" },
+
+    { "action": "inject", "target": "intake_leak", "fault": "failure", "note": "2. A hose behind the air flow meter cracks" },
+    { "action": "wait", "ms": 30000, "note": "The sensor reads lean, the trims add fuel; the long-term value slowly takes over" },
+    { "action": "expect", "signal": "LongTermFuelTrim", "op": ">", "value": 10, "note": "3. Long term trim far positive: the engine gets air the ECM did not measure" },
+    { "action": "expect", "dtc": "P0171", "ecu": "ECM", "status": "pending", "note": "P0171 system too lean: pending ..." },
+    { "action": "expect", "dtc": "P0171", "ecu": "ECM", "status": "notConfirmed", "note": "... a two-trip DTC" },
+    { "action": "expect", "dtc": "P0101", "ecu": "ECM", "status": "absent", "note": "The air flow meter agrees with the model: it measures what passes it correctly" },
+    { "action": "uds", "ecu": "ALL", "request": "07", "expectContains": "01 71" },
+
+    { "action": "ignition", "value": "off", "note": "4. Second trip" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "ignition", "value": "on" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 15000 },
+    { "action": "expect", "dtc": "P0171", "ecu": "ECM", "status": "confirmed" },
+    { "action": "expect", "lamp": "mil", "value": true },
+
+    { "action": "clearFault", "target": "intake_leak", "note": "5. New hose" },
+    { "action": "wait", "ms": 3000 },
+    { "action": "expect", "signal": "ShortTermFuelTrim", "op": "<", "value": 0, "note": "Now the learned value adds too much fuel: the short-term trim pulls it back" },
+    { "action": "uds", "ecu": "ECM", "request": "10 03", "expect": "50 03" },
+    { "action": "uds", "ecu": "ECM", "request": "31 01 02 02", "expect": "71 01 02 02 02", "note": "6. Routine 0x0202: reset the fuel trim adaptation" },
+    { "action": "wait", "ms": 6000 },
+    { "action": "expect", "signal": "LongTermFuelTrim", "op": "<", "value": 6, "note": "It relearns only the small injector tolerance" },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

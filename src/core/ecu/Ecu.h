@@ -7,6 +7,7 @@
 #include "diag/DtcManager.h"
 #include "diag/IsoTp.h"
 #include "sensors/Sensor.h"
+#include "vehicle/VehicleConfig.h"
 #include "vehicle/VehicleModel.h"
 
 #include <QHash>
@@ -26,6 +27,7 @@ struct SimContext
     VehicleModel &vehicle;
     DriverInputs &driver;
     SensorSet &sensors;
+    const VehicleConfig &config;
 };
 
 /// Common ECU behaviour: power/ignition handling, a cyclic task scheduler, signal based

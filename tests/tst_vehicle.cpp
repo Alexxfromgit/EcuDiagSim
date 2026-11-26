@@ -33,7 +33,20 @@ private slots:
     void fuelSenderFaults();
     void oilPressure();
     void parkBrake();
+    void engineObdPackClosedLoop();
+    void vacuumLeakLeansOutAndLearns();
+    void misfireFlashesTheMil();
+    void oxygenAndAirFlowSensorFaults();
 };
+
+namespace {
+VehicleConfig obdPack()
+{
+    VehicleConfig c;
+    c.fit(Equipment::EngineObd);
+    return c;
+}
+} // namespace
 
 void tst_Vehicle::sensorCircuitModel()
 {
@@ -704,6 +717,143 @@ void tst_Vehicle::parkBrake()
     QVERIFY(!sim.vehicle().parkBrakeApplied());
     QCOMPARE(ask(sim, DiagId::BcmRequest, "22 40 04"), hex("62 40 04 01"));
     QCOMPARE(sim.bcm().dtcs().storedCount(), 0);
+}
+
+// Without the pack nothing changes; with it the ECM meters the fuel and holds lambda 1 by switching.
+void tst_Vehicle::engineObdPackClosedLoop()
+{
+    Simulation base;
+    QVERIFY(!base.sensors().byId(QStringLiteral("maf")));
+    QVERIFY(!base.faultTarget(QStringLiteral("ignition_coils")));
+    QVERIFY(!base.ecm().hasObdPack());
+    startEngine(base);
+    QVERIFY(!base.hasSignal(QStringLiteral("AirMassFlow")));
+    QVERIFY(!base.vehicle().mixtureControl);
+
+    Simulation sim(obdPack());
+    QVERIFY(sim.sensors().byId(QStringLiteral("o2")));
+    QVERIFY(sim.faultTarget(QStringLiteral("intake_leak")));
+    startEngine(sim);
+    sim.run(6000);
+    QVERIFY(sim.ecm().closedLoop());
+    QVERIFY(std::abs(sim.vehicle().lambda() - 1.0) < 0.05);
+    double lo = 1.0, hi = 0.0;
+    for (int i = 0; i < 3000; ++i) {
+        sim.step();
+        lo = std::min(lo, sim.sensors().o2.voltage());
+        hi = std::max(hi, sim.sensors().o2.voltage());
+    }
+    QVERIFY2(lo < 0.3 && hi > 0.6, qPrintable(QStringLiteral("%1..%2 V").arg(lo).arg(hi)));
+    QVERIFY(std::abs(sim.ecm().shortTermTrim() + sim.ecm().longTermTrim()) < 0.06);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("AirMassFlow")) - sim.vehicle().airMassGps()) < 0.3);
+    QCOMPARE(sim.ecm().dtcs().storedCount(), 0);
+
+    // PIDs 06/07/10/14 are announced and answered.
+    const QByteArray mask = ask(sim, DiagId::EcmRequest, "01 00");
+    QCOMPARE(mask.size(), 6);
+    QVERIFY(static_cast<quint8>(mask[2]) & 0x06); // PID 06 and 07: bits 2 and 1 of byte A
+    QVERIFY(ask(sim, DiagId::EcmRequest, "01 10").startsWith(hex("41 10")));
+    QVERIFY(ask(sim, DiagId::EcmRequest, "01 14").startsWith(hex("41 14")));
+}
+
+// Unmetered air: the trims go positive, the long-term value learns it, P0171 after two trips.
+void tst_Vehicle::vacuumLeakLeansOutAndLearns()
+{
+    Simulation sim(obdPack());
+    startEngine(sim);
+    sim.run(6000);
+    QVERIFY(sim.injectFault(QStringLiteral("intake_leak"), {FaultType::Failure}));
+    sim.run(30000);
+    const double total = sim.ecm().shortTermTrim() + sim.ecm().longTermTrim();
+    QVERIFY2(total > 0.23, qPrintable(QString::number(total)));
+    QVERIFY(sim.ecm().longTermTrim() > 0.1);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0171) & DtcStatus::Pending);
+    QVERIFY(!(sim.ecm().dtcs().status(dtc::P0171) & DtcStatus::Confirmed));
+
+    ignitionCycle(sim);
+    startEngine(sim);
+    sim.run(15000);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0171) & DtcStatus::Confirmed);
+    QVERIFY(sim.ecm().milOn());
+
+    // Fixed hose, but the learned value now makes the mixture rich until it is reset.
+    sim.clearFault(QStringLiteral("intake_leak"));
+    sim.run(3000);
+    QVERIFY(sim.ecm().shortTermTrim() < 0.0);
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "31 01 02 02"), hex("71 01 02 02 02"));
+    QCOMPARE(sim.ecm().longTermTrim(), 0.0);
+    sim.run(5000);
+    QVERIFY(std::abs(sim.ecm().shortTermTrim() + sim.ecm().longTermTrim()) < 0.06);
+
+    // Without the pack the routine does not exist.
+    Simulation base;
+    base.driver().ignition = Ignition::On;
+    base.run(1500);
+    ask(base, DiagId::EcmRequest, "10 03");
+    QCOMPARE(ask(base, DiagId::EcmRequest, "31 01 02 02"), hex("7F 31 31"));
+}
+
+void tst_Vehicle::misfireFlashesTheMil()
+{
+    Simulation sim(obdPack());
+    startEngine(sim);
+    Fault misfire{FaultType::Misfire, 2.0, 0.0, true};
+    QVERIFY(sim.injectFault(QStringLiteral("ignition_coils"), misfire));
+    QCOMPARE(sim.vehicle().misfireCylinder, 2);
+    sim.driver().throttlePedal = 0.3; // in P: revs up, the 200-revolution window fills quickly
+    sim.run(10000);
+    QVERIFY(sim.ecm().dtcs().status(dtc::misfireDtc(2)) & DtcStatus::Confirmed);
+    QVERIFY(!(sim.ecm().dtcs().status(dtc::misfireDtc(3)) & DtcStatus::TestFailed));
+    QVERIFY(!(sim.ecm().dtcs().status(dtc::P0300) & DtcStatus::TestFailed));
+    QVERIFY(sim.ecm().milFlashing());
+    QCOMPARE(sim.signal(QStringLiteral("MilFlash")), 1.0);
+    QCOMPARE(sim.signal(QStringLiteral("MisfireCyl")), 2.0); // bit 1 = cylinder 2
+    QVERIFY(sim.ipc().state().milFlash);
+    const QByteArray counters = ask(sim, DiagId::EcmRequest, "22 10 10");
+    QCOMPARE(counters.size(), 7);
+    QVERIFY(static_cast<quint8>(counters[4]) > 50 && counters[3] == 0);
+
+    // Freeze frame: Mode 02 PID 02 names the DTC that stored it.
+    QVERIFY(ask(sim, DiagId::EcmRequest, "02 02 00").contains(hex("03 02")));
+
+    sim.clearFault(QStringLiteral("ignition_coils"));
+    sim.run(10000);
+    QVERIFY(!sim.ecm().milFlashing());
+    QVERIFY(sim.ecm().milOn()); // confirmed: steady until cleared
+}
+
+void tst_Vehicle::oxygenAndAirFlowSensorFaults()
+{
+    Simulation sim(obdPack());
+    startEngine(sim);
+    sim.run(5000);
+
+    // Unplugged O2 sensor: the input sits at the bias voltage, never switches.
+    QVERIFY(sim.injectFault(QStringLiteral("o2"), {FaultType::OpenCircuit}));
+    QVERIFY(sim.runUntil([&] { return sim.ecm().dtcs().testFailed(dtc::P0134); }, 25000));
+    QVERIFY(!sim.ecm().closedLoop());
+    QCOMPARE(sim.ecm().shortTermTrim(), 0.0);
+    QVERIFY(std::abs(sim.ecm().longTermTrim()) < 0.05); // the trims did not run away meanwhile
+    sim.clearFault(QStringLiteral("o2"));
+
+    // Shorted to ground: circuit low.
+    QVERIFY(sim.injectFault(QStringLiteral("o2"), {FaultType::ShortToGround}));
+    QVERIFY(sim.runUntil([&] { return sim.ecm().dtcs().testFailed(dtc::P0131); }, 10000));
+    sim.clearFault(QStringLiteral("o2"));
+
+    // A dirty air flow meter reads 40 % low: the speed-density check catches it.
+    Fault dirty{FaultType::Gain, 0.6, 0.0, true};
+    QVERIFY(sim.injectFault(QStringLiteral("maf"), dirty));
+    QVERIFY(sim.runUntil([&] { return sim.ecm().dtcs().testFailed(dtc::P0101); }, 10000));
+    // ... and the ECM switches to the model, so the mixture is right again.
+    sim.run(8000);
+    QVERIFY(std::abs(sim.vehicle().lambda() - 1.0) < 0.06);
+
+    // Unplugged: circuit low within a second.
+    QVERIFY(sim.injectFault(QStringLiteral("maf"), {FaultType::OpenCircuit}));
+    QVERIFY(sim.runUntil([&] { return sim.ecm().dtcs().testFailed(dtc::P0102); }, 2000));
+    QVERIFY(sim.vehicle().engineRunning());
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

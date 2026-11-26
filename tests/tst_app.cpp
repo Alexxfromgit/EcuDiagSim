@@ -149,6 +149,16 @@ void tst_App::equipmentCatalogAndChoice()
     QCOMPARE(QSettings().value(QLatin1String(AppController::kEquipmentKey)).toStringList(), implemented);
     app.setEquipment({});
     QVERIFY(app.equipment().isEmpty());
+
+    // The scan tool offers what the vehicle has: the fuel trim reset only with the engine OBD pack.
+    ScannerViewModel *scanner = app.scanner();
+    scanner->setTarget(0);
+    QCOMPARE(scanner->routines().size(), 1);
+    QSignalSpy targetSpy(scanner, &ScannerViewModel::targetChanged);
+    app.setEquipment({QStringLiteral("engine_obd")});
+    QVERIFY(!targetSpy.isEmpty()); // the views re-read the lists
+    QCOMPARE(scanner->routines().size(), 2);
+    app.setEquipment({});
 }
 
 void tst_App::viewModelsDescribeTheVehicle()

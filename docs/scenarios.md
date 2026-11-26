@@ -24,8 +24,8 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 `level` (`Beginner`, `Intermediate` or `Advanced`) and `topics` are optional; the *Lessons* tab
 shows them as tags and filters by level.
 
-`equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`,
-`tpms`, `srs`, `esc`. Running the lesson builds the vehicle with the user's equipment (Settings) plus
+`equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`
+(available), `tpms`, `srs`, `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
 these, so a lesson always finds what it needs; the lesson card shows them as chips. Base-car lessons
 leave it out.
 
@@ -72,6 +72,9 @@ completed); `clearFault` instead puts the old, configured part back.
 |---|---|
 | `wss_fl` `wss_fr` `wss_rl` `wss_rr` `ckp` `ect` `tps` `tft` | `open`, `short_gnd`, `short_bat`, `stuck` (p1 = value), `offset` (p1), `gain` (p1), `noise` (p1 = sigma), `intermittent` (p1 = period ms, p2 = open share 0…1), `erratic` |
 | `eop` (oil pressure) `fls` (fuel level sender) | the sensor faults above |
+| `maf` `o2` | the sensor faults above — engine OBD pack only |
+| `intake_leak` | `failure` (a vacuum leak behind the air flow meter) — engine OBD pack only |
+| `ignition_coils` | `misfire`, `p1` = cylinder 1…4 (default 3) — engine OBD pack only |
 | `alternator` `cooling` `bulb_low_left` `oil_pump` `park_brake_switch` | `failure` (the switch sticks closed) |
 | `throttle_body` | `unconfigured` — new part, adaptation not learned (run routine 0x0201) |
 | `ecm` `tcm` `abs` `bcm` `ipc` | `power_loss`, `bus_off` |
@@ -85,7 +88,7 @@ completed); `clearFault` instead puts the old, configured part back.
 |---|---|
 | `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
 | `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `notConfirmed`, `absent` |
-| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing) |
+| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing); `mil` counts a flashing MIL as on, `milFlashing` checks the flashing alone |
 
 ## Scan tool
 

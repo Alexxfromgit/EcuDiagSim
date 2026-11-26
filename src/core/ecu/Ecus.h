@@ -14,6 +14,8 @@ class Ecm : public Ecu
 {
 public:
     static constexpr quint16 kThrottleAdaptation = 0x0201; ///< routine id
+    static constexpr quint16 kResetFuelTrims = 0x0202;     ///< routine id (engine OBD pack)
+    static constexpr double kTrimLimit = 0.25;
     static constexpr int kAdaptationMs = 3000;
 
     explicit Ecm(SimContext &ctx);
@@ -30,6 +32,12 @@ public:
     bool fuelLevelValid() const { return m_fuelValid; }
     double oilPressure() const { return m_oilBar; }
     bool oilWarning() const { return m_oilWarn; }
+    // --- engine OBD pack ---
+    bool hasObdPack() const { return m_obdPack; }
+    double shortTermTrim() const { return m_stft; } ///< -0.25..+0.25
+    double longTermTrim() const { return m_ltft; }  ///< learned, non-volatile
+    bool closedLoop() const { return m_closedLoop; }
+    bool milFlashing() const { return m_milFlash; }
 
 protected:
     void onWake() override;
@@ -45,6 +53,8 @@ private:
     void runAdaptation(double pedal);
     void abortAdaptation();
     QByteArray adaptationStatus() const;
+    void mixtureControl10ms();
+    void obdMonitors100ms();
 
     Learn m_learn = Learn::Idle;
     qint64 m_learnStartMs = 0;
@@ -57,6 +67,27 @@ private:
     double m_oilBar = 0.0;
     bool m_oilWarn = true;
     double m_prevRpm = 0.0; ///< last engine speed with a crank signal (stall versus sensor loss)
+    // engine OBD pack
+    bool m_obdPack = false;
+    double m_stft = 0.0;
+    double m_ltft = 0.0; ///< non-volatile adaptation
+    bool m_closedLoop = false;
+    double m_mafGps = 0.0;
+    bool m_mafOk = true;
+    bool m_o2Ok = true;
+    double m_o2Min = 1.0;
+    double m_o2Max = 0.0;
+    int m_o2WindowMs = 0;
+    bool m_milFlash = false;
+    quint64 m_lastFirings = 0;
+    std::array<quint64, 4> m_lastMisfires{};
+    quint64 m_windowFirings = 0;
+    std::array<quint64, 4> m_windowMisfires{};
+    quint8 m_misfireBits = 0;
+    std::array<quint64, 4> m_reportedMisfires{}; ///< per cylinder, last completed window
+    int m_o2Side = 0; ///< +1 rich, -1 lean, 0 not yet known
+    qint64 m_o2ActiveMs = 0; ///< last time the O2 signal left the band around its bias
+    bool m_o2Dead = false;   ///< no switching although in closed loop
     double m_rpm = 0.0;
     double m_coolant = 20.0;
     double m_throttlePct = 0.0;
@@ -202,7 +233,8 @@ struct ClusterState
     double batteryVoltage = 0.0;
     int gear = 0;     ///< 0 none, 1..6, 7 reverse
     int selector = 0; ///< 0 P, 1 R, 2 N, 3 D
-    bool mil = false;
+    bool mil = false;      ///< lamp lit right now (blinks while milFlash)
+    bool milFlash = false; ///< catalyst-damaging misfire: the MIL flashes
     bool abs = false;
     bool tcs = false;
     bool battery = false;

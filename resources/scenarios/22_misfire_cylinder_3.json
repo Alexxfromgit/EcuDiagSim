@@ -1,0 +1,34 @@
+{
+  "name": "Misfire on cylinder 3 - the flashing MIL",
+  "description": "A failed ignition coil: cylinder 3 does not fire. The ECM counts misfires per cylinder over 200 revolutions from the crankshaft tooth timing. A quarter of all combustions missing would overheat the catalyst, so the MIL flashes: stop driving. P0303, the misfire counters and the freeze frame show which cylinder.",
+  "lesson": "docs/lessons/22-misfire.md",
+  "level": "Intermediate",
+  "topics": ["ECM", "Misfire", "OBD-II"],
+  "equipment": ["engine_obd"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+
+    { "action": "inject", "target": "ignition_coils", "fault": "misfire", "p1": 3, "note": "1. The coil of cylinder 3 fails" },
+    { "action": "throttle", "value": 30, "note": "Hold about 2300 rpm in P: the 200-revolution windows fill quickly" },
+    { "action": "wait", "ms": 10000 },
+    { "action": "expect", "lamp": "milFlashing", "value": true, "note": "2. The MIL flashes: catalyst-damaging misfire rate" },
+    { "action": "expect", "dtc": "P0303", "ecu": "ECM", "status": "confirmed", "note": "P0303: cylinder 3, confirmed at once" },
+    { "action": "expect", "dtc": "P0300", "ecu": "ECM", "status": "absent", "note": "P0300 would mean misfires on several cylinders" },
+    { "action": "expect", "signal": "MisfireCyl", "op": "==", "value": 4, "note": "ECM_Mixture: bit 2 = cylinder 3" },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 10", "expect": "62 10 10 00 00", "note": "3. Misfire counters per cylinder: 0, 0, many, 0" },
+    { "action": "uds", "ecu": "ALL", "request": "02 02 00", "expectContains": "03 03", "note": "Freeze frame: stored by P0303 - with engine speed, load and trims at that moment" },
+
+    { "action": "clearFault", "target": "ignition_coils", "note": "4. New coil" },
+    { "action": "wait", "ms": 8000 },
+    { "action": "expect", "lamp": "milFlashing", "value": false, "note": "The next clean window stops the flashing ..." },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "... the MIL stays on: P0303 is confirmed" },
+    { "action": "throttle", "value": 0 },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "mil", "value": false }
+  ]
+}

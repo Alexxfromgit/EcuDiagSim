@@ -33,6 +33,7 @@ enum class FaultType {
     BadChecksum,    ///< E2E checksum wrong
     BusShort,       ///< CAN wiring fault, no communication at all
     Unconfigured,   ///< part replaced: coding or adaptation missing until done with the scan tool
+    Misfire,        ///< ignition fault: cylinder p1 (1..4) does not fire
 };
 
 QString faultTypeName(FaultType type);       ///< stable identifier, e.g. "open"
@@ -74,6 +75,7 @@ public:
         bool digital = false;
         QString shortName;      ///< for tables, e.g. "Wheel FL"
         QString label;          ///< tag on the vehicle drawing, e.g. "WSS"
+        bool fitted = true;     ///< false: optional equipment that this vehicle does not have
     };
 
     Sensor() = default;
@@ -119,6 +121,12 @@ struct SensorSet
     Sensor tft;                ///< transmission fluid temperature (TCM)
     Sensor eop;                ///< engine oil pressure (ECM)
     Sensor fls;                ///< fuel level sender, float potentiometer in the tank (ECM)
+    // engine OBD pack (fitted only with Equipment::EngineObd)
+    Sensor maf;                ///< mass air flow (ECM)
+    Sensor o2;                 ///< upstream oxygen sensor, bank 1 sensor 1 (ECM)
+
+    /// Marks the engine OBD pack sensors fitted or not; unfitted sensors are left out of all().
+    void fitEngineObd(bool fitted);
 
     void update(const VehicleModel &vehicle, qint64 nowMs);
     QList<Sensor *> all();

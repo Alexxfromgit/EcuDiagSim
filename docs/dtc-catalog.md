@@ -38,8 +38,30 @@ until the DTC is confirmed and the lamp is requested; before that it is only *pe
 | U0415-82 | Invalid data from ABS: alive counter | counter of 0x0B0 unchanged for 10 frames | 1 | no lamp |
 | U0415-83 | Invalid data from ABS: checksum | CRC of 0x0B0 wrong for 10 frames | 1 | no lamp |
 
-All P-codes are emission relevant: they are visible to OBD-II, request the MIL and need three
-fault-free trips before the MIL goes out by itself.
+The P-codes are emission relevant — visible to OBD-II, requesting the MIL and needing three
+fault-free trips before the MIL goes out by itself — except the oil pressure codes P0522–P0524,
+which light the red OIL lamp instead.
+
+### Engine OBD pack (optional equipment)
+
+Only with *Engine OBD pack* fitted (Settings → Vehicle equipment, or a lesson that needs it).
+
+| Code | Description | Detection | Trips | Reaction |
+|---|---|---|---|---|
+| P0101 | Mass air flow sensor range/performance | measured flow differs > 30 % from the speed-density model for 5 s, warm engine | 2 | fuelling from the model |
+| P0102 | Mass air flow sensor circuit low | < 0.2 V for 1 s (open circuit, short to ground) | 1 | fuelling from the model |
+| P0103 | Mass air flow sensor circuit high | > 4.8 V for 1 s | 1 | fuelling from the model |
+| P0131 | O2 sensor circuit low voltage B1S1 | < 0.04 V for 5 s, warm and running (a working cell stays above 0.08 V) | 1 | open loop |
+| P0132 | O2 sensor circuit high voltage B1S1 | > 1.2 V for 2 s | 1 | open loop |
+| P0134 | O2 sensor no activity B1S1 | stays between 0.3 and 0.6 V for a 10 s window | 1 | open loop |
+| P0171 | System too lean bank 1 | STFT + LTFT > +23 % for 5 s in closed loop | 2 | |
+| P0172 | System too rich bank 1 | STFT + LTFT < −23 % for 5 s in closed loop | 2 | |
+| P0300 | Random / multiple cylinder misfire | misfires on more than one cylinder in a 200-revolution window | 1 | |
+| P0301…P0304 | Cylinder 1…4 misfire | > 5 % of the cylinder's firings in a window; above 8 % of all firings the MIL flashes | 1 | MIL flashes (catalyst damage) |
+
+An O2 sensor that sits at its 0.45 V bias for 3 s while the loop drives the mixture is treated as
+dead: the ECM leaves closed loop instead of chasing it, and the long-term trim only learns while the
+sensor switches.
 
 ## TCM — transmission
 
