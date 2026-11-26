@@ -487,6 +487,14 @@ QVariantList AppController::ecus() const
     return list;
 }
 
+QStringList AppController::sensorIds() const
+{
+    QStringList ids;
+    for (Sensor *s : m_sim->sensors().all())
+        ids << s->config().id;
+    return ids;
+}
+
 QVariantList AppController::sensors() const
 {
     QVariantList list;

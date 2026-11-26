@@ -794,8 +794,9 @@ Panel {
                 Text { text: "STATE"; color: Theme.textDim; font.pixelSize: 9; font.bold: true; Layout.fillWidth: true; Layout.minimumWidth: 40; Layout.maximumWidth: 84; Layout.rightMargin: 2 }
             }
             Repeater {
-                // One row per fitted sensor, in the order the simulation lists them.
-                model: App.sensors.map(s => s.id)
+                // One row per fitted sensor, in the order the simulation lists them. sensorIds only
+                // changes with the equipment: the rows are not rebuilt on every refresh.
+                model: App.sensorIds
                 Rectangle {
                     id: cell
                     required property string modelData

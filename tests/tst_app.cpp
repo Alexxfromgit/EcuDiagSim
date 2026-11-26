@@ -166,6 +166,15 @@ void tst_App::viewModelsDescribeTheVehicle()
         QVERIFY(!m.value(QStringLiteral("label")).toString().isEmpty());
     }
     QVERIFY(app.vehicle().contains(QStringLiteral("velocity")));
+
+    // The sensor table's model only changes with the equipment, not on every refresh.
+    QStringList ids;
+    for (const QVariant &v : app.sensors())
+        ids << v.toMap().value(QStringLiteral("id")).toString();
+    QCOMPARE(app.sensorIds(), ids);
+    QSignalSpy equipment(&app, &AppController::equipmentChanged);
+    app.step(500);
+    QVERIFY(equipment.isEmpty());
 }
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.

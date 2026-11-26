@@ -53,7 +53,7 @@ ApplicationWindow {
 
     SettingsPage { id: settings }
     function openSettings() { settings.open() }
-    Shortcut { sequence: "F10"; onActivated: App.step(10) }
+    Shortcut { sequence: "F10"; enabled: !settings.visible; onActivated: App.step(10) }
 
     ColumnLayout {
         anchors.fill: parent

@@ -62,6 +62,8 @@ class AppController : public QObject
     Q_PROPERTY(QVariantMap vehicle READ vehicle NOTIFY frameUpdated)
     Q_PROPERTY(QVariantList ecus READ ecus NOTIFY slowUpdated)
     Q_PROPERTY(QVariantList sensors READ sensors NOTIFY slowUpdated)
+    /// Ids of the fitted sensors; changes only with the equipment, so views can use it as a stable model.
+    Q_PROPERTY(QStringList sensorIds READ sensorIds NOTIFY equipmentChanged)
 
     // --- faults ---
     Q_PROPERTY(QVariantList faultTargets READ faultTargets NOTIFY equipmentChanged)
@@ -140,6 +142,7 @@ public:
     QVariantMap vehicle() const;
     QVariantList ecus() const;
     QVariantList sensors() const;
+    QStringList sensorIds() const;
     QVariantList faultTargets() const;
     QVariantList activeFaults() const;
 
