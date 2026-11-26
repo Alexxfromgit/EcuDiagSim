@@ -14,6 +14,7 @@ namespace ecusim {
 namespace msg {
 constexpr quint32 AbsWheelSpeeds = 0x0B0;
 constexpr quint32 AbsStatus = 0x0B1;
+constexpr quint32 AbsChassis = 0x0B2;
 constexpr quint32 EcmEngine = 0x100;
 constexpr quint32 TcmStatus = 0x1A0;
 constexpr quint32 EcmStatus = 0x300;

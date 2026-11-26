@@ -169,6 +169,13 @@ void tst_App::equipmentCatalogAndChoice()
     QCOMPARE(scanner->codings().size(), 1);
     app.setEquipment({});
     QCOMPARE(scanner->target(), 0); // the module is gone
+
+    // The ABS offers the steering angle calibration only with stability control.
+    scanner->setTarget(2);
+    QCOMPARE(scanner->routines().size(), 0);
+    app.setEquipment({QStringLiteral("esc")});
+    QCOMPARE(scanner->routines().size(), 1);
+    app.setEquipment({});
 }
 
 void tst_App::viewModelsDescribeTheVehicle()

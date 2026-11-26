@@ -77,6 +77,20 @@ sensor switches.
 
 ## ABS — brakes
 
+The ABS modulates each wheel's brake pressure when that wheel slips more than 15 % against a
+reference speed (the fastest trustworthy wheel, dropping at most 1.3 g) — that is normal work, not a
+fault: `AbsActive` on `0B1`. Only the wheel speed sensors and the coding (U3000-55) switch it off; a
+stability control fault does not.
+
+**With stability control (ESC):**
+
+| Code | Description | Detection | Reaction |
+|---|---|---|---|
+| C0460-11 | Steering angle sensor circuit low | below 0.2 V for 0.2 s | ESC off |
+| C0460-54 | Steering angle sensor missing calibration | no zero point learned (new module) | ESC off; routine 0x0401 |
+| C0460-64 | Steering angle sensor signal plausibility | above 30 km/h, 3 s without yaw, the angle reads more than 8° | ESC off; routine 0x0401 |
+| C0196-11 / -12 | Yaw rate sensor circuit low / high | below 0.2 V / above 4.8 V for 0.2 s | ESC off |
+
 Four DTCs per wheel: C0035 (front left), C0040 (front right), C0045 (rear left), C0050 (rear right).
 
 | FTB | Meaning | Detection |

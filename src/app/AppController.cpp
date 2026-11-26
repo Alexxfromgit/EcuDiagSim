@@ -25,7 +25,7 @@ bool sameInputs(const DriverInputs &a, const DriverInputs &b)
         && a.selector == b.selector && a.headlamps == b.headlamps && a.highBeam == b.highBeam
         && a.turnLeft == b.turnLeft && a.turnRight == b.turnRight && a.hazard == b.hazard
         && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar && a.parkBrake == b.parkBrake
-        && a.seatBelt == b.seatBelt;
+        && a.seatBelt == b.seatBelt && a.steering == b.steering && a.surface == b.surface;
 }
 
 /// Identifies the set of active faults, so a fault swapped for another one by a scenario
@@ -400,6 +400,18 @@ void AppController::setSeatBelt(bool on)
     emit inputsChanged();
 }
 
+void AppController::setSteering(double degrees)
+{
+    m_sim->driver().steering = std::clamp(degrees, -540.0, 540.0);
+    emit inputsChanged();
+}
+
+void AppController::setSurface(int surface)
+{
+    m_sim->driver().surface = std::clamp(surface, 0, 3);
+    emit inputsChanged();
+}
+
 void AppController::crash()
 {
     const double kph = m_sim->vehicle().speedKph();
@@ -456,6 +468,7 @@ QVariantMap AppController::cluster() const
         {QStringLiteral("milFlash"), c.milFlash},
         {QStringLiteral("tpms"), c.tpms},
         {QStringLiteral("airbag"), c.airbag},
+        {QStringLiteral("esc"), c.esc},
         {QStringLiteral("seatBelt"), c.seatBelt},
         {QStringLiteral("tpmsFlash"), c.tpmsFlash},
         {QStringLiteral("abs"), c.abs},
@@ -501,6 +514,12 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("fuelRate"), v.fuelRateLph()},
         {QStringLiteral("oilPressure"), v.oilPressureBar()},
         {QStringLiteral("airbagFired"), QVariantList{v.airbagFired[0], v.airbagFired[1]}},
+        {QStringLiteral("wheels"), QVariantList{v.wheelSpeedKph(0), v.wheelSpeedKph(1), v.wheelSpeedKph(2), v.wheelSpeedKph(3)}},
+        {QStringLiteral("locked"), QVariantList{v.wheelLocked(0), v.wheelLocked(1), v.wheelLocked(2), v.wheelLocked(3)}},
+        {QStringLiteral("roadWheelAngle"), v.roadWheelAngle()},
+        {QStringLiteral("yawRate"), v.yawRate()},
+        {QStringLiteral("surface"), m_sim->driver().surface},
+        {QStringLiteral("absActive"), m_sim->abs().absActive()},
         {QStringLiteral("tyres"), QVariantList{v.tyrePressureCold(0), v.tyrePressureCold(1), v.tyrePressureCold(2),
                                       v.tyrePressureCold(3)}},
         {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},

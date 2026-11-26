@@ -174,6 +174,11 @@ Panel {
                 tip: "Seat belt reminder (SRS_Status.BeltWarn; flashes above 20 km/h)"
             }
             Lamp { on: root.c.mil; label: "CHECK"; tip: "Malfunction indicator lamp (ECM_Status.MilReq, or ECM silent)" }
+            Lamp {
+                visible: App.fitted.indexOf("esc") >= 0
+                on: root.c.esc; label: "ESC"
+                tip: "Stability control: flashing while it intervenes (ABS_Chassis.EscActive), steady when it is off (EscOff)"
+            }
             Lamp { on: root.c.abs; label: "ABS"; tip: "ABS warning (ABS_Status.AbsLampReq, or ABS silent)" }
             Lamp { on: root.c.tcs; label: "TCS"; tip: "Traction control off (ABS_Status.TcsLampReq)" }
             Lamp { on: root.c.battery; label: "BATT"; tone: Theme.error; tip: "Charge warning: engine not running or battery below 12 V" }

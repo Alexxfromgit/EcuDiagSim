@@ -85,11 +85,18 @@ void VehicleModel::setTyrePressureCold(int wheel, double bar)
     m_tyreCold[static_cast<size_t>(std::clamp(wheel, 0, 3))] = std::clamp(bar, 0.0, 4.0);
 }
 
+double VehicleModel::surfaceMu(int surface)
+{
+    static constexpr double kMu[4] = {1.1, 0.7, 0.3, 0.12};
+    return kMu[std::clamp(surface, 0, 3)];
+}
+
 double VehicleModel::wheelSpeedKph(int wheel) const
 {
     // About 1 % less rolling radius per bar below the placard; correctly inflated = exactly 1.
-    const double deficit = std::max(0.0, kPlacardBar - m_tyreCold[static_cast<size_t>(std::clamp(wheel, 0, 3))]);
-    return std::abs(m_speed) * 3.6 / (1.0 - 0.01 * deficit);
+    const auto i = static_cast<size_t>(std::clamp(wheel, 0, 3));
+    const double deficit = std::max(0.0, kPlacardBar - m_tyreCold[i]);
+    return m_wheelKph[i] / (1.0 - 0.01 * deficit);
 }
 
 void VehicleModel::crash()
@@ -235,16 +242,35 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     // --- longitudinal dynamics -------------------------------------------
     m_brake = std::clamp(driver.brakePedal, 0.0, 1.0);
     m_parkBrake = driver.parkBrake;
+    m_mu = surfaceMu(driver.surface);
+    m_steering = std::clamp(driver.steering, -540.0, 540.0);
+    // On a slippery road the driven wheels can only pass on what the tyres grip.
+    const double traction = kMaxTraction * std::min(1.0, m_mu);
     double drive = ratio > 0.0 ? m_torque * ratio * kFinalDrive * kDrivelineEff / kWheelRadius : 0.0;
-    drive = std::clamp(drive, -kMaxTraction, kMaxTraction);
+    drive = std::clamp(drive, -traction, traction);
     if (m_gear < 0)
         drive = -drive; // reverse gear pushes the car backwards
     const double drag = 0.5 * kAirDensity * kCdA * m_speed * std::abs(m_speed);
     double v = m_speed + (drive - drag) / kMass * dt;
+    // Brakes per wheel: the front axle does 60 % of the work, each wheel grips mu x its load.
+    // A wheel whose brake force exceeds the grip locks and slides at 80 % of it; the ABS
+    // prevents that by lowering that wheel's pressure. On a dry road even a full pedal stays
+    // below the grip, so nothing ever locks there.
+    static constexpr double kShare[4] = {0.3, 0.3, 0.2, 0.2};
+    double brakeForce = 0.0;
+    for (size_t i = 0; i < 4; ++i) {
+        const double demand = m_brake * kMass * kGravity * kShare[i] * std::clamp(absPressure[i], 0.0, 1.0);
+        const double grip = m_mu * kMass * kGravity * kShare[i];
+        if (std::abs(m_speed) < 0.5 || demand < 0.9 * grip)
+            m_locked[i] = false;
+        else if (demand > grip)
+            m_locked[i] = true;
+        brakeForce += m_locked[i] ? 0.8 * grip : demand;
+    }
     // Rolling resistance and brakes always act against the motion and can only stop the
     // car, never push it the other way; at standstill they hold it against a weak drive.
     // The hand brake acts on the rear axle only: about a quarter of g.
-    const double resistDv = (kRollCoeff * kMass * kGravity + m_brake * kMass * kGravity
+    const double resistDv = (kRollCoeff * kMass * kGravity + brakeForce + escBrakeDecel * kMass
                                 + (m_parkBrake ? 0.25 * kMass * kGravity : 0.0))
         / kMass * dt;
     if (v > 0.0)
@@ -254,6 +280,23 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     m_speed = v;
     if (driver.selector == Selector::P && std::abs(m_speed) < 1.0)
         m_speed = 0.0; // parking pawl
+
+    // --- lateral: a bicycle model, limited by grip -------------------------------------
+    // The car turns as the front wheels point - unless they are locked (no side force) or the
+    // corner needs more lateral grip than the road has: then it understeers.
+    const double steerRad = roadWheelAngle() * std::numbers::pi / 180.0;
+    double yaw = (m_locked[0] && m_locked[1]) ? 0.0 : m_speed / kWheelbase * std::tan(steerRad);
+    const double lateralMax = 0.9 * m_mu * kGravity;
+    if (std::abs(m_speed) > 0.5 && std::abs(m_speed * yaw) > lateralMax)
+        yaw = std::copysign(lateralMax / std::abs(m_speed), yaw);
+    m_yawRate = approach(m_yawRate, yaw * 180.0 / std::numbers::pi, dt, 0.15);
+    const double yawRad = m_yawRate * std::numbers::pi / 180.0;
+    for (size_t i = 0; i < 4; ++i) {
+        // Left wheels (FL, RL) run on the inside of a left turn.
+        const double corner = (i % 2 == 0 ? -1.0 : 1.0) * yawRad * kTrack / 2.0;
+        const double rolling = std::max(0.0, std::abs(m_speed) + corner * (m_speed < 0.0 ? -1.0 : 1.0)) * 3.6;
+        m_wheelKph[i] = m_locked[i] ? approach(m_wheelKph[i], 0.0, dt, 0.03) : rolling;
+    }
 
     // --- tyres: flexing warms them with speed; a puncture lets air out --------------
     for (size_t i = 0; i < 4; ++i) {

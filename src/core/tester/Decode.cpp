@@ -66,6 +66,9 @@ const QList<DidInfo> &didCatalog()
         {0x3004, "Wheel speed RR", DidInfo::U16, 2, 0.01, 0, "km/h"},
         {0x3005, "Brake pressure", DidInfo::U8, 1, 1, 0, "bar"},
         {0x3010, "ABS warning lamp output", DidInfo::U8, 1, 1, 0, ""},
+        {0x3020, "Steering angle (calibrated)", DidInfo::U16, 2, 0.1, -3276.8, "deg"},
+        {0x3021, "Yaw rate", DidInfo::U16, 2, 0.01, -327.68, "deg/s"},
+        {0x3022, "Steering angle sensor calibrated", DidInfo::U8, 1, 1, 0, ""},
         // BCM
         {0x4001, "Battery voltage", DidInfo::U8, 1, 0.1, 0, "V"},
         {0x4002, "Exterior lamps (bit0 low, bit1 high, bit2 park, bit3 left, bit4 right)", DidInfo::U8, 1, 1, 0, ""},

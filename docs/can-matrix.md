@@ -9,6 +9,7 @@ definition is [`resources/dbc/vehicle.dbc`](../resources/dbc/vehicle.dbc); it op
 |---|---|---|---|---|
 | 0x0B0 | ABS_WheelSpeeds | ABS | 10 ms | ECM |
 | 0x0B1 | ABS_Status | ABS | 20 ms | ECM, TCM, BCM, IPC |
+| 0x0B2 | ABS_Chassis | ABS | 20 ms | ECM, IPC — only with *Stability control (ESC)* |
 | 0x100 | ECM_Engine | ECM | 10 ms | TCM, ABS, IPC |
 | 0x1A0 | TCM_Status | TCM | 20 ms | ECM, BCM, IPC |
 | 0x300 | ECM_Status | ECM | 100 ms | TCM, BCM, IPC |
@@ -41,11 +42,21 @@ content was corrupted. The ECM checks both and stores U0415.
 | VehicleSpeed | 0 | 16 | 0.01 | km/h |
 | BrakePressure | 16 | 8 | 1 | bar |
 | VehicleSpeedValid | 24 | 1 | | |
-| AbsActive | 25 | 1 | | |
+| AbsActive | 25 | 1 | | the ABS is modulating a wheel's brake pressure |
 | AbsLampReq | 26 | 1 | | |
-| TcsLampReq | 27 | 1 | | |
+| TcsLampReq | 27 | 1 | | also lit when the ESC is off |
 
 The vehicle speed is the mean of the valid wheels and stays valid with at least two of them.
+
+### 0x0B2 ABS_Chassis (stability control)
+
+| Signal | Start bit | Length | Factor | Notes |
+|---|---|---|---|---|
+| SteeringAngle | 0 | 16 | 0.1 deg, offset −3276.8 | calibrated steering wheel angle, + = left |
+| YawRate | 16 | 16 | 0.01 deg/s, offset −327.68 | + = turning left |
+| EscActive | 32 | 1 | | intervening: the ECM limits the throttle to 10 % |
+| EscOff | 33 | 1 | | switched off by a fault or the coding |
+| SasCalibrated | 34 | 1 | | |
 
 ### 0x100 ECM_Engine
 

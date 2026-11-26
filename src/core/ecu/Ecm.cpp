@@ -26,6 +26,7 @@ Ecm::Ecm(SimContext &ctx)
     subscribe(msg::TcmStatus, 200, U0101);
     subscribe(msg::BcmStatus, 500, U0140);
     subscribe(msg::SrsStatus, 500);
+    subscribe(msg::AbsChassis, 200);
 
     auto &d = dtcs();
     d.define(dtcDef(P0116, 3, true, 2));
@@ -455,6 +456,9 @@ void Ecm::task10ms()
         runAdaptation(pedal);
     else
         v.throttleCmd = m_limp ? std::min(pedal, 0.25) : pedal;
+    // Stability control asks for less torque while it fights an understeering car.
+    if (!rxTimedOut(msg::AbsChassis) && rx(msg::AbsChassis, QStringLiteral("EscActive")) > 0.5)
+        v.throttleCmd = std::min(v.throttleCmd, 0.1);
     m_throttlePct = tpsFault ? v.throttleCmd * 100.0 : sensors.tps.value();
     if (m_obdPack)
         mixtureControl10ms();

@@ -204,6 +204,11 @@ SensorSet::SensorSet()
     // so an open circuit sits in the middle and never switches.
     o2 = Sensor({QStringLiteral("o2"), QStringLiteral("Oxygen sensor B1S1"), QStringLiteral("V"), QStringLiteral("ECM"),
         0.0, 1.0, 0.0, 1.0, 0.45, false, QStringLiteral("O2 B1S1"), QStringLiteral("O2"), false});
+    // Stability control sensors, 0.5..4.5 V over the range, pull-down: unplugged reads 0 V.
+    sas = Sensor({QStringLiteral("sas"), QStringLiteral("Steering angle sensor"), QStringLiteral("deg"),
+        QStringLiteral("ABS"), -780.0, 780.0, 0.5, 4.5, 0.0, false, QStringLiteral("Steering angle"), QStringLiteral("SAS"), false});
+    yaw = Sensor({QStringLiteral("yaw"), QStringLiteral("Yaw rate sensor"), QStringLiteral("deg/s"), QStringLiteral("ABS"),
+        -100.0, 100.0, 0.5, 4.5, 0.0, false, QStringLiteral("Yaw rate"), QStringLiteral("YAW"), false});
     ckp = Sensor({QStringLiteral("ckp"), QStringLiteral("Crankshaft position sensor"), QStringLiteral("rpm"),
         QStringLiteral("ECM"), 0.0, 8000.0, 0.0, 0.0, 0.0, true, QStringLiteral("Crankshaft"), QStringLiteral("CKP")});
 }
@@ -218,9 +223,22 @@ void SensorSet::update(const VehicleModel &vehicle, qint64 nowMs)
     tft.update(vehicle.transTemp(), nowMs);
     eop.update(vehicle.oilPressureBar(), nowMs);
     fls.update(vehicle.fuelLevel(), nowMs);
+    if (sas.config().fitted) {
+        sas.update(vehicle.steeringWheelAngle() + vehicle.sasMountOffset, nowMs);
+        yaw.update(vehicle.yawRate(), nowMs);
+    }
     if (maf.config().fitted) {
         maf.update(vehicle.airMassGps(), nowMs);
         o2.update(vehicle.o2SensorVolts(), nowMs);
+    }
+}
+
+void SensorSet::fitEsc(bool fitted)
+{
+    for (Sensor *s : {&sas, &yaw}) {
+        Sensor::Config c = s->config();
+        c.fitted = fitted;
+        *s = Sensor(c);
     }
 }
 
@@ -239,6 +257,8 @@ QList<Sensor *> SensorSet::all()
     QList<Sensor *> list{&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps};
     if (maf.config().fitted)
         list << &maf << &o2;
+    if (sas.config().fitted)
+        list << &sas << &yaw;
     list << &eop << &fls << &tft;
     return list;
 }

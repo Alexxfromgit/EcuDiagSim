@@ -26,6 +26,8 @@ struct DriverInputs
     std::array<bool, 4> doorAjar{};
     bool parkBrake = false;     ///< mechanical hand brake on the rear axle
     bool seatBelt = false;      ///< driver's belt buckled
+    double steering = 0.0;      ///< steering wheel angle in degrees, + = left (lock to lock +-540)
+    int surface = 0;            ///< road: 0 dry, 1 wet, 2 snow, 3 ice
 };
 
 /// The plant: a simple longitudinal model of a mid-size car with a 6-speed automatic.
@@ -41,6 +43,11 @@ public:
     static constexpr int kGearCount = 6;
     static constexpr double kTankLitres = 55.0;
     static constexpr double kPlacardBar = 2.4; ///< cold inflation pressure on the door sticker
+    static constexpr double kSteeringRatio = 15.0;
+    static constexpr double kWheelbase = 2.7; ///< m
+    static constexpr double kTrack = 1.55;    ///< m
+    /// Tyre-road friction coefficient: dry 1.1, wet 0.7, snow 0.3, ice 0.12.
+    static double surfaceMu(int surface);
     static constexpr double kStartFuelLitres = 40.0;
     /// The injectors deliver 3 % less than the ECM's calculation (part tolerance): the closed
     /// loop corrects it, and the long-term trim learns it.
@@ -55,6 +62,11 @@ public:
     bool alternatorFailed = false;
     bool coolingFailed = false;
     bool bulbLowLeftOpen = false;
+    // --- chassis actuators (written by the ABS / ESC unit) ---
+    std::array<double, 4> absPressure{1.0, 1.0, 1.0, 1.0}; ///< brake pressure per wheel, 1 = what the pedal asks
+    double escBrakeDecel = 0.0; ///< m/s^2: ESC brakes single wheels to bring the car back on its line
+    double sasMountOffset = 0.0; ///< deg: steering wheel re-centred at a wheel alignment, sensor not
+
     // --- engine OBD pack: closed-loop fuelling (written by the ECM when fitted) ---
     bool mixtureControl = false; ///< the ECM meters the fuel itself (otherwise lambda stays 1)
     double fuelMassGps = 0.0;    ///< injected fuel, g/s
@@ -83,8 +95,14 @@ public:
     /// Signed velocity: negative while rolling backwards.
     double velocityKph() const { return m_speed * 3.6; }
     /// Passive wheel speed sensors measure the magnitude only, not the direction.
-    /// A soft tyre rolls on a smaller radius and turns slightly faster (what indirect TPMS uses).
+    /// Speed of one wheel's circumference: differs from the road speed in corners (inner wheels
+    /// slower), when locked (0) and with a soft tyre (a smaller radius turns faster).
     double wheelSpeedKph(int wheel) const;
+    bool wheelLocked(int wheel) const { return m_locked[static_cast<size_t>(wheel)]; }
+    double yawRate() const { return m_yawRate; }                    ///< deg/s, + = turning left
+    double roadWheelAngle() const { return m_steering / kSteeringRatio; } ///< deg
+    double steeringWheelAngle() const { return m_steering; }
+    double mu() const { return m_mu; }
     /// Tyre pressure (gauge, bar) at the current tyre temperature; and the same at 20 degC.
     double tyrePressure(int wheel) const;
     double tyrePressureCold(int wheel) const { return m_tyreCold[static_cast<size_t>(wheel)]; }
@@ -146,6 +164,11 @@ private:
     int m_firingIndex = 0;
     quint64 m_firings = 0;
     std::array<quint64, 4> m_misfires{};
+    std::array<double, 4> m_wheelKph{};
+    std::array<bool, 4> m_locked{};
+    double m_yawRate = 0.0;
+    double m_steering = 0.0;
+    double m_mu = 1.1;
     int m_crashCount = 0;
     double m_crashDeltaV = 0.0;
     std::array<double, 4> m_tyreCold{kPlacardBar, kPlacardBar, kPlacardBar, kPlacardBar};

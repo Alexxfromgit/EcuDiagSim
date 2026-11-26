@@ -119,6 +119,57 @@ Panel {
             }
         }
 
+        // --- steering and road ---
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
+            spacing: 8
+            Caption { text: "Steering" }
+            Slider {
+                id: steeringSlider
+                Layout.fillWidth: true
+                from: 540; to: -540 // left on the left
+                value: App.steering
+                onMoved: App.steering = value
+            }
+            Text {
+                text: (App.steering > 0.5 ? "◀ " : App.steering < -0.5 ? "▶ " : "") + Math.abs(App.steering).toFixed(0) + "°"
+                color: Theme.text
+                font { family: Theme.mono; pixelSize: 12 }
+                Layout.preferredWidth: 52
+                horizontalAlignment: Text.AlignRight
+            }
+            Button {
+                text: "Centre"
+                onClicked: App.steering = 0
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
+            spacing: 8
+            Caption { text: "Road" }
+            Repeater {
+                model: ["Dry", "Wet", "Snow", "Ice"]
+                Button {
+                    required property int index
+                    required property string modelData
+                    implicitWidth: 52 // as compact as the selector, fits 1366 px windows
+                    text: modelData
+                    checkable: true
+                    checked: App.surface === index
+                    highlighted: checked
+                    onClicked: App.surface = index
+                }
+            }
+            Item { Layout.fillWidth: true }
+            Chip {
+                visible: root.v.absActive
+                text: "ABS"
+                tone: Theme.warn
+            }
+        }
+
         // --- selector ---
         RowLayout {
             Layout.fillWidth: true
