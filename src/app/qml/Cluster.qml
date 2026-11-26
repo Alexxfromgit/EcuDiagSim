@@ -163,6 +163,16 @@ Panel {
             spacing: 3
             Lamp { on: root.c.turnLeft; label: "◀"; tone: Theme.ok; tip: "Left turn signal (BCM_Status.TurnLeft)" }
             Item { Layout.fillWidth: true }
+            Lamp {
+                visible: App.fitted.indexOf("srs") >= 0
+                on: root.c.airbag; label: "AIRBAG"; tone: Theme.error
+                tip: "Airbag system (SRS_Status.AirbagLampReq, own 6 s lamp check, or the module silent)"
+            }
+            Lamp {
+                visible: App.fitted.indexOf("srs") >= 0
+                on: root.c.seatBelt; label: "BELT"; tone: Theme.error
+                tip: "Seat belt reminder (SRS_Status.BeltWarn; flashes above 20 km/h)"
+            }
             Lamp { on: root.c.mil; label: "CHECK"; tip: "Malfunction indicator lamp (ECM_Status.MilReq, or ECM silent)" }
             Lamp { on: root.c.abs; label: "ABS"; tip: "ABS warning (ABS_Status.AbsLampReq, or ABS silent)" }
             Lamp { on: root.c.tcs; label: "TCS"; tip: "Traction control off (ABS_Status.TcsLampReq)" }

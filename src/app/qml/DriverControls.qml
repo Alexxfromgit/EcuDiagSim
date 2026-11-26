@@ -59,6 +59,36 @@ Panel {
             Item { Layout.fillWidth: true }
         }
 
+        // --- restraints (airbag system only) ---
+        RowLayout {
+            visible: App.fitted.indexOf("srs") >= 0
+            Layout.fillWidth: true
+            Layout.maximumWidth: column.width
+            spacing: 8
+            Caption { text: "Seat belt" }
+            Switch {
+                checked: App.seatBelt
+                text: checked ? "Buckled" : "Unbuckled"
+                onToggled: App.seatBelt = checked
+            }
+            Item { Layout.fillWidth: true }
+            Button {
+                visible: !(root.v.airbagFired[0] || root.v.airbagFired[1])
+                text: "Crash!"
+                palette.button: "#5a1f26"
+                onClicked: App.crash()
+                ToolTip.visible: hovered
+                ToolTip.text: "Frontal impact at the current speed. Above 20 km/h the airbags fire."
+            }
+            Button {
+                visible: root.v.airbagFired[0] || root.v.airbagFired[1]
+                text: "Replace airbags"
+                onClicked: App.replaceAirbags()
+                ToolTip.visible: hovered
+                ToolTip.text: "Workshop: new airbags. The module keeps its crash record - it must be replaced too."
+            }
+        }
+
         // --- park brake and fuel ---
         RowLayout {
             Layout.fillWidth: true

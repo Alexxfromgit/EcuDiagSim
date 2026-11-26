@@ -158,7 +158,17 @@ void tst_App::equipmentCatalogAndChoice()
     app.setEquipment({QStringLiteral("engine_obd")});
     QVERIFY(!targetSpy.isEmpty()); // the views re-read the lists
     QCOMPARE(scanner->routines().size(), 2);
+
+    // A fifth control unit appears in the scan tool with its own address.
+    QCOMPARE(scanner->ecuNames().size(), 4);
+    app.setEquipment({QStringLiteral("srs")});
+    QCOMPARE(scanner->ecuNames().size(), 5);
+    QCOMPARE(scanner->ecuNames().at(4), QStringLiteral("SRS  (0x7E4)"));
+    scanner->setTarget(4);
+    QCOMPARE(scanner->target(), 4);
+    QCOMPARE(scanner->codings().size(), 1);
     app.setEquipment({});
+    QCOMPARE(scanner->target(), 0); // the module is gone
 }
 
 void tst_App::viewModelsDescribeTheVehicle()

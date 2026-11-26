@@ -41,6 +41,9 @@ private slots:
     void tpmsLowPressureWarning();
     void tpmsReplacedSensorAndRelearn();
     void tpmsDeadSensorAndManualId();
+    void srsLampCheckAndSquibs();
+    void srsCrashDeploysAndLocksTheRecord();
+    void srsSeatBelt();
 };
 
 namespace {
@@ -48,6 +51,13 @@ VehicleConfig obdPack()
 {
     VehicleConfig c;
     c.fit(Equipment::EngineObd);
+    return c;
+}
+
+VehicleConfig withSrs()
+{
+    VehicleConfig c;
+    c.fit(Equipment::Srs);
     return c;
 }
 
@@ -1026,6 +1036,142 @@ void tst_Vehicle::tpmsDeadSensorAndManualId()
     sim.run(2000);
     QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
     QCOMPARE(sim.sensors().tpms[2].id, 0x1A5C4B33u);
+}
+
+void tst_Vehicle::srsLampCheckAndSquibs()
+{
+    // Not fitted: no module on the bus, its address stays silent.
+    Simulation base;
+    QVERIFY(!base.srs());
+    QCOMPARE(base.ecus().size(), 5);
+    base.driver().ignition = Ignition::On;
+    base.run(1500);
+    QVERIFY(exchange(base, DiagId::SrsRequest, hex("22 F1 90")).timedOut());
+
+    Simulation sim(withSrs());
+    QVERIFY(sim.srs());
+    QCOMPARE(sim.ecus().size(), 6);
+    QCOMPARE(sim.ecus().at(4)->identity().name, QStringLiteral("SRS"));
+    sim.driver().seatBelt = true;
+    sim.driver().ignition = Ignition::On;
+    sim.run(2000);
+    QVERIFY(sim.ipc().state().airbag); // own lamp check: 6 s
+    sim.run(5000);
+    QVERIFY(!sim.ipc().state().airbag);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "22 50 01"), hex("62 50 01 00 DC")); // 2.20 ohm
+
+    // Clock spring broken: the driver squib circuit is open.
+    QVERIFY(sim.injectFault(QStringLiteral("airbag_driver"), {FaultType::OpenCircuit}));
+    sim.run(2500);
+    QVERIFY(sim.srs()->dtcs().testFailed(dtc::squib(0, dtc::FtbResistanceHigh)));
+    QVERIFY(sim.ipc().state().airbag);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "22 50 01"), hex("62 50 01 FF FF"));
+    // Clearing does not help while the fault is there.
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("54"));
+    sim.run(2500);
+    QVERIFY(sim.srs()->dtcs().testFailed(dtc::squib(0, dtc::FtbResistanceHigh)));
+
+    sim.clearFault(QStringLiteral("airbag_driver"));
+    QVERIFY(sim.injectFault(QStringLiteral("airbag_passenger"), {FaultType::ShortToGround}));
+    sim.run(2500);
+    QVERIFY(sim.srs()->dtcs().testFailed(dtc::squib(1, dtc::FtbResistanceLow)));
+    sim.clearFault(QStringLiteral("airbag_passenger"));
+    sim.run(2500);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("54"));
+    sim.run(500);
+    QVERIFY(!sim.ipc().state().airbag);
+}
+
+void tst_Vehicle::srsCrashDeploysAndLocksTheRecord()
+{
+    Simulation sim(withSrs());
+    sim.driver().seatBelt = true;
+    sim.driver().doorLock = true;
+    startEngine(sim);
+
+    // A parking bump does not fire anything.
+    sim.driver().selector = Selector::D;
+    sim.driver().throttlePedal = 0.2;
+    QVERIFY(sim.runUntil([&] { return sim.vehicle().speedKph() > 10.0; }, 20000));
+    sim.crash();
+    sim.run(200);
+    QVERIFY(!sim.vehicle().airbagFired[0]);
+    QVERIFY(!sim.srs()->crashRecorded());
+
+    driveTo(sim, 50.0);
+    sim.crash();
+    sim.run(200);
+    QVERIFY(sim.vehicle().airbagFired[0] && sim.vehicle().airbagFired[1]);
+    QVERIFY(sim.srs()->crashRecorded());
+    QCOMPARE(sim.signal(QStringLiteral("CrashDetected")), 1.0);
+    // Reactions on the bus: the ECM cuts the fuel, the BCM unlocks and switches the hazards on.
+    sim.run(1500);
+    QVERIFY(!sim.vehicle().engineRunning());
+    QVERIFY(!sim.bcm().doorsLocked());
+    QVERIFY(sim.runUntil([&] { return sim.bcm().turnLeftLampOn() && sim.bcm().turnRightLampOn(); }, 1000));
+    QVERIFY(sim.ipc().state().airbag);
+
+    const QByteArray record = ask(sim, DiagId::SrsRequest, "22 50 10");
+    QCOMPARE(record.left(4), hex("62 50 10 01"));
+    QVERIFY(static_cast<quint8>(record[4]) >= 48 && static_cast<quint8>(record[4]) <= 52); // delta-v
+    QCOMPARE(static_cast<quint8>(record[5]), quint8(1));                                     // belted
+    QVERIFY(sim.srs()->dtcs().status(dtc::B0052Deployment) & DtcStatus::Confirmed);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("7F 14 22")); // crash data cannot be erased
+
+    // New airbags: the circuits are fine again, the module still holds the record.
+    sim.replaceAirbags();
+    sim.run(2500);
+    QVERIFY(!sim.srs()->dtcs().testFailed(dtc::squib(0, dtc::FtbResistanceHigh)));
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("7F 14 22"));
+    // New module: no record, but blank coding.
+    QVERIFY(sim.injectFault(QStringLiteral("srs"), {FaultType::Unconfigured}));
+    QVERIFY(!sim.srs()->crashRecorded());
+    sim.run(1000);
+    QVERIFY(sim.srs()->dtcs().testFailed(dtc::U3000NotConfigured));
+    QVERIFY(sim.ipc().state().airbag);
+    QCOMPARE(unlockAndAsk(sim, DiagId::SrsRequest, "2E 01 00 04"), hex("7F 2E 31"));
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "2E 01 00 03"), hex("6E 01 00"));
+    QVERIFY(sim.activeFaults().isEmpty());
+    sim.run(1000);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("54"));
+    sim.run(500);
+    QVERIFY(!sim.ipc().state().airbag);
+
+    // The next ignition cycle: the engine runs again, the hazards are off - nothing is left over
+    // from the last message before the key was turned off.
+    sim.driver().selector = Selector::P; // the starter only turns in P or N
+    ignitionCycle(sim);
+    startEngine(sim);
+    QVERIFY(sim.vehicle().engineRunning());
+    QCOMPARE(sim.signal(QStringLiteral("CrashDetected")), 0.0);
+    bool hazards = false;
+    for (int i = 0; i < 1000; ++i) {
+        sim.step();
+        hazards = hazards || (sim.bcm().turnLeftLampOn() && sim.bcm().turnRightLampOn());
+    }
+    QVERIFY(!hazards);
+}
+
+void tst_Vehicle::srsSeatBelt()
+{
+    Simulation sim(withSrs());
+    startEngine(sim);
+    QCOMPARE(sim.signal(QStringLiteral("BeltWarn")), 1.0);
+    QVERIFY(sim.ipc().state().seatBelt);
+    driveTo(sim, 30.0);
+    sim.run(500);
+    QCOMPARE(sim.signal(QStringLiteral("BeltChime")), 1.0);
+    sim.driver().seatBelt = true;
+    sim.run(300);
+    QCOMPARE(sim.signal(QStringLiteral("BeltWarn")), 0.0);
+    QVERIFY(!sim.ipc().state().seatBelt);
+
+    // An open buckle circuit: neither buckled nor unbuckled - a fault, and treated as unbuckled.
+    QVERIFY(sim.injectFault(QStringLiteral("belt_switch"), {FaultType::OpenCircuit}));
+    sim.run(2500);
+    QVERIFY(sim.srs()->dtcs().testFailed(dtc::B0050BeltSwitch));
+    QCOMPARE(sim.signal(QStringLiteral("BeltWarn")), 1.0);
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "22 50 03"), hex("62 50 03 02"));
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

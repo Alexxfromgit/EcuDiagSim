@@ -25,6 +25,7 @@ struct DriverInputs
     bool doorLock = false;
     std::array<bool, 4> doorAjar{};
     bool parkBrake = false;     ///< mechanical hand brake on the rear axle
+    bool seatBelt = false;      ///< driver's belt buckled
 };
 
 /// The plant: a simple longitudinal model of a mid-size car with a 6-speed automatic.
@@ -62,6 +63,16 @@ public:
     double vacuumLeakGps = 0.0;        ///< unmetered air entering behind the air flow meter
     int misfireCylinder = 0;           ///< 1..4: that cylinder does not fire, 0 = none
     std::array<double, 4> tyreLeakBarPerS{}; ///< slow puncture per tyre FL, FR, RL, RR
+
+    // --- restraints (airbag system) ---
+    std::array<double, 2> squibOhms{2.2, 2.3}; ///< driver, passenger airbag igniter circuit
+    std::array<bool, 2> airbagFired{};         ///< a fired squib is an open circuit
+    bool beltSwitchOpen = false;               ///< wiring fault at the driver's buckle
+    double squibResistance(int i) const { return airbagFired[static_cast<size_t>(i)] ? 1e6 : squibOhms[static_cast<size_t>(i)]; }
+    /// Frontal impact: the car stops dead; the airbag module sees the delta-v.
+    void crash();
+    int crashCount() const { return m_crashCount; }
+    double crashDeltaV() const { return m_crashDeltaV; }
     bool parkBrakeSwitchStuck = false; ///< switch reports "applied" whatever the lever does
 
     void step(double dt, const DriverInputs &driver);
@@ -135,6 +146,8 @@ private:
     int m_firingIndex = 0;
     quint64 m_firings = 0;
     std::array<quint64, 4> m_misfires{};
+    int m_crashCount = 0;
+    double m_crashDeltaV = 0.0;
     std::array<double, 4> m_tyreCold{kPlacardBar, kPlacardBar, kPlacardBar, kPlacardBar};
     std::array<double, 4> m_tyreTemp{kAmbientTemp, kAmbientTemp, kAmbientTemp, kAmbientTemp};
     bool m_parkBrake = false;

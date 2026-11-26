@@ -25,6 +25,7 @@ Ecm::Ecm(SimContext &ctx)
     subscribe(msg::AbsStatus, 200, U0121);
     subscribe(msg::TcmStatus, 200, U0101);
     subscribe(msg::BcmStatus, 500, U0140);
+    subscribe(msg::SrsStatus, 500);
 
     auto &d = dtcs();
     d.define(dtcDef(P0116, 3, true, 2));
@@ -173,6 +174,7 @@ Ecm::Ecm(SimContext &ctx)
 
 void Ecm::onWake()
 {
+    m_crashCut = false;
     m_running = false;
     m_noSignalMs = 1000;
     m_crankMs = 0;
@@ -424,7 +426,11 @@ void Ecm::task10ms()
         m_runMs = 0; // PID 0x1F counts from engine start
     }
     // No crank signal -> no injection/ignition timing -> the engine cannot run.
-    v.fuelEnable = m_noSignalMs < 100;
+    // After an airbag deployment the fuel pump stays off until the key is turned off.
+    if (receivedSince(msg::SrsStatus, now() - awakeForMs()) && !rxTimedOut(msg::SrsStatus)
+        && rx(msg::SrsStatus, QStringLiteral("CrashDetected")) > 0.5)
+        m_crashCut = true;
+    v.fuelEnable = m_noSignalMs < 100 && !m_crashCut;
     if (m_running)
         m_runMs += 10;
 

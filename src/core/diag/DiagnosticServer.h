@@ -62,6 +62,8 @@ public:
     /// PIDs that the freeze frame (DTC snapshot) contains; announced by Mode 02 PID 00.
     void setFreezeFramePids(const QList<quint8> &pids) { m_freezeFramePids = pids; }
     std::function<void()> onReset;
+    /// Returns a negative response code when the fault memory must not be cleared (0 = allowed).
+    std::function<quint8()> clearGuard;
 
     // --- runtime ---
     QByteArray handleRequest(const QByteArray &request, bool functional);

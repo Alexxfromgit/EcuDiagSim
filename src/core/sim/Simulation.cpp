@@ -19,6 +19,8 @@ Simulation::Simulation(const VehicleConfig &config)
     m_tcm = std::make_unique<Tcm>(*m_ctx);
     m_bcm = std::make_unique<Bcm>(*m_ctx);
     m_ipc = std::make_unique<Ipc>(*m_ctx);
+    if (m_config.has(Equipment::Srs))
+        m_srs = std::make_unique<Srs>(*m_ctx);
     m_tester = std::make_unique<DiagnosticTester>(m_bus);
     m_replayer = std::make_unique<TraceReplayer>(m_bus);
     m_scenario = std::make_unique<ScenarioRunner>(*this);
@@ -53,7 +55,12 @@ Simulation::~Simulation() = default;
 
 QList<Ecu *> Simulation::ecus() const
 {
-    return {m_ecm.get(), m_tcm.get(), m_abs.get(), m_bcm.get(), m_ipc.get()};
+    // Diagnosable units in address order, the cluster last.
+    QList<Ecu *> list{m_ecm.get(), m_tcm.get(), m_abs.get(), m_bcm.get()};
+    if (m_srs)
+        list.append(m_srs.get());
+    list.append(m_ipc.get());
+    return list;
 }
 
 Ecu *Simulation::ecu(const QString &name) const
@@ -144,6 +151,15 @@ void Simulation::buildFaultTargets()
         m_targets.append({QStringLiteral("ignition_coils"), QStringLiteral("Ignition coils"), QStringLiteral("ECM"),
             FaultTarget::Kind::Component, {}, {FaultType::Misfire}, QStringLiteral("COIL")});
     }
+    if (m_config.has(Equipment::Srs)) {
+        const QList<FaultType> squibFaults = {FaultType::OpenCircuit, FaultType::ShortToGround};
+        m_targets.append({QStringLiteral("airbag_driver"), QStringLiteral("Driver airbag squib circuit"),
+            QStringLiteral("SRS"), FaultTarget::Kind::Component, {}, squibFaults, QStringLiteral("AB")});
+        m_targets.append({QStringLiteral("airbag_passenger"), QStringLiteral("Passenger airbag squib circuit"),
+            QStringLiteral("SRS"), FaultTarget::Kind::Component, {}, squibFaults, QStringLiteral("AB")});
+        m_targets.append({QStringLiteral("belt_switch"), QStringLiteral("Driver seat belt buckle switch"),
+            QStringLiteral("SRS"), FaultTarget::Kind::Component, {}, {FaultType::OpenCircuit}, QStringLiteral("BELT")});
+    }
     m_targets.append({QStringLiteral("tyres"), QStringLiteral("Tyres (slow puncture)"), QString(),
         FaultTarget::Kind::Component, {}, {FaultType::Leak}, QStringLiteral("TYRE")});
     if (m_config.has(Equipment::Tpms)) {
@@ -193,6 +209,15 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         m_vehicle.vacuumLeakGps = on ? 1.2 : 0.0; // a cracked hose: about half the idle air again
     } else if (id == QLatin1String("ignition_coils")) {
         m_vehicle.misfireCylinder = on ? std::clamp(fault.hasP1 ? static_cast<int>(fault.p1) : 3, 1, 4) : 0;
+    } else if (id == QLatin1String("airbag_driver") || id == QLatin1String("airbag_passenger")) {
+        // Open: connector or clock spring; short: the two igniter leads touch.
+        const size_t i = id == QLatin1String("airbag_driver") ? 0 : 1;
+        const double nominal = i == 0 ? 2.2 : 2.3;
+        m_vehicle.squibOhms[i] = fault.type == FaultType::OpenCircuit ? 1e6
+            : fault.type == FaultType::ShortToGround                  ? 0.3
+                                                                      : nominal;
+    } else if (id == QLatin1String("belt_switch")) {
+        m_vehicle.beltSwitchOpen = on;
     } else if (id == QLatin1String("tyres")) {
         if (on) {
             const int wheel = std::clamp(fault.hasP1 ? static_cast<int>(fault.p1) : 1, 1, 4);

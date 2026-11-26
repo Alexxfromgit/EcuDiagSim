@@ -200,6 +200,9 @@ QByteArray DiagnosticServer::clearDtcs(const QByteArray &req)
     if (req.size() != 4)
         return negative(Sid::ClearDiagnosticInformation, Nrc::IncorrectMessageLength);
     const quint32 group = (quint32{u8(req, 1)} << 16) | (quint32{u8(req, 2)} << 8) | u8(req, 3);
+    if (clearGuard)
+        if (const quint8 nrc = clearGuard())
+            return negative(Sid::ClearDiagnosticInformation, nrc);
     if (!m_dtcs.clear(group))
         return negative(Sid::ClearDiagnosticInformation, Nrc::RequestOutOfRange);
     return bytes({0x54});

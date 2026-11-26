@@ -95,7 +95,7 @@ key = rotl32(seed XOR 0x5EC0DE5A, 5) + 0x1234ABCD
 | 0x12 | subFunctionNotSupported | `10 02`, `19 55` |
 | 0x13 | incorrectMessageLengthOrInvalidFormat | bytes missing or too many |
 | 0x14 | responseTooLong | the answer would exceed 4095 bytes, the ISO-TP limit |
-| 0x22 | conditionsNotCorrect | throttle adaptation started with the engine running |
+| 0x22 | conditionsNotCorrect | throttle adaptation started with the engine running; clearing the SRS fault memory while a crash record is stored |
 | 0x24 | requestSequenceError | key sent without requesting a seed; routine results before the routine ran |
 | 0x31 | requestOutOfRange | unknown identifier or DTC |
 | 0x33 | securityAccessDenied | IO control while locked |
@@ -127,6 +127,10 @@ ECU would reject a request meant for one of them.
 | 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights, bit 3 tyre pressure monitoring (only with that equipment; its default coding is `09`) | 1 byte, `FF` = blank |
 | 4020…4023 | BCM (TPMS) | tyre pressure FL, FR, RL, RR | 1 byte, 0.02 bar |
 | 4024 | BCM (TPMS) | tyre temperatures FL, FR, RL, RR | 4 bytes, −40 °C |
+| 0100 | SRS | variant coding, **writable**: bit 0 passenger airbag fitted, bit 1 seat belt reminder | 1 byte, default `03`, `FF` = blank |
+| 5001 / 5002 | SRS | driver / passenger squib resistance | 2 bytes, 0.01 Ω, `FFFF` = open |
+| 5003 | SRS | belt switch: bit 0 buckled, bit 1 circuit open | 1 byte |
+| 5010 | SRS | crash record: stored (0/1), delta-v km/h, driver belted | 3 bytes |
 | 0310…0313 | BCM (TPMS) | learned sensor ID FL, FR, RL, RR, **writable** (extended session + unlock) | 4 bytes |
 | 0314 | BCM (TPMS) | IDs received that belong to no wheel: count, then 4 bytes each | variable |
 | 2001 / 2002 / 2003 | TCM | gear / fluid temperature (−40) / sensor voltage mV | |

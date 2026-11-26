@@ -188,6 +188,12 @@ void ScenarioRunner::execute(const QJsonObject &step)
     } else if (action == QLatin1String("parkBrake")) {
         driver.parkBrake = value.toBool() || value.toString() == QLatin1String("on");
         act(QStringLiteral("Park brake %1").arg(driver.parkBrake ? QLatin1String("applied") : QLatin1String("released")));
+    } else if (action == QLatin1String("crash")) {
+        act(QStringLiteral("Frontal crash at %1 km/h").arg(m_sim.vehicle().speedKph(), 0, 'f', 0));
+        m_sim.crash();
+    } else if (action == QLatin1String("replaceAirbags")) {
+        m_sim.replaceAirbags();
+        act(QStringLiteral("New airbags fitted"));
     } else if (action == QLatin1String("tyre")) {
         // { "action": "tyre", "wheel": "FL", "value": 1.6 } - cold pressure in bar
         const QString w = step.value(QLatin1String("wheel")).toString().toUpper();
@@ -220,6 +226,8 @@ void ScenarioRunner::execute(const QJsonObject &step)
         }
         else if (name == QLatin1String("hazard"))
             driver.hazard = on;
+        else if (name == QLatin1String("seatBelt"))
+            driver.seatBelt = on;
         else if (name == QLatin1String("doorLock"))
             driver.doorLock = on;
         else if (const qsizetype door = QStringList{QStringLiteral("doorFL"), QStringLiteral("doorFR"),
@@ -346,6 +354,10 @@ void ScenarioRunner::expect(const QJsonObject &step)
             actual = c.mil || c.milFlash; // flashing counts as on
         else if (lamp == QLatin1String("milFlashing"))
             actual = c.milFlash;
+        else if (lamp == QLatin1String("airbag"))
+            actual = c.airbag;
+        else if (lamp == QLatin1String("seatBelt"))
+            actual = c.seatBelt || m_sim.signal(QStringLiteral("BeltChime")) > 0.5; // flashing counts as on
         else if (lamp == QLatin1String("tpms"))
             actual = c.tpms || c.tpmsFlash;
         else if (lamp == QLatin1String("tpmsFlashing"))

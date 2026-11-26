@@ -92,6 +92,13 @@ double VehicleModel::wheelSpeedKph(int wheel) const
     return std::abs(m_speed) * 3.6 / (1.0 - 0.01 * deficit);
 }
 
+void VehicleModel::crash()
+{
+    m_crashDeltaV = speedKph();
+    m_speed = 0.0;
+    ++m_crashCount;
+}
+
 void VehicleModel::setFuelLevel(double litres)
 {
     m_fuel = std::clamp(litres, 0.0, kTankLitres);

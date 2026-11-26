@@ -133,6 +133,12 @@ double Ecu::rx(quint32 id, const QString &signal, double fallback) const
     return v == it->values.cend() ? fallback : v->toDouble();
 }
 
+bool Ecu::receivedSince(quint32 id, qint64 sinceMs) const
+{
+    auto it = m_subs.constFind(id);
+    return it != m_subs.cend() && it->lastRxMs > sinceMs;
+}
+
 bool Ecu::rxTimedOut(quint32 id) const
 {
     auto it = m_subs.constFind(id);

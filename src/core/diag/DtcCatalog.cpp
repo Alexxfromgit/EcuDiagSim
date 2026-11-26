@@ -72,6 +72,16 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             list.append({wheel(i, FtbSignalInvalid), "ABS", kWheelText[i],
                 "Speed deviates more than 25 % from the median of the other wheels above 10 km/h for 0.5 s."});
         }
+        for (int i = 0; i < 2; ++i) {
+            const char *text = i == 0 ? "Driver frontal stage 1 deployment control" : "Passenger frontal stage 1 deployment control";
+            list.append({squib(i, FtbResistanceLow), "SRS", text, "Squib circuit below 1.0 ohm for 2 s (short between the leads)."});
+            list.append({squib(i, FtbResistanceHigh), "SRS", text,
+                "Squib circuit above 4.0 ohm for 2 s (open: connector, clock spring, or a fired airbag)."});
+        }
+        list.append({B0050BeltSwitch, "SRS", "Driver seat belt buckle switch circuit open",
+            "Neither the buckled nor the unbuckled resistance: the circuit is open, for 2 s."});
+        list.append({B0052Deployment, "SRS", "Deployment commanded",
+            "The airbags were fired. Stored with the crash record; cannot be cleared - the module must be replaced."});
         static const char *kTpmsText[4] = {"Left front tire pressure sensor", "Right front tire pressure sensor",
             "Left rear tire pressure sensor", "Right rear tire pressure sensor"};
         for (int i = 0; i < 4; ++i)
@@ -91,7 +101,7 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             "Alive counter of ABS_WheelSpeeds does not change for 10 frames."});
         list.append({U0415Checksum, "ECM", "Invalid data received from ABS control module",
             "Checksum of ABS_WheelSpeeds wrong for 10 frames."});
-        list.append({U3000NotConfigured, "ABS, BCM", "Control module not configured",
+        list.append({U3000NotConfigured, "ABS, BCM, SRS", "Control module not configured",
             "Variant coding (DID 0x0100) is blank, e.g. after the module was replaced. Write it with 0x2E."});
         return list;
     }();

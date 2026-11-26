@@ -11,6 +11,7 @@ Ipc::Ipc(SimContext &ctx)
     subscribe(msg::EcmStatus, 1000);
     subscribe(msg::EcmFuel, 1000);
     subscribe(msg::BcmTpms, 2000);
+    subscribe(msg::SrsStatus, 500);
     subscribe(msg::TcmStatus, 200);
     subscribe(msg::BcmStatus, 500);
     every(20, [this] { task20ms(); });
@@ -82,6 +83,15 @@ void Ipc::task20ms()
     s.rangeKm = s.fuelLevel / perHundred * 100.0;
 
     // --- tyre pressure monitoring (FMVSS 138 lamp behaviour) -----------------------------
+    // --- airbag system: own 6 s lamp check; a silent module lights the lamp -------------------
+    if (m_ctx.config.has(Equipment::Srs)) {
+        const bool srsLost = !grace && rxTimedOut(msg::SrsStatus);
+        s.airbag = awakeForMs() < Srs::kLampCheckMs || srsLost || flag(msg::SrsStatus, "AirbagLampReq");
+        const bool chime = !srsLost && flag(msg::SrsStatus, "BeltChime");
+        const bool beltBlinkOff = chime && (awakeForMs() / 300) % 2 == 1;
+        s.seatBelt = bulbCheck || (!srsLost && flag(msg::SrsStatus, "BeltWarn") && !beltBlinkOff);
+    }
+
     if (m_ctx.config.has(Equipment::Tpms)) {
         const bool tpmsLost = !grace && rxTimedOut(msg::BcmTpms);
         const int request = tpmsLost ? 2 : static_cast<int>(sig(msg::BcmTpms, "TpmsLampReq"));

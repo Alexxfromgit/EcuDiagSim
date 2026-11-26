@@ -59,6 +59,13 @@ constexpr quint8 FtbShortBattery = 0x12;
 constexpr quint8 FtbOpen = 0x13;
 constexpr quint8 FtbSignalInvalid = 0x29;
 constexpr quint32 wheel(int index, quint8 ftb) { return saeDtc('C', kWheelBase[index], ftb); }
+// SRS: driver / passenger frontal squib (SAE J2012 B0001 / B0010) with FTB 1A low / 1B high
+// resistance, driver belt buckle switch circuit open, deployment commanded (crash record)
+constexpr quint8 FtbResistanceLow = 0x1A;
+constexpr quint8 FtbResistanceHigh = 0x1B;
+constexpr quint32 squib(int index, quint8 ftb) { return saeDtc('B', index == 0 ? 0x0001 : 0x0010, ftb); }
+constexpr quint32 B0050BeltSwitch = saeDtc('B', 0x0050, 0x13);
+constexpr quint32 B0052Deployment = saeDtc('B', 0x0052, 0x00);
 // BCM, tyre pressure monitoring: sensor FL, FR, RL, RR, FTB 0x87 = missing message
 constexpr quint32 kTpmsBase[4] = {0x0750, 0x0755, 0x0760, 0x0765};
 constexpr quint32 tpmsSensor(int index) { return saeDtc('C', kTpmsBase[index], 0x87); }

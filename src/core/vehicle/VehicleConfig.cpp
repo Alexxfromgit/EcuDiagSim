@@ -65,7 +65,7 @@ const QList<EquipmentInfo> &VehicleConfig::catalog()
                            "crash sensor."),
             {QStringLiteral("SRS control unit"), QStringLiteral("2 squibs"), QStringLiteral("Belt switch"),
                 QStringLiteral("Airbag lamp"), QStringLiteral("B0001–B0052")},
-            false},
+            true},
         {Equipment::Esc, QStringLiteral("esc"), QStringLiteral("Stability control (ESC)"),
             QStringLiteral("Steering angle and yaw rate sensors: the ABS unit adds stability control, wheel slip "
                            "control and a steering angle calibration routine."),
