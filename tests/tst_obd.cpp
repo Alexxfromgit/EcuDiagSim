@@ -58,9 +58,9 @@ void tst_Obd::supportedPids()
     sim.run(200);
     // ECM: 01 04 05 0C 0D 11 1F + "more in the next range"
     QCOMPARE(ask(sim, DiagId::EcmRequest, "01 00"), hex("41 00 98 18 80 03"));
-    // 21..40: nothing but the continuation bit; 41..60: PID 42
-    QCOMPARE(ask(sim, DiagId::EcmRequest, "01 20"), hex("41 20 00 00 00 01"));
-    QCOMPARE(ask(sim, DiagId::EcmRequest, "01 40"), hex("41 40 40 00 00 00"));
+    // 21..40: PID 2F (fuel level) + the continuation bit; 41..60: PIDs 42 and 5E (fuel rate)
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "01 20"), hex("41 20 00 02 00 01"));
+    QCOMPARE(ask(sim, DiagId::EcmRequest, "01 40"), hex("41 40 40 00 00 04"));
     QVERIFY(exchange(sim, DiagId::Functional, hex("01 60")).timedOut());
     QVERIFY(exchange(sim, DiagId::Functional, hex("01 0F")).timedOut()); // unsupported PID
 }

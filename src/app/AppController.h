@@ -56,6 +56,7 @@ class AppController : public QObject
     Q_PROPERTY(bool hazard READ hazard WRITE setHazard NOTIFY inputsChanged)
     Q_PROPERTY(bool doorLock READ doorLock WRITE setDoorLock NOTIFY inputsChanged)
     Q_PROPERTY(QVariantList doors READ doors NOTIFY inputsChanged)
+    Q_PROPERTY(bool parkBrake READ parkBrake WRITE setParkBrake NOTIFY inputsChanged)
 
     // --- vehicle state for the views ---
     Q_PROPERTY(QVariantMap cluster READ cluster NOTIFY frameUpdated)
@@ -137,6 +138,8 @@ public:
     bool doorLock() const { return m_sim->driver().doorLock; }
     void setDoorLock(bool on);
     QVariantList doors() const;
+    bool parkBrake() const { return m_sim->driver().parkBrake; }
+    void setParkBrake(bool on);
 
     QVariantMap cluster() const;
     QVariantMap vehicle() const;
@@ -163,6 +166,9 @@ public:
     Q_INVOKABLE void reset();
     Q_INVOKABLE void startEngine();
     Q_INVOKABLE void setDoor(int index, bool ajar);
+    /// Fills the tank (litres < 0: to the brim).
+    Q_INVOKABLE void refuel(double litres = -1.0);
+    Q_INVOKABLE void resetTrip();
 
     Q_INVOKABLE bool injectFault(const QString &targetId, const QString &faultType, const QString &p1,
         const QString &p2);

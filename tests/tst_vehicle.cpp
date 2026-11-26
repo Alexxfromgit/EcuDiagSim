@@ -28,6 +28,11 @@ private slots:
     void reverseWhileRollingForwardBrakes();
     void deterministic();
     void vehicleConfig();
+    void fuelConsumptionAndOverrunCut();
+    void runningOutOfFuelSetsNoDtc();
+    void fuelSenderFaults();
+    void oilPressure();
+    void parkBrake();
 };
 
 void tst_Vehicle::sensorCircuitModel()
@@ -62,7 +67,7 @@ void tst_Vehicle::sensorCircuitModel()
     s.wss[0].update(80.0, 0);
     QCOMPARE(s.wss[0].value(), 0.0);
     QCOMPARE(s.wss[0].circuit(), CircuitState::ShortBattery);
-    QCOMPARE(s.all().size(), 8);
+    QCOMPARE(s.all().size(), 10);
     QVERIFY(s.byId(QStringLiteral("ckp")) == &s.ckp);
     QVERIFY(!s.byId(QStringLiteral("nope")));
 }
@@ -539,6 +544,166 @@ void tst_Vehicle::deterministic()
             testerPresent << line.section(u' ', 2).left(3);
     QVERIFY(testerPresent.size() >= 4);
     QCOMPARE(testerPresent.mid(0, 4), QStringList({"7E0", "7E1", "7E2", "7E3"}));
+}
+
+// Idle burns about a litre an hour, load much more; closed throttle in gear cuts the injectors.
+void tst_Vehicle::fuelConsumptionAndOverrunCut()
+{
+    Simulation sim;
+    QCOMPARE(sim.vehicle().fuelLevel(), VehicleModel::kStartFuelLitres);
+    startEngine(sim);
+    sim.run(2000);
+    const double idle = sim.vehicle().fuelRateLph();
+    QVERIFY2(idle > 0.7 && idle < 1.5, qPrintable(QString::number(idle)));
+
+    sim.driver().selector = Selector::D;
+    sim.driver().throttlePedal = 1.0;
+    sim.run(3000);
+    const double full = sim.vehicle().fuelRateLph();
+    QVERIFY2(full > 15.0, qPrintable(QString::number(full)));
+
+    driveTo(sim, 90.0, 0.8);
+    sim.driver().throttlePedal = 0.0;
+    sim.run(500);
+    QCOMPARE(sim.vehicle().fuelRateLph(), 0.0); // overrun fuel cut-off
+
+    // The ECM forwards it; the cluster turns it into l/100 km and a range.
+    sim.driver().throttlePedal = 0.2;
+    sim.run(3000);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("FuelRate")) - sim.vehicle().fuelRateLph()) < 0.5);
+    const ClusterState &c = sim.ipc().state();
+    QVERIFY(c.consumption > 2.0 && c.consumption < 30.0);
+    QVERIFY(c.rangeKm > 100.0);
+    QVERIFY(std::abs(c.fuelLevel - sim.vehicle().fuelLevel()) < 0.5);
+    QVERIFY(!c.lowFuel);
+    QVERIFY(sim.vehicle().fuelLevel() < VehicleModel::kStartFuelLitres);
+}
+
+// An empty tank stops the engine. It cranks, but does not start - and no DTC explains why.
+void tst_Vehicle::runningOutOfFuelSetsNoDtc()
+{
+    Simulation sim;
+    startEngine(sim);
+    sim.vehicle().setFuelLevel(0.02);
+    sim.driver().selector = Selector::D;
+    sim.driver().throttlePedal = 1.0;
+    QVERIFY(sim.runUntil([&] { return !sim.vehicle().engineRunning(); }, 20000));
+    sim.driver().throttlePedal = 0.0;
+    sim.driver().selector = Selector::P;
+    sim.run(2000);
+    QVERIFY(!sim.ecm().engineRunning());
+    QCOMPARE(sim.ecm().dtcs().storedCount(), 0); // a stall is not a crankshaft sensor fault
+
+    sim.requestEngineStart();
+    QVERIFY(sim.runUntil([&] { return sim.vehicle().starterEngaged(); }, 500));
+    sim.run(3500);
+    QVERIFY(!sim.vehicle().engineRunning());
+    QCOMPARE(sim.ecm().dtcs().storedCount(), 0);
+    QVERIFY(sim.ipc().state().lowFuel);
+
+    sim.vehicle().setFuelLevel(20.0);
+    sim.requestEngineStart();
+    QVERIFY(sim.runUntil([&] { return sim.vehicle().engineRunning(); }, 5000));
+}
+
+// Open circuit reads empty (P0463), short to ground reads full (P0462); the gauge drops to empty.
+void tst_Vehicle::fuelSenderFaults()
+{
+    Simulation sim;
+    startEngine(sim);
+    QVERIFY(sim.ecm().fuelLevelValid());
+    QVERIFY(std::abs(sim.ecm().fuelLevel() - VehicleModel::kStartFuelLitres) < 0.5);
+
+    QVERIFY(sim.injectFault(QStringLiteral("fls"), {FaultType::OpenCircuit}));
+    sim.run(2500);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0463) & DtcStatus::Confirmed);
+    QVERIFY(!sim.ecm().fuelLevelValid());
+    QCOMPARE(sim.signal(QStringLiteral("FuelLevelValid")), 0.0);
+    QVERIFY(sim.ipc().state().lowFuel);
+    QCOMPARE(sim.ipc().state().fuelLevel, 0.0);
+
+    sim.clearFault(QStringLiteral("fls"));
+    QVERIFY(sim.injectFault(QStringLiteral("fls"), {FaultType::ShortToGround}));
+    sim.run(2500);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0462) & DtcStatus::Confirmed);
+    QVERIFY(sim.ecm().milOn()); // emission relevant: the level is needed for the EVAP monitor
+}
+
+// Pressure rises with engine speed; a failing pump sets P0524, a dead sensor P0522 - both light OIL.
+void tst_Vehicle::oilPressure()
+{
+    Simulation sim;
+    sim.driver().ignition = Ignition::On;
+    sim.run(3500);
+    QVERIFY(sim.ipc().state().oilWarn); // engine stopped: no pressure, lamp on
+    startEngine(sim);
+    const double idle = sim.vehicle().oilPressureBar();
+    QVERIFY2(idle > 1.0 && idle < 2.0, qPrintable(QString::number(idle)));
+    QVERIFY(!sim.ipc().state().oilWarn);
+    sim.driver().throttlePedal = 0.6;
+    sim.run(2000);
+    QVERIFY(sim.vehicle().oilPressureBar() > idle + 1.0);
+    sim.driver().throttlePedal = 0.0;
+    sim.run(2000);
+
+    QVERIFY(sim.injectFault(QStringLiteral("oil_pump"), {FaultType::Failure}));
+    sim.run(3000);
+    QVERIFY(sim.vehicle().oilPressureBar() < 0.3);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0524) & DtcStatus::Confirmed);
+    QVERIFY(sim.ipc().state().oilWarn);
+    QVERIFY(!sim.ecm().milOn()); // a warning lamp, not an emission fault
+
+    sim.clearFault(QStringLiteral("oil_pump"));
+    sim.run(3000);
+    QVERIFY(!sim.ipc().state().oilWarn);
+    QVERIFY(sim.injectFault(QStringLiteral("eop"), {FaultType::OpenCircuit}));
+    sim.run(2500);
+    QVERIFY(sim.ecm().dtcs().status(dtc::P0522) & DtcStatus::Confirmed);
+    QVERIFY(sim.ipc().state().oilWarn);                  // fail-safe
+    QVERIFY(sim.vehicle().oilPressureBar() > 1.0);       // although the pressure is fine
+}
+
+void tst_Vehicle::parkBrake()
+{
+    Simulation sim;
+    startEngine(sim);
+    QVERIFY(!sim.ipc().state().parkBrake);
+    sim.driver().parkBrake = true;
+    sim.run(300);
+    QCOMPARE(sim.signal(QStringLiteral("ParkBrake")), 1.0);
+    QVERIFY(sim.ipc().state().parkBrake);
+
+    // It holds the car against the creep of the converter and a light throttle ...
+    sim.driver().selector = Selector::D;
+    sim.driver().throttlePedal = 0.25;
+    sim.run(3000);
+    QCOMPARE(sim.vehicle().speedKph(), 0.0);
+    // ... but not against a lot of throttle: the car drags itself off, slowly, with a warning.
+    sim.driver().throttlePedal = 0.7;
+    const qint64 braked = sim.nowMs();
+    QVERIFY(sim.runUntil([&] { return sim.vehicle().speedKph() > 12.0; }, 20000));
+    const qint64 brakedMs = sim.nowMs() - braked;
+    sim.run(300);
+    QCOMPARE(sim.signal(QStringLiteral("ParkBrakeWarn")), 1.0);
+
+    // Released: much quicker.
+    Simulation free;
+    startEngine(free);
+    free.driver().selector = Selector::D;
+    free.driver().throttlePedal = 0.7;
+    const qint64 released = free.nowMs();
+    QVERIFY(free.runUntil([&] { return free.vehicle().speedKph() > 12.0; }, 20000));
+    QVERIFY2((free.nowMs() - released) * 2 < brakedMs,
+        qPrintable(QStringLiteral("%1 ms vs %2 ms").arg(free.nowMs() - released).arg(brakedMs)));
+
+    // A stuck switch keeps the lamp on after the lever is released; the BCM input shows it.
+    sim.driver().parkBrake = false;
+    QVERIFY(sim.injectFault(QStringLiteral("park_brake_switch"), {FaultType::Failure}));
+    sim.run(300);
+    QVERIFY(sim.ipc().state().parkBrake || sim.ipc().state().parkBrakeWarn);
+    QVERIFY(!sim.vehicle().parkBrakeApplied());
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "22 40 04"), hex("62 40 04 01"));
+    QCOMPARE(sim.bcm().dtcs().storedCount(), 0);
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

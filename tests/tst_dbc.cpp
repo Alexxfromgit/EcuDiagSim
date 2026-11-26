@@ -30,7 +30,8 @@ void tst_Dbc::initTestCase()
 
 void tst_Dbc::messagesAreKnown()
 {
-    QCOMPARE(m_dbc.messages().size(), 6);
+    QCOMPARE(m_dbc.messages().size(), 7);
+    QCOMPARE(m_dbc.messageName(msg::EcmFuel), QStringLiteral("ECM_Fuel"));
     QCOMPARE(m_dbc.messageName(msg::AbsWheelSpeeds), QStringLiteral("ABS_WheelSpeeds"));
     QCOMPARE(m_dbc.sender(msg::AbsWheelSpeeds), QStringLiteral("ABS"));
     QCOMPARE(m_dbc.messageName(msg::EcmEngine), QStringLiteral("ECM_Engine"));

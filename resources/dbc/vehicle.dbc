@@ -39,6 +39,13 @@ BO_ 768 ECM_Status: 8 ECM
  SG_ EngineRunning : 10|1@1+ (1,0) [0|1] "" TCM,ABS,BCM,IPC
  SG_ EngineLimp : 11|1@1+ (1,0) [0|1] "" IPC
 
+BO_ 784 ECM_Fuel: 8 ECM
+ SG_ FuelLevel : 0|8@1+ (0.25,0) [0|63.75] "l" IPC
+ SG_ FuelLevelValid : 8|1@1+ (1,0) [0|1] "" IPC
+ SG_ OilPressureWarn : 9|1@1+ (1,0) [0|1] "" IPC
+ SG_ FuelRate : 16|16@1+ (0.01,0) [0|655.35] "l/h" IPC
+ SG_ OilPressure : 32|8@1+ (0.05,0) [0|12.75] "bar" IPC
+
 BO_ 416 TCM_Status: 8 TCM
  SG_ CurrentGear : 0|4@1+ (1,0) [0|7] "" ECM,IPC
  SG_ TargetGear : 4|4@1+ (1,0) [0|7] "" ECM
@@ -60,18 +67,23 @@ BO_ 848 BCM_Status: 8 BCM
  SG_ DoorAjar_RL : 10|1@1+ (1,0) [0|1] "" IPC
  SG_ DoorAjar_RR : 11|1@1+ (1,0) [0|1] "" IPC
  SG_ LampFault : 12|1@1+ (1,0) [0|1] "" IPC
+ SG_ ParkBrake : 13|1@1+ (1,0) [0|1] "" IPC
+ SG_ ParkBrakeWarn : 14|1@1+ (1,0) [0|1] "" IPC
  SG_ BatteryVoltage : 16|8@1+ (0.1,0) [0|25.5] "V" ECM,IPC
 
 CM_ BO_ 176 "Wheel speeds, 10 ms. Protected end-to-end by an alive counter and a CRC-8 (SAE J1850) over bytes 0..6.";
 CM_ BO_ 177 "ABS vehicle speed and lamp requests, 20 ms.";
 CM_ BO_ 256 "Fast engine data, 10 ms.";
 CM_ BO_ 768 "Slow engine data and lamp requests, 100 ms.";
+CM_ BO_ 784 "Fuel and oil: tank level from the fuel sender, fuel rate, oil pressure, 100 ms.";
 CM_ BO_ 416 "Transmission status, 20 ms.";
 CM_ BO_ 848 "Body status, 100 ms. Sent permanently (BCM is on terminal 30).";
 CM_ SG_ 416 CurrentGear "0 = no drive (P/N), 1..6 = forward gear, 7 = reverse";
 CM_ SG_ 416 GearSelector "0 = P, 1 = R, 2 = N, 3 = D";
 CM_ SG_ 848 IgnitionState "0 = off, 1 = on, 2 = start";
 CM_ SG_ 848 Headlamps "0 = off, 1 = parking lights, 2 = low beam";
+CM_ SG_ 784 FuelLevelValid "0 = fuel sender fault, the level is a substitute value";
+CM_ SG_ 848 ParkBrakeWarn "Driving faster than 10 km/h with the park brake applied";
 
 BA_DEF_ BO_ "GenMsgCycleTime" INT 0 10000;
 BA_DEF_DEF_ "GenMsgCycleTime" 0;
@@ -79,6 +91,7 @@ BA_ "GenMsgCycleTime" BO_ 176 10;
 BA_ "GenMsgCycleTime" BO_ 177 20;
 BA_ "GenMsgCycleTime" BO_ 256 10;
 BA_ "GenMsgCycleTime" BO_ 768 100;
+BA_ "GenMsgCycleTime" BO_ 784 100;
 BA_ "GenMsgCycleTime" BO_ 416 20;
 BA_ "GenMsgCycleTime" BO_ 848 100;
 

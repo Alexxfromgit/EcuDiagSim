@@ -38,6 +38,11 @@ Ecm::Ecm(SimContext &ctx)
     d.define(dtcDef(P0562, 30, true));
     d.define(dtcDef(P0700, 3, true));
     d.define(dtcDef(P2176, 20, true));
+    d.define(dtcDef(P0462, 20, true));
+    d.define(dtcDef(P0463, 20, true));
+    d.define(dtcDef(P0522, 20));
+    d.define(dtcDef(P0523, 20));
+    d.define(dtcDef(P0524, 20));
     d.define(networkDtc(U0101));
     d.define(networkDtc(U0121));
     d.define(networkDtc(U0140));
@@ -62,7 +67,9 @@ Ecm::Ecm(SimContext &ctx)
     s.addObdPid(0x0D, [this] { return encU8(rx(msg::AbsStatus, QStringLiteral("VehicleSpeed"))); });
     s.addObdPid(0x11, [this] { return encU8(m_throttlePct * 2.55); });
     s.addObdPid(0x1F, [this] { return encU16(static_cast<double>(m_runMs) / 1000.0); });
+    s.addObdPid(0x2F, [this] { return encU8(fuelLevel() / VehicleModel::kTankLitres * 255.0); });
     s.addObdPid(0x42, [this] { return encU16(m_ctx.vehicle.batteryVoltage() * 1000.0); });
+    s.addObdPid(0x5E, [this] { return encU16(m_ctx.vehicle.fuelRateLph() * 20.0); });
 
     // --- OBD-II Mode 09 ---
     s.addObdInfoType(0x02, [] { return QByteArray(kVin); });
@@ -75,6 +82,9 @@ Ecm::Ecm(SimContext &ctx)
     s.addDid(0x1003, [this] {
         return encU8((m_running ? 0x01 : 0x00) | (m_limp ? 0x02 : 0x00) | (m_mil ? 0x04 : 0x00));
     });
+    s.addDid(0x1005, [this] { return encU8(m_oilBar / 0.05); });
+    s.addDid(0x1006, [this] { return encU16(m_ctx.sensors.eop.voltage() * 1000.0); });
+    s.addDid(0x1007, [this] { return encU16(m_ctx.sensors.fls.voltage() * 1000.0); });
     s.addDid(0x1004, [this] {
         QByteArray a = encU8(m_throttleAdapted ? 1 : 0);
         a.append(encU16(m_learnedClosedVolts * 1000.0));
@@ -121,6 +131,8 @@ void Ecm::onWake()
     m_haveLastEct = false;
     m_lastCounter = -1;
     m_runMs = 0;
+    m_haveFuel = false;
+    m_prevRpm = 0.0;
 }
 
 void Ecm::onSleep()
@@ -130,7 +142,6 @@ void Ecm::onSleep()
         abortAdaptation();
     m_ctx.vehicle.fuelEnable = false;
     m_ctx.vehicle.throttleCmd = 0.0;
-    m_ctx.vehicle.throttleMotorOn = false;
     m_running = false;
 }
 
@@ -144,7 +155,6 @@ QByteArray Ecm::adaptationStatus() const
 void Ecm::abortAdaptation()
 {
     m_learn = Learn::Aborted;
-    m_ctx.vehicle.throttleMotorOn = false;
     m_ctx.vehicle.throttleCmd = 0.0;
 }
 
@@ -160,7 +170,6 @@ void Ecm::runAdaptation(double pedal)
     const qint64 t = now() - m_learnStartMs;
     // Open fully in 1 s, close again in 1 s, then rest closed and measure the stop.
     const double cmd = t < 1000 ? t / 1000.0 : (t < 2000 ? 1.0 - (t - 1000) / 1000.0 : 0.0);
-    v.throttleMotorOn = true;
     v.throttleCmd = cmd;
     // The sensor must follow the plate (the motor needs ~50 ms, hence the tolerance).
     if (t > 100)
@@ -168,7 +177,6 @@ void Ecm::runAdaptation(double pedal)
     if (t < kAdaptationMs)
         return;
 
-    v.throttleMotorOn = false;
     v.throttleCmd = 0.0;
     const double closed = tps.voltage();
     const bool ok = m_learnMaxError <= 15.0 && closed > 0.2 && closed < 1.0;
@@ -209,6 +217,14 @@ void Ecm::task10ms()
     // --- crankshaft sensor / engine state -----------------------------------
     m_rpm = sensors.ckp.value();
     const bool noSignal = m_rpm < 50.0;
+    // A stalling engine runs down through the low speeds; a broken sensor drops to zero at once.
+    // Only the second one is a crankshaft sensor fault.
+    if (m_running && noSignal && m_prevRpm < 400.0) {
+        m_running = false;
+        m_noSignalMs = 1000;
+    }
+    if (!noSignal)
+        m_prevRpm = m_rpm; // last engine speed seen with a signal
     // The ECM drives the starter relay, so it knows whether the engine is really being cranked
     // (the starter is inhibited outside P/N and with a flat battery).
     const bool cranking = v.starterEngaged() && !m_running;
@@ -294,6 +310,34 @@ void Ecm::task100ms()
     if (monitoringEnabled() && !rxTimedOut(msg::TcmStatus))
         dtcs().report(P0700, rx(msg::TcmStatus, QStringLiteral("TcmMilReq")) > 0.5);
 
+    // --- fuel level sender ------------------------------------------------------
+    const double fuelVolts = sensors.fls.voltage();
+    const bool flsHigh = fuelVolts > 4.8; // open circuit: the pull-up wins, reads empty
+    const bool flsLow = fuelVolts < 0.2;  // short to ground, reads full
+    dtcs().report(P0463, flsHigh);
+    dtcs().report(P0462, flsLow);
+    m_fuelValid = !flsHigh && !flsLow && !dtcs().testFailed(P0462) && !dtcs().testFailed(P0463);
+    // Damped against fuel sloshing in the tank (time constant 3 s). While the circuit is faulty
+    // the last good level is kept, so a repaired sender does not start from zero.
+    if (!flsHigh && !flsLow) {
+        const double rawFuel = sensors.fls.value();
+        m_fuelL = m_haveFuel ? m_fuelL + (rawFuel - m_fuelL) * 0.1 / 3.0 : rawFuel;
+        m_haveFuel = true;
+    }
+
+    // --- oil pressure -------------------------------------------------------------
+    const double oilVolts = sensors.eop.voltage();
+    const bool eopLow = oilVolts < 0.2;
+    const bool eopHigh = oilVolts > 4.8;
+    dtcs().report(P0522, eopLow);
+    dtcs().report(P0523, eopHigh);
+    const bool eopOk = !eopLow && !eopHigh && !dtcs().testFailed(P0522) && !dtcs().testFailed(P0523);
+    m_oilBar = eopOk ? sensors.eop.value() : 0.0;
+    if (m_running && m_runMs > 3000 && eopOk)
+        dtcs().report(P0524, m_oilBar < 0.4);
+    // The lamp is lit with the engine stopped (no pressure) and, fail-safe, with a sensor fault.
+    m_oilWarn = !eopOk || m_oilBar < 0.4;
+
     m_mil = dtcs().milRequested();
 
     send(msg::EcmStatus, {{QStringLiteral("CoolantTemp"), m_coolant},
@@ -301,6 +345,11 @@ void Ecm::task100ms()
                              {QStringLiteral("CoolantWarnReq"), m_coolantWarn ? 1 : 0},
                              {QStringLiteral("EngineRunning"), m_running ? 1 : 0},
                              {QStringLiteral("EngineLimp"), m_limp ? 1 : 0}});
+    send(msg::EcmFuel, {{QStringLiteral("FuelLevel"), fuelLevel()},
+                           {QStringLiteral("FuelLevelValid"), m_fuelValid ? 1 : 0},
+                           {QStringLiteral("OilPressureWarn"), m_oilWarn ? 1 : 0},
+                           {QStringLiteral("FuelRate"), m_ctx.vehicle.fuelRateLph()},
+                           {QStringLiteral("OilPressure"), m_oilBar}});
 }
 
 } // namespace ecusim

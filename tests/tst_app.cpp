@@ -83,6 +83,13 @@ void tst_App::opensPaused()
     QCOMPARE(app.simTime(), 0.0);
     QCOMPARE(app.sim().bus().frameCount(), quint64(0));
 
+    // Refuelling while paused shows the new level at once (the view does not wait for a step).
+    QSignalSpy frames(&app, &AppController::frameUpdated);
+    app.refuel(12.0);
+    QCOMPARE(frames.count(), 1);
+    QCOMPARE(app.vehicle().value(QStringLiteral("fuel")).toDouble(), 12.0);
+    QCOMPARE(app.simTime(), 0.0);
+
     // A lesson starts by itself.
     app.runScenario(app.scenarios().first().toMap().value(QStringLiteral("path")).toString());
     QVERIFY(app.running());
@@ -312,7 +319,7 @@ void tst_App::traceModelIsConsistent()
     QAbstractItemModelTester tester(trace, QAbstractItemModelTester::FailureReportingMode::QtTest);
 
     // Chronological mode is capped.
-    r.app.step(10000); // 320 frames per second
+    r.app.step(10000); // 330 frames per second
     QCOMPARE(trace->rowCount(), TraceModel::kMaxRows);
 
     // By ID: one sorted row per identifier, updated in place.
@@ -324,7 +331,7 @@ void tst_App::traceModelIsConsistent()
     QStringList ids;
     for (int i = 0; i < trace->rowCount(); ++i)
         ids << trace->data(trace->index(i), TraceModel::IdRole).toString();
-    QCOMPARE(ids, QStringList({"0B0", "0B1", "100", "1A0", "300", "350"}));
+    QCOMPARE(ids, QStringList({"0B0", "0B1", "100", "1A0", "300", "310", "350"}));
     QVERIFY(!changed.isEmpty());
     const QString cycle = trace->data(trace->index(0), TraceModel::CycleRole).toString();
     QCOMPARE(cycle, QStringLiteral("10.0"));

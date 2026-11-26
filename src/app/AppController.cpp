@@ -24,7 +24,7 @@ bool sameInputs(const DriverInputs &a, const DriverInputs &b)
     return a.ignition == b.ignition && a.throttlePedal == b.throttlePedal && a.brakePedal == b.brakePedal
         && a.selector == b.selector && a.headlamps == b.headlamps && a.highBeam == b.highBeam
         && a.turnLeft == b.turnLeft && a.turnRight == b.turnRight && a.hazard == b.hazard
-        && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar;
+        && a.doorLock == b.doorLock && a.doorAjar == b.doorAjar && a.parkBrake == b.parkBrake;
 }
 
 /// Identifies the set of active faults, so a fault swapped for another one by a scenario
@@ -387,6 +387,26 @@ void AppController::setDoor(int index, bool ajar)
     emit inputsChanged();
 }
 
+void AppController::setParkBrake(bool on)
+{
+    m_sim->driver().parkBrake = on;
+    emit inputsChanged();
+}
+
+void AppController::refuel(double litres)
+{
+    VehicleModel &v = m_sim->vehicle();
+    v.setFuelLevel(litres < 0.0 ? VehicleModel::kTankLitres : litres);
+    setMessage(QStringLiteral("Tank filled to %1 l").arg(v.fuelLevel(), 0, 'f', 1));
+    emit frameUpdated(); // the tank is plant state: show it at once, also while paused
+}
+
+void AppController::resetTrip()
+{
+    m_sim->ipc().resetTrip();
+    setMessage(QStringLiteral("Trip computer reset"));
+}
+
 QVariantList AppController::doors() const
 {
     QVariantList list;
@@ -421,7 +441,18 @@ QVariantMap AppController::cluster() const
         {QStringLiteral("lowBeam"), c.lowBeam},
         {QStringLiteral("highBeam"), c.highBeam},
         {QStringLiteral("doorAjar"), c.doorAjar},
-        {QStringLiteral("lampFault"), c.lampFault}};
+        {QStringLiteral("lampFault"), c.lampFault},
+        {QStringLiteral("oilWarn"), c.oilWarn},
+        {QStringLiteral("lowFuel"), c.lowFuel},
+        {QStringLiteral("parkBrake"), c.parkBrake},
+        {QStringLiteral("parkBrakeWarn"), c.parkBrakeWarn},
+        {QStringLiteral("fuelLevel"), c.fuelLevel},
+        {QStringLiteral("fuelValid"), c.fuelValid},
+        {QStringLiteral("fuelRate"), c.fuelRate},
+        {QStringLiteral("consumption"), c.consumption},
+        {QStringLiteral("averageConsumption"), c.averageConsumption},
+        {QStringLiteral("range"), c.rangeKm},
+        {QStringLiteral("tankLitres"), VehicleModel::kTankLitres}};
 }
 
 QVariantMap AppController::vehicle() const
@@ -438,6 +469,10 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("throttle"), v.throttlePos() * 100.0},
         {QStringLiteral("gear"), v.engagedGear()},
         {QStringLiteral("brake"), m_sim->driver().brakePedal},
+        {QStringLiteral("parkBrake"), v.parkBrakeApplied()},
+        {QStringLiteral("fuel"), v.fuelLevel()},
+        {QStringLiteral("fuelRate"), v.fuelRateLph()},
+        {QStringLiteral("oilPressure"), v.oilPressureBar()},
         {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},
         {QStringLiteral("selector"), static_cast<int>(m_sim->driver().selector)},
         {QStringLiteral("doors"), doors()},

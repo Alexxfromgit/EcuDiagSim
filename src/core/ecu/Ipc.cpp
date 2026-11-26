@@ -9,6 +9,7 @@ Ipc::Ipc(SimContext &ctx)
     subscribe(msg::AbsStatus, 200);
     subscribe(msg::EcmEngine, 200);
     subscribe(msg::EcmStatus, 1000);
+    subscribe(msg::EcmFuel, 1000);
     subscribe(msg::TcmStatus, 200);
     subscribe(msg::BcmStatus, 500);
     every(20, [this] { task20ms(); });
@@ -25,6 +26,7 @@ void Ipc::task20ms()
     const bool ecmLost = !grace && (rxTimedOut(msg::EcmEngine) || rxTimedOut(msg::EcmStatus));
     const bool tcmLost = !grace && rxTimedOut(msg::TcmStatus);
     const bool bcmLost = !grace && rxTimedOut(msg::BcmStatus);
+    const bool fuelLost = !grace && rxTimedOut(msg::EcmFuel);
 
     ClusterState s;
     s.powered = true;
@@ -53,7 +55,28 @@ void Ipc::task20ms()
         s.doorAjar = flag(msg::BcmStatus, "DoorAjar_FL") || flag(msg::BcmStatus, "DoorAjar_FR")
             || flag(msg::BcmStatus, "DoorAjar_RL") || flag(msg::BcmStatus, "DoorAjar_RR");
         s.lampFault = flag(msg::BcmStatus, "LampFault");
+        s.parkBrakeWarn = flag(msg::BcmStatus, "ParkBrakeWarn");
+        // Flashes while the car is driven with the park brake applied.
+        const bool blinkOff = s.parkBrakeWarn && (awakeForMs() / 400) % 2 == 1;
+        s.parkBrake = flag(msg::BcmStatus, "ParkBrake") && !blinkOff;
     }
+    s.parkBrake = s.parkBrake || bulbCheck;
+
+    // --- fuel and oil ---------------------------------------------------------------
+    const bool fuelKnown = !ecmLost && !fuelLost;
+    s.oilWarn = bulbCheck || !fuelKnown || flag(msg::EcmFuel, "OilPressureWarn");
+    s.fuelValid = fuelKnown && flag(msg::EcmFuel, "FuelLevelValid");
+    s.fuelLevel = s.fuelValid ? sig(msg::EcmFuel, "FuelLevel") : 0.0; // a faulty sender drops the gauge to empty
+    s.lowFuel = bulbCheck || !s.fuelValid || s.fuelLevel < kLowFuelLitres;
+
+    // --- trip computer ---------------------------------------------------------------
+    s.fuelRate = fuelKnown ? sig(msg::EcmFuel, "FuelRate") : 0.0;
+    m_tripFuel += s.fuelRate * 0.02 / 3600.0;
+    m_tripKm += s.speedKph * 0.02 / 3600.0;
+    s.consumption = s.speedKph > 5.0 ? s.fuelRate / s.speedKph * 100.0 : -1.0;
+    s.averageConsumption = m_tripKm > 0.2 ? m_tripFuel / m_tripKm * 100.0 : -1.0;
+    const double perHundred = s.averageConsumption > 0.0 ? s.averageConsumption : kDefaultConsumption;
+    s.rangeKm = s.fuelLevel / perHundred * 100.0;
     m_state = s;
 }
 

@@ -1,0 +1,33 @@
+{
+  "name": "Fuel level sender - open circuit",
+  "description": "The float potentiometer in the tank works against a pull-up: a broken wire reads 5 V, which means \"empty\" - never \"full\". The ECM sets P0463, drops the gauge to empty, lights the low fuel lamp and, because the level matters for the evaporative emission monitor, the MIL.",
+  "lesson": "docs/lessons/18-fuel-sender-open.md",
+  "level": "Beginner",
+  "topics": ["ECM", "Sensors", "Fuel"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500, "note": "Waiting for the cluster bulb check to finish" },
+    { "action": "expect", "signal": "FuelLevel", "op": ">", "value": 35, "note": "1. 40 l in the tank, as the gauge shows" },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 07", "expect": "62 10 07", "note": "Sender voltage (DID 0x1007): about 1.6 V" },
+
+    { "action": "inject", "target": "fls", "fault": "open", "note": "The connector on the tank unit corrodes through" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "dtc": "P0463", "ecu": "ECM", "status": "confirmed", "note": "2. P0463: circuit high" },
+    { "action": "uds", "ecu": "ECM", "request": "22 10 07", "expect": "62 10 07 13 88", "note": "5000 mV: the pull-up wins" },
+    { "action": "expect", "signal": "FuelLevelValid", "op": "==", "value": 0, "note": "3. ECM_Fuel flags the level invalid ..." },
+    { "action": "expect", "lamp": "lowFuel", "value": true, "note": "... the gauge drops to empty and the low fuel lamp comes on" },
+    { "action": "expect", "lamp": "mil", "value": true, "note": "... and the MIL: the level is an input of the EVAP monitor" },
+    { "action": "uds", "ecu": "ALL", "request": "01 2F", "expectContains": "41 2F 00", "note": "PID 2F reports 0 %" },
+
+    { "action": "clearFault", "target": "fls", "note": "4. Repair the connector" },
+    { "action": "wait", "ms": 2500 },
+    { "action": "expect", "signal": "FuelLevelValid", "op": "==", "value": 1 },
+    { "action": "uds", "ecu": "ALL", "request": "04", "expect": "44" },
+    { "action": "wait", "ms": 4000 },
+    { "action": "expect", "lamp": "mil", "value": false },
+    { "action": "expect", "lamp": "lowFuel", "value": false }
+  ]
+}

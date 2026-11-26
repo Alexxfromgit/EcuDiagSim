@@ -48,6 +48,8 @@ Bcm::Bcm(SimContext &ctx)
             | (doors[3] ? 0x08 : 0) | (m_locked ? 0x80 : 0));
     });
     s.addDid(0xF442, [this] { return encU16(m_ctx.vehicle.batteryVoltage() * 1000.0); });
+    // Switch inputs as the BCM reads them: bit0 park brake.
+    s.addDid(0x4004, [this] { return encU8(parkBrakeSwitch() ? 0x01 : 0x00); });
 
     auto forced = [](int &target) {
         return [&target](bool take, const QByteArray &state) {
@@ -132,6 +134,10 @@ void Bcm::task100ms()
     }
     m_lastLockSwitch = in.doorLock;
 
+    // Park brake: the switch drives the red BRAKE tell-tale, a warning when driving off with it.
+    const bool parkBrake = parkBrakeSwitch();
+    const bool parkBrakeWarn = parkBrake && speed > 10.0;
+
     send(msg::BcmStatus, {{QStringLiteral("IgnitionState"), static_cast<int>(in.ignition)},
                              {QStringLiteral("Headlamps"), m_lowBeam ? 2 : (in.headlamps >= 1 ? 1 : 0)},
                              {QStringLiteral("HighBeam"), m_highBeam ? 1 : 0},
@@ -143,6 +149,8 @@ void Bcm::task100ms()
                              {QStringLiteral("DoorAjar_RL"), in.doorAjar[2] ? 1 : 0},
                              {QStringLiteral("DoorAjar_RR"), in.doorAjar[3] ? 1 : 0},
                              {QStringLiteral("LampFault"), dtcs().testFailed(B1601) ? 1 : 0},
+                             {QStringLiteral("ParkBrake"), parkBrake ? 1 : 0},
+                             {QStringLiteral("ParkBrakeWarn"), parkBrakeWarn ? 1 : 0},
                              {QStringLiteral("BatteryVoltage"), v.batteryVoltage()}});
 }
 

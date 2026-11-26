@@ -33,6 +33,12 @@ constexpr quint32 P0500 = saeDtc('P', 0x0500);
 constexpr quint32 P0711 = saeDtc('P', 0x0711);
 constexpr quint32 P0712 = saeDtc('P', 0x0712);
 constexpr quint32 P0713 = saeDtc('P', 0x0713);
+// ECM: fuel level sender and oil pressure
+constexpr quint32 P0462 = saeDtc('P', 0x0462);
+constexpr quint32 P0463 = saeDtc('P', 0x0463);
+constexpr quint32 P0522 = saeDtc('P', 0x0522);
+constexpr quint32 P0523 = saeDtc('P', 0x0523);
+constexpr quint32 P0524 = saeDtc('P', 0x0524);
 // ECM: throttle adaptation (SAE J2012 P2176)
 constexpr quint32 P2176 = saeDtc('P', 0x2176);
 // ABS: wheel speed sensors FL, FR, RL, RR with a failure type byte

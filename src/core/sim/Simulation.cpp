@@ -133,6 +133,10 @@ void Simulation::buildFaultTargets()
         QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, failure, QStringLiteral("PUMP")});
     m_targets.append({QStringLiteral("bulb_low_left"), QStringLiteral("Left low beam bulb"), QStringLiteral("BCM"),
         FaultTarget::Kind::Component, {}, failure, QStringLiteral("BULB")});
+    m_targets.append({QStringLiteral("oil_pump"), QStringLiteral("Oil pump (low oil pressure)"), QStringLiteral("ECM"),
+        FaultTarget::Kind::Component, {}, failure, QStringLiteral("OIL")});
+    m_targets.append({QStringLiteral("park_brake_switch"), QStringLiteral("Park brake switch (stuck closed)"),
+        QStringLiteral("BCM"), FaultTarget::Kind::Component, {}, failure, QStringLiteral("PB")});
     m_targets.append({QStringLiteral("throttle_body"), QStringLiteral("Throttle body (electronic throttle)"),
         QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, {FaultType::Unconfigured}, QStringLiteral("THR")});
     for (Ecu *e : ecus()) {
@@ -169,6 +173,10 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         m_vehicle.coolingFailed = on;
     } else if (id == QLatin1String("bulb_low_left")) {
         m_vehicle.bulbLowLeftOpen = on;
+    } else if (id == QLatin1String("oil_pump")) {
+        m_vehicle.oilPumpFailed = on;
+    } else if (id == QLatin1String("park_brake_switch")) {
+        m_vehicle.parkBrakeSwitchStuck = on;
     } else if (id == QLatin1String("throttle_body")) {
         // New throttle body: its closed position is unknown. Repair = the old, adapted one is back.
         m_ecm->setThrottleAdapted(!on);

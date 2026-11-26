@@ -25,6 +25,11 @@ public:
     bool throttleAdapted() const { return m_throttleAdapted; }
     void setThrottleAdapted(bool adapted) { m_throttleAdapted = adapted; }
     bool adaptationRunning() const { return m_learn == Learn::Running; }
+    /// Damped tank level from the fuel sender, litres (0 while the sender is faulty).
+    double fuelLevel() const { return m_fuelValid ? m_fuelL : 0.0; }
+    bool fuelLevelValid() const { return m_fuelValid; }
+    double oilPressure() const { return m_oilBar; }
+    bool oilWarning() const { return m_oilWarn; }
 
 protected:
     void onWake() override;
@@ -46,6 +51,12 @@ private:
     double m_learnMaxError = 0.0;
     double m_learnedClosedVolts = 0.5;
     bool m_throttleAdapted = true; ///< non-volatile: survives ignition cycles
+    double m_fuelL = 0.0;
+    bool m_haveFuel = false;
+    bool m_fuelValid = true;
+    double m_oilBar = 0.0;
+    bool m_oilWarn = true;
+    double m_prevRpm = 0.0; ///< last engine speed with a crank signal (stall versus sensor loss)
     double m_rpm = 0.0;
     double m_coolant = 20.0;
     double m_throttlePct = 0.0;
@@ -155,6 +166,8 @@ public:
     bool turnLeftLampOn() const { return m_turnLeftOut; }
     bool turnRightLampOn() const { return m_turnRightOut; }
     bool doorsLocked() const { return m_locked; }
+    /// The park brake switch as the BCM reads it (a stuck switch reads "applied").
+    bool parkBrakeSwitch() const { return m_ctx.driver.parkBrake || m_ctx.vehicle.parkBrakeSwitchStuck; }
 
 protected:
     void onSleep() override;
@@ -201,6 +214,16 @@ struct ClusterState
     bool highBeam = false;
     bool doorAjar = false;
     bool lampFault = false;
+    bool oilWarn = false;
+    bool lowFuel = false;
+    bool parkBrake = false;      ///< red BRAKE tell-tale (flashes while driving with it applied)
+    bool parkBrakeWarn = false;
+    double fuelLevel = 0.0;      ///< litres, as received
+    bool fuelValid = true;
+    double fuelRate = 0.0;       ///< l/h
+    double consumption = -1.0;   ///< l/100 km right now, -1 below walking pace
+    double averageConsumption = -1.0; ///< since the trip was reset, -1 for the first 200 m
+    double rangeKm = 0.0;
 };
 
 /// Instrument panel cluster: a pure consumer that turns CAN signals into gauges and lamps.
@@ -210,8 +233,12 @@ class Ipc : public Ecu
 public:
     static constexpr int kBulbCheckMs = 3000;
 
+    static constexpr double kLowFuelLitres = 7.0;
+    static constexpr double kDefaultConsumption = 7.5; ///< l/100 km for the range before a trip is known
+
     explicit Ipc(SimContext &ctx);
     const ClusterState &state() const { return m_state; }
+    void resetTrip() { m_tripFuel = m_tripKm = 0.0; }
 
 protected:
     void onSleep() override { m_state = {}; }
@@ -219,6 +246,8 @@ protected:
 private:
     void task20ms();
     ClusterState m_state;
+    double m_tripFuel = 0.0; ///< litres since the trip reset
+    double m_tripKm = 0.0;
 };
 
 } // namespace ecusim

@@ -48,7 +48,9 @@ Answered by the ECM and the TCM. A positive response repeats the mode + 0x40.
 | 0D | vehicle speed | A km/h |
 | 11 | throttle position | A · 100 / 255 % |
 | 1F | run time since start | 256 A + B s |
+| 2F | fuel tank level input | A · 100 / 255 % |
 | 42 | control module voltage | (256 A + B) / 1000 V |
+| 5E | engine fuel rate | (256 A + B) / 20 l/h |
 
 Unsupported PIDs and modes are simply not answered.
 
@@ -114,6 +116,8 @@ ECU would reject a request meant for one of them.
 | 1001 / 1002 | ECM | coolant / throttle sensor voltage | 2 bytes, mV |
 | 1003 | ECM | state: bit 0 running, bit 1 limp, bit 2 MIL | 1 byte |
 | 1004 | ECM | throttle adaptation: learned (0/1), closed position in mV | 3 bytes |
+| 1005 | ECM | oil pressure | 1 byte, 0.05 bar |
+| 1006 / 1007 | ECM | oil pressure sensor / fuel level sender voltage | 2 bytes, mV |
 | 0100 | ABS | variant coding, **writable**: flags (bit 0 stability control), rolling circumference in mm (1600…2400) | 3 bytes, `FF FF FF` = blank |
 | 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights | 1 byte, `FF` = blank |
 | 2001 / 2002 / 2003 | TCM | gear / fluid temperature (−40) / sensor voltage mV | |
@@ -122,6 +126,7 @@ ECU would reject a request meant for one of them.
 | 4001 | BCM | battery voltage | 1 byte, 0.1 V |
 | 4002 | BCM | lamp outputs: bit 0 low, 1 high, 2 parking, 3 left flashing, 4 right flashing | 1 byte |
 | 4003 | BCM | doors: bits 0…3 ajar FL/FR/RL/RR, bit 7 locked | 1 byte |
+| 4004 | BCM | switch inputs: bit 0 park brake | 1 byte |
 
 IO control identifiers: `3010` ABS warning lamp (ABS), `4010` low beam, `4011` door lock (BCM);
 state `00` off, `01` on.
