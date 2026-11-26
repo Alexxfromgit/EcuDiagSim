@@ -22,6 +22,10 @@ Popup {
     property bool confirmStop: false
     readonly property bool dirty: JSON.stringify(pending.slice().sort()) !== JSON.stringify(App.equipment.slice().sort())
     readonly property bool lessonRunning: App.scenarioState === "running"
+    // What the car has now: the user's choice, plus what the last lesson fitted for its run.
+    readonly property var lessonExtras: App.fitted.filter(id => App.equipment.indexOf(id) < 0)
+    readonly property string fittedText: "Fitted: " + (App.equipment.length ? App.equipment.join(", ") : "base vehicle only")
+        + (lessonExtras.length ? "  ·  for the lesson also: " + lessonExtras.join(", ") + " (until Reset)" : "")
 
     onAboutToShow: {
         pending = App.equipment.slice()
@@ -235,7 +239,7 @@ Popup {
                     Text {
                         Layout.fillWidth: true
                         text: root.confirmStop ? "A lesson is running. Applying stops it and resets the vehicle."
-                            : root.dirty ? "Not applied yet." : "Fitted: " + (App.equipment.length ? App.equipment.join(", ") : "base vehicle only")
+                            : root.dirty ? "Not applied yet." : root.fittedText
                         color: root.confirmStop ? Theme.warn : Theme.textDim
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap

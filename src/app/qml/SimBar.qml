@@ -50,7 +50,8 @@ Rectangle {
                 border.color: Theme.accent
                 border.width: 2
                 visible: root.waiting
-                opacity: 0
+                // With reduced motion the ring stays, steady, instead of breathing.
+                opacity: App.reducedMotion ? 0.6 : 0
                 SequentialAnimation on opacity {
                     running: root.waiting && !App.reducedMotion
                     loops: Animation.Infinite
