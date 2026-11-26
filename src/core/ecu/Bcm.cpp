@@ -19,13 +19,15 @@ Bcm::Bcm(SimContext &ctx)
     d.define(networkDtc(U0121));
     d.define(dtcDef(U3000NotConfigured, 5));
     subscribe(msg::EcmEngine, 500);
+    m_tpms = ctx.config.has(Equipment::Tpms);
+    m_coding = defaultCoding();
 
     auto &s = diag();
     // Variant coding: which body functions this car has (see Bcm::Coding).
     s.addDid(0x0100, [this] { return encU8(m_codingBlank ? 0xFF : m_coding); });
     s.addWritableDid(0x0100, 1, [this](const QByteArray &data) -> quint8 {
         const quint8 coding = static_cast<quint8>(data[0]);
-        if (coding & ~(LampMonitoring | AutoLock | DaytimeLights))
+        if (coding & ~(LampMonitoring | AutoLock | DaytimeLights | (m_tpms ? Tpms : 0)))
             return Nrc::RequestOutOfRange;
         m_coding = coding;
         if (m_codingBlank) {
@@ -67,8 +69,163 @@ Bcm::Bcm(SimContext &ctx)
     s.addIoControl(0x4011, forced(m_lockForced), [this] { return encU8(m_locked ? 1 : 0); });
     setSnapshotDids({0x4001, 0x4002});
 
+    // --- tyre pressure monitoring: radio receiver, learned IDs, relearn routine ---
+    if (m_tpms) {
+        for (int i = 0; i < 4; ++i) {
+            const auto idx = static_cast<size_t>(i);
+            m_tpmsIds[idx] = ctx.sensors.tpms[idx].factoryId;
+            d.define(dtcDef(tpmsSensor(i), 1));
+            s.addDid(static_cast<quint16>(0x4020 + i), [this, idx] { return encU8(m_tpmsBar[idx] / 0.02); });
+            const auto id = static_cast<quint16>(0x0310 + i);
+            s.addDid(id, [this, idx] {
+                QByteArray a;
+                for (int shift = 24; shift >= 0; shift -= 8)
+                    a.append(static_cast<char>((m_tpmsIds[idx] >> shift) & 0xFF));
+                return a;
+            });
+            // Manual entry of the ID printed on a new sensor.
+            s.addWritableDid(id, 4, [this, idx](const QByteArray &data) -> quint8 {
+                quint32 v = 0;
+                for (char c : data)
+                    v = (v << 8) | static_cast<quint8>(c);
+                if (v == 0 || v == 0xFFFFFFFF)
+                    return Nrc::RequestOutOfRange;
+                m_tpmsIds[idx] = v;
+                m_tpmsUnknown.removeAll(v);
+                return 0;
+            });
+        }
+        s.addDid(0x4024, [this] {
+            QByteArray a;
+            for (double t : m_tpmsTemp)
+                a.append(encU8(t + 40.0));
+            return a;
+        });
+        // IDs received that belong to no wheel: what a new sensor sends before it is learned.
+        s.addDid(0x0314, [this] {
+            QByteArray a(1, static_cast<char>(m_tpmsUnknown.size()));
+            for (quint32 v : std::as_const(m_tpmsUnknown))
+                for (int shift = 24; shift >= 0; shift -= 8)
+                    a.append(static_cast<char>((v >> shift) & 0xFF));
+            return a;
+        });
+        DiagnosticServer::Routine relearn;
+        relearn.start = [this](const QByteArray &option, QByteArray &status) -> quint8 {
+            if (!option.isEmpty())
+                return Nrc::IncorrectMessageLength;
+            const bool moving = !rxTimedOut(msg::AbsStatus) && rx(msg::AbsStatus, QStringLiteral("VehicleSpeed")) > 3.0;
+            if (m_ctx.driver.ignition == Ignition::Off || moving || !tpmsActive())
+                return Nrc::ConditionsNotCorrect;
+            m_tpmsLearn = Learn::Running;
+            m_tpmsLearnStart = now();
+            m_tpmsLearnedMask = 0;
+            status = tpmsLearnStatus();
+            return 0;
+        };
+        relearn.stop = [this](QByteArray &status) -> quint8 {
+            if (m_tpmsLearn != Learn::Running)
+                return Nrc::RequestSequenceError;
+            m_tpmsLearn = Learn::Aborted;
+            status = tpmsLearnStatus();
+            return 0;
+        };
+        relearn.results = [this] { return tpmsLearnStatus(); };
+        s.addRoutine(kTpmsRelearn, relearn);
+    }
+
     every(20, [this] { task20ms(); });
     every(100, [this] { task100ms(); });
+}
+
+bool Bcm::tpmsActive() const
+{
+    return m_tpms && !m_codingBlank && (m_coding & Tpms);
+}
+
+QByteArray Bcm::tpmsLearnStatus() const
+{
+    QByteArray a = encU8(static_cast<int>(m_tpmsLearn));
+    a.append(encU8(m_tpmsLearnedMask)); // bit n: wheel n (FL, FR, RL, RR) learned
+    return a;
+}
+
+void Bcm::tpms100ms(bool ignition, double speed)
+{
+    Q_UNUSED(speed);
+    // The receiver works with the ignition on; at ignition on every sensor gets a fresh timeout.
+    if (ignition && !m_lastIgnition) {
+        m_tpmsLastRx.fill(now());
+        m_tpmsFresh.fill(false);
+    }
+    m_lastIgnition = ignition;
+    if (!ignition || !tpmsActive()) {
+        m_tpmsLamp = 0;
+        return;
+    }
+
+    // Each sensor transmits once a second, the four of them staggered.
+    for (int i = 0; i < 4; ++i) {
+        const auto idx = static_cast<size_t>(i);
+        const TpmsSensor &sensor = m_ctx.sensors.tpms[idx];
+        if (sensor.dead || (now() + i * 250) % 1000 >= 100)
+            continue;
+        if (m_tpmsLearn == Learn::Running) {
+            // The scan tool triggers the sensors wheel by wheel: the position is known.
+            m_tpmsIds[idx] = sensor.id;
+            m_tpmsLearnedMask |= static_cast<quint8>(1u << i);
+            m_tpmsUnknown.removeAll(sensor.id);
+        }
+        int wheel = -1;
+        for (int k = 0; k < 4; ++k)
+            if (m_tpmsIds[static_cast<size_t>(k)] == sensor.id)
+                wheel = k;
+        if (wheel < 0) {
+            if (!m_tpmsUnknown.contains(sensor.id) && m_tpmsUnknown.size() < 4)
+                m_tpmsUnknown.append(sensor.id);
+            continue;
+        }
+        const auto w = static_cast<size_t>(wheel);
+        m_tpmsLastRx[w] = now();
+        m_tpmsFresh[w] = true;
+        m_tpmsBar[w] = m_ctx.vehicle.tyrePressure(i);
+        m_tpmsTemp[w] = m_ctx.vehicle.tyreTemp(i);
+    }
+    // A replaced sensor whose ID is now known: the "not configured" fault is over.
+    static const char *kTargets[4] = {"tpms_fl", "tpms_fr", "tpms_rl", "tpms_rr"};
+    for (int i = 0; i < 4; ++i) {
+        const TpmsSensor &sensor = m_ctx.sensors.tpms[static_cast<size_t>(i)];
+        if (sensor.id != sensor.factoryId && m_tpmsIds[static_cast<size_t>(i)] == sensor.id && onConfigured)
+            onConfigured(QString::fromLatin1(kTargets[i]));
+    }
+    if (m_tpmsLearn == Learn::Running) {
+        if (m_tpmsLearnedMask == 0x0F)
+            m_tpmsLearn = Learn::Completed;
+        else if (now() - m_tpmsLearnStart > kTpmsLearnMs)
+            m_tpmsLearn = Learn::Failed;
+    }
+
+    bool systemFault = false;
+    bool low = false;
+    for (int i = 0; i < 4; ++i) {
+        const auto idx = static_cast<size_t>(i);
+        const bool missing = now() - m_tpmsLastRx[idx] > kTpmsTimeoutMs;
+        // Pass only on a real message: until the timeout runs out there is simply no information,
+        // so a sensor that was missing last cycle stays failed and the lamp flashes from the start.
+        if (missing)
+            dtcs().report(dtc::tpmsSensor(i), true);
+        else if (m_tpmsFresh[idx])
+            dtcs().report(dtc::tpmsSensor(i), false);
+        if (missing)
+            m_tpmsWasMissing[idx] = true;
+        else if (m_tpmsFresh[idx])
+            m_tpmsWasMissing[idx] = false;
+        systemFault = systemFault || m_tpmsWasMissing[idx];
+        // Compared at 20 degC, as the placard pressure is a cold value.
+        const double absolute = m_tpmsBar[idx] + 1.013;
+        const double cold = absolute * (VehicleModel::kAmbientTemp + 273.15) / (m_tpmsTemp[idx] + 273.15) - 1.013;
+        low = low || (m_tpmsFresh[idx] && !missing && cold < kTpmsWarnBar);
+    }
+    m_tpmsLamp = systemFault ? 2 : (low ? 1 : 0);
 }
 
 void Bcm::setCodingBlank(bool blank)
@@ -77,7 +234,7 @@ void Bcm::setCodingBlank(bool blank)
         m_codingBlank = true;
     } else if (m_codingBlank) {
         m_codingBlank = false;
-        m_coding = kDefaultCoding;
+        m_coding = defaultCoding();
     }
 }
 
@@ -133,6 +290,23 @@ void Bcm::task100ms()
         m_autoLockArmed = false;
     }
     m_lastLockSwitch = in.doorLock;
+
+    if (m_tpms) {
+        tpms100ms(ignition, speed);
+        if (++m_tpmsSendCycle % 5 == 0) {
+            int valid = 0;
+            for (int i = 0; i < 4; ++i)
+                valid |= m_tpmsFresh[static_cast<size_t>(i)]
+                        && now() - m_tpmsLastRx[static_cast<size_t>(i)] <= kTpmsTimeoutMs ? (1 << i) : 0;
+            send(msg::BcmTpms, {{QStringLiteral("TirePressure_FL"), m_tpmsBar[0]},
+                                   {QStringLiteral("TirePressure_FR"), m_tpmsBar[1]},
+                                   {QStringLiteral("TirePressure_RL"), m_tpmsBar[2]},
+                                   {QStringLiteral("TirePressure_RR"), m_tpmsBar[3]},
+                                   {QStringLiteral("TpmsLampReq"), m_tpmsLamp},
+                                   {QStringLiteral("TpmsSensorValid"), tpmsActive() && ignition ? valid : 0},
+                                   {QStringLiteral("TpmsLearnActive"), m_tpmsLearn == Learn::Running ? 1 : 0}});
+        }
+    }
 
     // Park brake: the switch drives the red BRAKE tell-tale, a warning when driving off with it.
     const bool parkBrake = parkBrakeSwitch();

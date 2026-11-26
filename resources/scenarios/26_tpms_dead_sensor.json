@@ -1,0 +1,32 @@
+{
+  "name": "Silent TPMS sensor - flat battery",
+  "description": "The same DTC as a new sensor, a different cause: the rear left sensor's battery is flat after eight years. The list of unknown IDs is empty, and a relearn fails with three of four wheels learned. The replacement sensor's ID is typed in from its box with WriteDataByIdentifier instead.",
+  "lesson": "docs/lessons/26-tpms-dead-sensor.md",
+  "level": "Advanced",
+  "topics": ["BCM", "TPMS", "Coding"],
+  "equipment": ["tpms"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 3500 },
+    { "action": "inject", "target": "tpms_rl", "fault": "failure", "note": "1. The battery of the rear left sensor is flat" },
+    { "action": "wait", "ms": 11000 },
+    { "action": "expect", "dtc": "C0760-87", "ecu": "BCM", "status": "testFailed", "note": "C0760-87: rear left, missing message - same code as an unlearned sensor" },
+    { "action": "uds", "ecu": "BCM", "request": "22 03 14", "expect": "62 03 14 00", "note": "2. But no unknown ID is heard: this sensor is silent, not new" },
+
+    { "action": "uds", "ecu": "BCM", "request": "10 03", "expect": "50 03", "note": "3. Try a relearn anyway" },
+    { "action": "uds", "ecu": "BCM", "request": "31 01 03 01", "expect": "71 01 03 01 01" },
+    { "action": "wait", "ms": 31000, "note": "The tool waits 30 s for the rear left sensor" },
+    { "action": "uds", "ecu": "BCM", "request": "10 03", "expect": "50 03", "note": "(the session timed out meanwhile)" },
+    { "action": "uds", "ecu": "BCM", "request": "31 03 03 01", "expect": "71 03 03 01 04 0B", "note": "Failed (04): FL, FR and RR learned (0B), RL missing" },
+
+    { "action": "inject", "target": "tpms_rl", "fault": "unconfigured", "note": "4. New sensor fitted; its ID 1A5C4B33 is printed on the box" },
+    { "action": "unlock", "ecu": "BCM", "note": "Writing an ID needs security access" },
+    { "action": "uds", "ecu": "BCM", "request": "2E 03 12 00 00 00 00", "expect": "7F 2E 31", "note": "ID 00000000 is not valid" },
+    { "action": "uds", "ecu": "BCM", "request": "2E 03 12 1A 5C 4B 33", "expect": "6E 03 12", "note": "DID 0x0312 = rear left sensor ID" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "expect", "signal": "TpmsSensorValid", "op": "==", "value": 15, "note": "5. All four heard again" },
+    { "action": "uds", "ecu": "BCM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "tpms", "value": false }
+  ]
+}

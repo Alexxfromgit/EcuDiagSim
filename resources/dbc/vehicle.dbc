@@ -64,6 +64,15 @@ BO_ 416 TCM_Status: 8 TCM
  SG_ TcmMilReq : 12|1@1+ (1,0) [0|1] "" ECM
  SG_ TransTemp : 16|8@1+ (1,-40) [-40|215] "degC" ECM,IPC
 
+BO_ 864 BCM_Tpms: 8 BCM
+ SG_ TirePressure_FL : 0|8@1+ (0.02,0) [0|5.1] "bar" IPC
+ SG_ TirePressure_FR : 8|8@1+ (0.02,0) [0|5.1] "bar" IPC
+ SG_ TirePressure_RL : 16|8@1+ (0.02,0) [0|5.1] "bar" IPC
+ SG_ TirePressure_RR : 24|8@1+ (0.02,0) [0|5.1] "bar" IPC
+ SG_ TpmsLampReq : 32|2@1+ (1,0) [0|2] "" IPC
+ SG_ TpmsSensorValid : 34|4@1+ (1,0) [0|15] "" IPC
+ SG_ TpmsLearnActive : 38|1@1+ (1,0) [0|1] "" IPC
+
 BO_ 848 BCM_Status: 8 BCM
  SG_ IgnitionState : 0|2@1+ (1,0) [0|2] "" ECM,TCM,ABS,IPC
  SG_ Headlamps : 2|2@1+ (1,0) [0|2] "" IPC
@@ -89,6 +98,9 @@ CM_ SG_ 800 MisfireCyl "Bit n-1 set: cylinder n misfires";
 CM_ SG_ 768 MilFlash "Catalyst-damaging misfire: the MIL flashes";
 CM_ BO_ 784 "Fuel and oil: tank level from the fuel sender, fuel rate, oil pressure, 100 ms.";
 CM_ BO_ 416 "Transmission status, 20 ms.";
+CM_ BO_ 864 "Tyre pressures from the TPMS sensors, 500 ms (only with tyre pressure monitoring).";
+CM_ SG_ 864 TpmsLampReq "0 = off, 1 = low pressure (lamp on), 2 = system fault (lamp flashes 60 s, then on)";
+CM_ SG_ 864 TpmsSensorValid "Bit n: data from wheel n (0 FL, 1 FR, 2 RL, 3 RR) is current";
 CM_ BO_ 848 "Body status, 100 ms. Sent permanently (BCM is on terminal 30).";
 CM_ SG_ 416 CurrentGear "0 = no drive (P/N), 1..6 = forward gear, 7 = reverse";
 CM_ SG_ 416 GearSelector "0 = P, 1 = R, 2 = N, 3 = D";
@@ -107,6 +119,7 @@ BA_ "GenMsgCycleTime" BO_ 784 100;
 BA_ "GenMsgCycleTime" BO_ 800 100;
 BA_ "GenMsgCycleTime" BO_ 416 20;
 BA_ "GenMsgCycleTime" BO_ 848 100;
+BA_ "GenMsgCycleTime" BO_ 864 500;
 
 VAL_ 416 CurrentGear 0 "None" 1 "1" 2 "2" 3 "3" 4 "4" 5 "5" 6 "6" 7 "R";
 VAL_ 416 GearSelector 0 "P" 1 "R" 2 "N" 3 "D";

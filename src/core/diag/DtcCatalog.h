@@ -59,6 +59,9 @@ constexpr quint8 FtbShortBattery = 0x12;
 constexpr quint8 FtbOpen = 0x13;
 constexpr quint8 FtbSignalInvalid = 0x29;
 constexpr quint32 wheel(int index, quint8 ftb) { return saeDtc('C', kWheelBase[index], ftb); }
+// BCM, tyre pressure monitoring: sensor FL, FR, RL, RR, FTB 0x87 = missing message
+constexpr quint32 kTpmsBase[4] = {0x0750, 0x0755, 0x0760, 0x0765};
+constexpr quint32 tpmsSensor(int index) { return saeDtc('C', kTpmsBase[index], 0x87); }
 // BCM
 constexpr quint32 B1318 = saeDtc('B', 0x1318, 0x16);
 constexpr quint32 B1601 = saeDtc('B', 0x1601, 0x13);

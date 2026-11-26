@@ -135,6 +135,7 @@ Panel {
             }
             RowLayout {
                 visible: root.scanner.ioControls.length > 0
+                Layout.fillWidth: true
                 spacing: 6
                 Text { text: "Actuator test  · 2F"; color: Theme.textDim; font.pixelSize: 12 }
                 Repeater {
@@ -150,11 +151,14 @@ Panel {
                     }
                 }
                 Text {
+                    // Takes the rest of the row and gives it up first; never widens the panel.
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
                     text: "needs extended session + unlock"
                     color: Theme.off
                     font.pixelSize: 11
+                    elide: Text.ElideRight
                 }
-                Item { Layout.fillWidth: true }
             }
             // Variant coding: read the identifier, edit, write it back (extended session + unlock).
             Repeater {
@@ -194,6 +198,7 @@ Panel {
                     }
                     Text {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         text: "needs extended session + unlock"
                         color: Theme.off
                         font.pixelSize: 11
@@ -224,6 +229,7 @@ Panel {
                     Button { text: "Result"; onClicked: root.scanner.udsRoutine(routine.modelData.id, 3) }
                     Text {
                         Layout.fillWidth: true
+                        Layout.preferredWidth: 1
                         text: "needs extended session · " + routine.modelData.hint
                         color: Theme.off
                         font.pixelSize: 11

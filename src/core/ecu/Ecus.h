@@ -182,14 +182,25 @@ public:
         LampMonitoring = 0x01, ///< current monitoring of the low beams (B1601, BULB lamp)
         AutoLock = 0x02,       ///< locks the doors above 15 km/h
         DaytimeLights = 0x04,  ///< position lamps on while the engine runs
+        Tpms = 0x08,           ///< tyre pressure monitoring (only with the TPMS equipment)
     };
-    static constexpr quint8 kDefaultCoding = LampMonitoring;
+    static constexpr quint16 kTpmsRelearn = 0x0301; ///< routine id
+    static constexpr int kTpmsTimeoutMs = 10000;    ///< a sensor silent this long is missing
+    static constexpr int kTpmsLearnMs = 30000;
+    static constexpr double kTpmsWarnBar = 0.75 * VehicleModel::kPlacardBar; ///< FMVSS 138: 25 % below placard
 
     explicit Bcm(SimContext &ctx);
     bool hasCoding() const override { return true; }
     void setCodingBlank(bool blank) override;
     bool codingBlank() const { return m_codingBlank; }
     quint8 coding() const { return m_coding; }
+    quint8 defaultCoding() const { return LampMonitoring | (m_tpms ? Tpms : 0); }
+    // --- tyre pressure monitoring ---
+    bool tpmsFitted() const { return m_tpms; }
+    bool tpmsActive() const;
+    double tpmsPressure(int wheel) const { return m_tpmsBar[static_cast<size_t>(wheel)]; }
+    quint32 tpmsLearnedId(int wheel) const { return m_tpmsIds[static_cast<size_t>(wheel)]; }
+    int tpmsLampRequest() const { return m_tpmsLamp; }
     // Lamp driver outputs: what the exterior lamps really do (all dark without BCM supply).
     bool lowBeamOn() const { return m_lowBeam; }
     bool highBeamOn() const { return m_highBeam; }
@@ -206,6 +217,24 @@ protected:
 private:
     void task20ms();
     void task100ms();
+    void tpms100ms(bool ignition, double speed);
+    QByteArray tpmsLearnStatus() const;
+
+    bool m_tpms = false;
+    std::array<quint32, 4> m_tpmsIds{}; ///< learned sensor IDs (non-volatile)
+    std::array<qint64, 4> m_tpmsLastRx{};
+    std::array<bool, 4> m_tpmsFresh{}; ///< received since ignition on
+    std::array<bool, 4> m_tpmsWasMissing{}; ///< missing when last checked, kept over ignition cycles
+    std::array<double, 4> m_tpmsBar{};
+    std::array<double, 4> m_tpmsTemp{};
+    QList<quint32> m_tpmsUnknown;       ///< heard, but not learned
+    enum class Learn : quint8 { Idle = 0, Running = 1, Completed = 2, Aborted = 3, Failed = 4 };
+    Learn m_tpmsLearn = Learn::Idle;
+    qint64 m_tpmsLearnStart = 0;
+    quint8 m_tpmsLearnedMask = 0;
+    int m_tpmsLamp = 0;
+    bool m_lastIgnition = false;
+    int m_tpmsSendCycle = 0;
 
     bool m_lowBeam = false;
     bool m_highBeam = false;
@@ -217,7 +246,7 @@ private:
     bool m_autoLockArmed = true; ///< auto-lock may fire (once per trip)
     bool m_lastLockSwitch = false;
     bool m_blink = false;
-    quint8 m_coding = kDefaultCoding;
+    quint8 m_coding = LampMonitoring;
     bool m_codingBlank = false;
     int m_lowBeamForced = -1;
     int m_lockForced = -1;
@@ -256,6 +285,8 @@ struct ClusterState
     double consumption = -1.0;   ///< l/100 km right now, -1 below walking pace
     double averageConsumption = -1.0; ///< since the trip was reset, -1 for the first 200 m
     double rangeKm = 0.0;
+    bool tpms = false;      ///< TPMS lamp lit right now (blinks while tpmsFlash)
+    bool tpmsFlash = false; ///< system fault: flashes for 60 s after ignition on, then steady
 };
 
 /// Instrument panel cluster: a pure consumer that turns CAN signals into gauges and lamps.

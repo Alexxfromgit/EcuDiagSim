@@ -42,6 +42,9 @@ Panel {
         "throttle_body": { x: 194, y: 112 },
         "eop": { x: 104, y: 64 }, "oil_pump": { x: 104, y: 82 },
         "fls": { x: 196, y: 392 }, "park_brake_switch": { x: 236, y: 314 },
+        // tyre pressure monitoring: the sensors sit on the valves
+        "tpms_fl": { x: 81, y: 124, left: true }, "tpms_fr": { x: 285, y: 124 },
+        "tpms_rl": { x: 81, y: 396, left: true }, "tpms_rr": { x: 285, y: 396 },
         // engine OBD pack
         "maf": { x: 244, y: 52 }, "o2": { x: 150, y: 180 },
         "ignition_coils": { x: 162, y: 12 }, "intake_leak": { x: 214, y: 12 }
@@ -347,9 +350,15 @@ Panel {
 
     component Wheel: Rectangle {
         id: tyre
+        property real bar: 2.4 // cold pressure
+        readonly property bool soft: bar < 2.1
+        readonly property bool flat: bar < 1.8
         width: 24; height: 64; radius: 7
         color: "#0a0c0f"
-        border.color: "#3b4352"
+        // A soft tyre bulges: the outline widens and turns amber, red below the warning threshold.
+        border.color: flat ? Theme.error : (soft ? Theme.warn : "#3b4352")
+        border.width: soft ? 2 : 1
+        Behavior on border.color { ColorAnimation { duration: 300 } }
         clip: true
         // tread blocks rolling with the road speed
         Repeater {
@@ -456,10 +465,10 @@ Panel {
                     }
 
                     // ---------- wheels ----------
-                    Wheel { x: 76; y: 72 }
-                    Wheel { x: 280; y: 72 }
-                    Wheel { x: 76; y: 344 }
-                    Wheel { x: 280; y: 344 }
+                    Wheel { x: 76; y: 72; bar: root.v.tyres[0] }
+                    Wheel { x: 280; y: 72; bar: root.v.tyres[1] }
+                    Wheel { x: 76; y: 344; bar: root.v.tyres[2] }
+                    Wheel { x: 280; y: 344; bar: root.v.tyres[3] }
                     // park brake: the rear brakes glow while it is applied
                     Glow { cx: 88; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }
                     Glow { cx: 292; cy: 376; r: 22; tint: root.tailRed; strength: 0.45; on: root.v.parkBrake }

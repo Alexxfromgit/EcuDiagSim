@@ -59,7 +59,7 @@ const QList<EquipmentInfo> &VehicleConfig::catalog()
                            "learned with a scan tool routine."),
             {QStringLiteral("4 TPMS sensors"), QStringLiteral("BCM function"), QStringLiteral("TPMS lamp"),
                 QStringLiteral("C0750–C0765")},
-            false},
+            true},
         {Equipment::Srs, QStringLiteral("srs"), QStringLiteral("Airbag system (SRS)"),
             QStringLiteral("Airbag control module with driver and passenger squibs, seat belt buckle switch and "
                            "crash sensor."),

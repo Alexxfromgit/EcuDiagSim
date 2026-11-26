@@ -47,7 +47,7 @@ QList<quint16> liveDids(int target)
         0xF406, 0xF407, 0xF410, 0xF414, 0x1010}; // the last ones only with the engine OBD pack
     case 1: return {0x2001, 0x2002, 0x2003, 0xF40D, 0xF442};
     case 2: return {0x3001, 0x3002, 0x3003, 0x3004, 0x3005, 0xF40D, 0xF442};
-    default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442};
+    default: return {0x4001, 0x4002, 0x4003, 0x4004, 0xF442, 0x4020, 0x4021, 0x4022, 0x4023}; // tyres: TPMS only
     }
 }
 } // namespace
@@ -102,10 +102,13 @@ QVariantList ScannerViewModel::codings() const
         return {item(0x0100, QStringLiteral("Variant coding"),
             QStringLiteral("3 bytes: flags (bit0 stability control), rolling circumference in mm, e.g. 07 9C = 1948 mm"),
             QStringLiteral("00 07 9C"))};
-    case 3:
+    case 3: {
+        const bool tpms = m_app->sim().bcm().tpmsFitted();
         return {item(0x0100, QStringLiteral("Variant coding"),
-            QStringLiteral("1 byte: bit0 lamp monitoring, bit1 auto-lock above 15 km/h, bit2 daytime running lights"),
-            QStringLiteral("01"))};
+            QStringLiteral("1 byte: bit0 lamp monitoring, bit1 auto-lock above 15 km/h, bit2 daytime running lights")
+                + (tpms ? QStringLiteral(", bit3 tyre pressure monitoring") : QString()),
+            tpms ? QStringLiteral("09") : QStringLiteral("01"))};
+    }
     default: return {};
     }
 }
@@ -124,6 +127,11 @@ QVariantList ScannerViewModel::routines() const
                 QStringLiteral("Forgets the learned long-term fuel trim, e.g. after fixing a vacuum leak.")));
         return list;
     }
+    case 3:
+        if (m_app->sim().bcm().tpmsFitted())
+            return {item(Bcm::kTpmsRelearn, QStringLiteral("TPMS sensor relearn"),
+                QStringLiteral("Ignition on, car at rest: learns the ID of every wheel's sensor (max. 30 s)."))};
+        return {};
     default: return {};
     }
 }

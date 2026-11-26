@@ -432,6 +432,8 @@ QVariantMap AppController::cluster() const
         {QStringLiteral("gear"), c.powered ? gear : QString()},
         {QStringLiteral("mil"), c.mil},
         {QStringLiteral("milFlash"), c.milFlash},
+        {QStringLiteral("tpms"), c.tpms},
+        {QStringLiteral("tpmsFlash"), c.tpmsFlash},
         {QStringLiteral("abs"), c.abs},
         {QStringLiteral("tcs"), c.tcs},
         {QStringLiteral("battery"), c.battery},
@@ -474,6 +476,8 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("fuel"), v.fuelLevel()},
         {QStringLiteral("fuelRate"), v.fuelRateLph()},
         {QStringLiteral("oilPressure"), v.oilPressureBar()},
+        {QStringLiteral("tyres"), QVariantList{v.tyrePressureCold(0), v.tyrePressureCold(1), v.tyrePressureCold(2),
+                                      v.tyrePressureCold(3)}},
         {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},
         {QStringLiteral("selector"), static_cast<int>(m_sim->driver().selector)},
         {QStringLiteral("doors"), doors()},
@@ -650,6 +654,9 @@ QString AppController::faultHint(const QString &targetId, const QString &faultTy
     case FaultType::FrozenCounter: return QStringLiteral("The sender task hangs: same alive counter in every frame.");
     case FaultType::BadChecksum: return QStringLiteral("Data corrupted between application and bus: CRC does not match.");
     case FaultType::BusShort: return QStringLiteral("CAN-H shorted to CAN-L: no frame gets through.");
+    case FaultType::Leak:
+        return QStringLiteral("A nail in the tread: the tyre loses about 0.6 bar a minute. Tyre 1 FL, 2 FR, 3 RL, 4 RR "
+                              "(empty = 1). Repair = plugged and inflated.");
     case FaultType::Misfire:
         return QStringLiteral("A coil or plug fails: the cylinder does not fire. Cylinder 1–4 (empty = 3).");
     case FaultType::Unconfigured:

@@ -34,6 +34,7 @@ enum class FaultType {
     BusShort,       ///< CAN wiring fault, no communication at all
     Unconfigured,   ///< part replaced: coding or adaptation missing until done with the scan tool
     Misfire,        ///< ignition fault: cylinder p1 (1..4) does not fire
+    Leak,           ///< slow puncture: tyre p1 (1 FL, 2 FR, 3 RL, 4 RR) loses air
 };
 
 QString faultTypeName(FaultType type);       ///< stable identifier, e.g. "open"
@@ -109,6 +110,15 @@ private:
     std::mt19937 m_rng{12345};
 };
 
+/// A tyre pressure sensor on the valve: battery powered, sends its ID, pressure and temperature
+/// by radio. Only with Equipment::Tpms.
+struct TpmsSensor
+{
+    quint32 factoryId = 0; ///< the ID of the sensor fitted at the factory
+    quint32 id = 0;        ///< the ID it transmits (another one after a replacement)
+    bool dead = false;     ///< flat battery: silent
+};
+
 /// The sensors fitted to the virtual vehicle.
 struct SensorSet
 {
@@ -124,6 +134,8 @@ struct SensorSet
     // engine OBD pack (fitted only with Equipment::EngineObd)
     Sensor maf;                ///< mass air flow (ECM)
     Sensor o2;                 ///< upstream oxygen sensor, bank 1 sensor 1 (ECM)
+    std::array<TpmsSensor, 4> tpms{{{0x1A2B3C11, 0x1A2B3C11}, {0x1A2B3C22, 0x1A2B3C22},
+        {0x1A2B3C33, 0x1A2B3C33}, {0x1A2B3C44, 0x1A2B3C44}}}; ///< FL, FR, RL, RR
 
     /// Marks the engine OBD pack sensors fitted or not; unfitted sensors are left out of all().
     void fitEngineObd(bool fitted);

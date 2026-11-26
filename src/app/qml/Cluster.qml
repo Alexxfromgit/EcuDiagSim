@@ -170,6 +170,11 @@ Panel {
             Lamp { on: root.c.coolantWarn; label: "TEMP"; tone: Theme.error; tip: "Coolant temperature (ECM_Status.CoolantWarnReq)" }
             Lamp { on: root.c.oilWarn; label: "OIL"; tone: Theme.error; tip: "Oil pressure (ECM_Fuel.OilPressureWarn, or ECM silent)" }
             Lamp { on: root.c.parkBrake; label: "BRAKE"; tone: Theme.error; tip: "Park brake applied (BCM_Status.ParkBrake); flashes when driving with it (ParkBrakeWarn)" }
+            Lamp {
+                visible: App.fitted.indexOf("tpms") >= 0
+                on: root.c.tpms; label: "TPMS"
+                tip: "Tyre pressure: steady = a tyre 25 % below the placard; flashing for a minute, then steady = system fault (BCM_Tpms.TpmsLampReq)"
+            }
             Lamp { on: root.c.lowFuel; label: "FUEL"; tip: "Low fuel: below 7 l, or no valid level from the fuel sender (ECM_Fuel)" }
             Lamp { on: root.c.transFault; label: "TRANS"; tip: "Transmission limp mode (TCM_Status.LimpMode, or TCM silent)" }
             Lamp { on: root.c.lampFault; label: "BULB"; tip: "Exterior lamp failure (BCM_Status.LampFault)" }

@@ -73,6 +73,16 @@ const QList<DidInfo> &didCatalog()
         {0x4010, "Low beam output", DidInfo::U8, 1, 1, 0, ""},
         {0x4011, "Door lock output", DidInfo::U8, 1, 1, 0, ""},
         {0x4004, "Switch inputs (bit0 park brake)", DidInfo::U8, 1, 1, 0, ""},
+        {0x4020, "Tyre pressure FL", DidInfo::U8, 1, 0.02, 0, "bar"},
+        {0x4021, "Tyre pressure FR", DidInfo::U8, 1, 0.02, 0, "bar"},
+        {0x4022, "Tyre pressure RL", DidInfo::U8, 1, 0.02, 0, "bar"},
+        {0x4023, "Tyre pressure RR", DidInfo::U8, 1, 0.02, 0, "bar"},
+        {0x4024, "Tyre temperatures FL FR RL RR (+40 degC)", DidInfo::Raw, 4, 1, 0, ""},
+        {0x0310, "TPMS sensor ID FL", DidInfo::Raw, 4, 1, 0, ""},
+        {0x0311, "TPMS sensor ID FR", DidInfo::Raw, 4, 1, 0, ""},
+        {0x0312, "TPMS sensor ID RL", DidInfo::Raw, 4, 1, 0, ""},
+        {0x0313, "TPMS sensor ID RR", DidInfo::Raw, 4, 1, 0, ""},
+        {0x0314, "TPMS IDs received but not learned (count, IDs)", DidInfo::Raw, 0, 1, 0, ""},
     };
     return catalog;
 }

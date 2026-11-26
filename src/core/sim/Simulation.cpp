@@ -144,6 +144,15 @@ void Simulation::buildFaultTargets()
         m_targets.append({QStringLiteral("ignition_coils"), QStringLiteral("Ignition coils"), QStringLiteral("ECM"),
             FaultTarget::Kind::Component, {}, {FaultType::Misfire}, QStringLiteral("COIL")});
     }
+    m_targets.append({QStringLiteral("tyres"), QStringLiteral("Tyres (slow puncture)"), QString(),
+        FaultTarget::Kind::Component, {}, {FaultType::Leak}, QStringLiteral("TYRE")});
+    if (m_config.has(Equipment::Tpms)) {
+        static const char *kWheels[4] = {"fl", "fr", "rl", "rr"};
+        for (int i = 0; i < 4; ++i)
+            m_targets.append({QStringLiteral("tpms_") + QLatin1String(kWheels[i]),
+                QStringLiteral("TPMS sensor ") + QString::fromLatin1(kWheels[i]).toUpper(), QStringLiteral("BCM"),
+                FaultTarget::Kind::Component, {}, {FaultType::Failure, FaultType::Unconfigured}, QStringLiteral("TP")});
+    }
     m_targets.append({QStringLiteral("throttle_body"), QStringLiteral("Throttle body (electronic throttle)"),
         QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, {FaultType::Unconfigured}, QStringLiteral("THR")});
     for (Ecu *e : ecus()) {
@@ -184,6 +193,23 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         m_vehicle.vacuumLeakGps = on ? 1.2 : 0.0; // a cracked hose: about half the idle air again
     } else if (id == QLatin1String("ignition_coils")) {
         m_vehicle.misfireCylinder = on ? std::clamp(fault.hasP1 ? static_cast<int>(fault.p1) : 3, 1, 4) : 0;
+    } else if (id == QLatin1String("tyres")) {
+        if (on) {
+            const int wheel = std::clamp(fault.hasP1 ? static_cast<int>(fault.p1) : 1, 1, 4);
+            m_vehicle.tyreLeakBarPerS[static_cast<size_t>(wheel - 1)] = 0.01; // 0.6 bar a minute
+        } else {
+            // Repaired and inflated to the placard again.
+            m_vehicle.tyreLeakBarPerS = {};
+            for (int i = 0; i < 4; ++i)
+                m_vehicle.setTyrePressureCold(i, std::max(m_vehicle.tyrePressureCold(i), VehicleModel::kPlacardBar));
+        }
+    } else if (id.startsWith(QLatin1String("tpms_"))) {
+        const qsizetype wheel = QStringList{QStringLiteral("tpms_fl"), QStringLiteral("tpms_fr"),
+            QStringLiteral("tpms_rl"), QStringLiteral("tpms_rr")}.indexOf(id);
+        TpmsSensor &sensor = m_sensors.tpms[static_cast<size_t>(std::max<qsizetype>(0, wheel))];
+        sensor.dead = fault.type == FaultType::Failure;                       // flat battery
+        sensor.id = fault.type == FaultType::Unconfigured ? sensor.factoryId ^ 0x00777700u // a new sensor
+                                                         : sensor.factoryId;
     } else if (id == QLatin1String("oil_pump")) {
         m_vehicle.oilPumpFailed = on;
     } else if (id == QLatin1String("park_brake_switch")) {

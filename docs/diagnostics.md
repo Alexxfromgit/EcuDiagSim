@@ -124,7 +124,11 @@ ECU would reject a request meant for one of them.
 | 1011 | ECM (engine OBD pack) | air flow sensor voltage | 2 bytes, mV |
 | 1006 / 1007 | ECM | oil pressure sensor / fuel level sender voltage | 2 bytes, mV |
 | 0100 | ABS | variant coding, **writable**: flags (bit 0 stability control), rolling circumference in mm (1600…2400) | 3 bytes, `FF FF FF` = blank |
-| 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights | 1 byte, `FF` = blank |
+| 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights, bit 3 tyre pressure monitoring (only with that equipment; its default coding is `09`) | 1 byte, `FF` = blank |
+| 4020…4023 | BCM (TPMS) | tyre pressure FL, FR, RL, RR | 1 byte, 0.02 bar |
+| 4024 | BCM (TPMS) | tyre temperatures FL, FR, RL, RR | 4 bytes, −40 °C |
+| 0310…0313 | BCM (TPMS) | learned sensor ID FL, FR, RL, RR, **writable** (extended session + unlock) | 4 bytes |
+| 0314 | BCM (TPMS) | IDs received that belong to no wheel: count, then 4 bytes each | variable |
 | 2001 / 2002 / 2003 | TCM | gear / fluid temperature (−40) / sensor voltage mV | |
 | 3001…3004 | ABS | wheel speed FL, FR, RL, RR | 2 bytes, 0.01 km/h |
 | 3005 | ABS | brake pressure | 1 byte, bar |
@@ -142,6 +146,7 @@ state `00` off, `01` on.
 |---|---|---|---|---|
 | 0201 | ECM | throttle adaptation: opens the plate fully, closes it, learns the closed stop (3 s) | ignition on, engine stopped, pedal released, car at rest | status (01 running, 02 completed, 03 aborted, 04 failed), closed position mV (2 bytes) |
 | 0202 | ECM (engine OBD pack) | reset the fuel trim adaptation: long- and short-term trim to 0 | none | 02 completed |
+| 0301 | BCM (TPMS) | sensor relearn: stores the ID heard from each wheel position (max. 30 s) | ignition on, car at rest, TPMS coded | status (01 running, 02 completed, 03 aborted, 04 failed), bit mask of the learned positions |
 
 Pressing the pedal or cranking aborts the adaptation; it fails if the throttle sensor does not
 follow the plate within 15 %.
