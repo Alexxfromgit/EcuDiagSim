@@ -43,7 +43,7 @@ void tst_Scenarios::simulationIsValid()
 {
     Simulation sim;
     QVERIFY2(sim.isValid(), qPrintable(sim.errorString()));
-    QCOMPARE(sim.dbc().messages().size(), 7);
+    QCOMPARE(sim.dbc().messages().size(), 8);
 }
 
 // The verification flow from the project plan, step by step.
@@ -124,7 +124,13 @@ void tst_Scenarios::bundledScenarios_data()
 void tst_Scenarios::bundledScenarios()
 {
     QFETCH(QString, path);
-    Simulation sim;
+    // The lesson runs on a vehicle with the equipment it asks for, as in the app.
+    QFile lessonFile(path);
+    QVERIFY(lessonFile.open(QIODevice::ReadOnly));
+    const QJsonArray equipment = QJsonDocument::fromJson(lessonFile.readAll()).object().value(QLatin1String("equipment")).toArray();
+    const VehicleConfig config = VehicleConfig::fromJson(equipment);
+    QCOMPARE(config.ids().size(), equipment.size()); // every listed item exists and is implemented
+    Simulation sim(config);
     QString error;
     QVERIFY2(sim.scenario().loadFile(path, &error), qPrintable(error));
     sim.scenario().start();

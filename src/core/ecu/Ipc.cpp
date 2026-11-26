@@ -39,7 +39,9 @@ void Ipc::task20ms()
 
     // Lamps: requested over CAN, forced on during the bulb check and when the sender is silent.
     const bool engineRunning = !ecmLost && flag(msg::EcmStatus, "EngineRunning");
-    s.mil = bulbCheck || ecmLost || flag(msg::EcmStatus, "MilReq");
+    s.milFlash = !ecmLost && flag(msg::EcmStatus, "MilFlash");
+    const bool milBlinkOff = s.milFlash && (awakeForMs() / 500) % 2 == 1;
+    s.mil = bulbCheck || ecmLost || ((flag(msg::EcmStatus, "MilReq") || s.milFlash) && !milBlinkOff);
     // The last received values of a silent sender are kept by the receive buffer; a lamp that
     // depends on them must not freeze in its last state (e.g. a turn signal stuck on).
     s.coolantWarn = bulbCheck || (!ecmLost && flag(msg::EcmStatus, "CoolantWarnReq"));

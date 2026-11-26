@@ -332,7 +332,9 @@ void ScenarioRunner::expect(const QJsonObject &step)
         const ClusterState &c = m_sim.ipc().state();
         bool actual = false;
         if (lamp == QLatin1String("mil"))
-            actual = c.mil;
+            actual = c.mil || c.milFlash; // flashing counts as on
+        else if (lamp == QLatin1String("milFlashing"))
+            actual = c.milFlash;
         else if (lamp == QLatin1String("abs"))
             actual = c.abs;
         else if (lamp == QLatin1String("tcs"))

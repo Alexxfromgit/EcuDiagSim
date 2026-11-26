@@ -117,7 +117,55 @@ Ecm::Ecm(SimContext &ctx)
     };
     adaptation.results = [this] { return adaptationStatus(); };
     s.addRoutine(kThrottleAdaptation, adaptation);
-    setSnapshotDids({0xF404, 0xF405, 0xF40C, 0xF40D, 0xF411, 0xF442});
+
+    // --- engine OBD pack: air flow, oxygen sensor, fuel trims, misfire ---
+    m_obdPack = ctx.config.has(Equipment::EngineObd);
+    if (m_obdPack) {
+        d.define(dtcDef(P0101, 500, true, 2)); // 10 ms task: 5 s
+        d.define(dtcDef(P0102, 100, true));
+        d.define(dtcDef(P0103, 100, true));
+        d.define(dtcDef(P0131, 50, true));     // 100 ms task: 5 s
+        d.define(dtcDef(P0132, 20, true));
+        d.define(dtcDef(P0134, 1, true));      // one 10 s window without switching
+        d.define(dtcDef(P0171, 50, true, 2));
+        d.define(dtcDef(P0172, 50, true, 2));
+        d.define(dtcDef(P0300, 1, true));      // per 200-revolution window
+        for (int c = 1; c <= 4; ++c)
+            d.define(dtcDef(misfireDtc(c), 1, true));
+
+        // SAE J1979: trims as (A - 128) * 100 / 128 %, MAF as (256 A + B) / 100 g/s.
+        const auto trim = [](double t) { return encU8(t * 128.0 + 128.0); };
+        s.addObdPid(0x06, [this, trim] { return trim(m_stft); });
+        s.addObdPid(0x07, [this, trim] { return trim(m_ltft); });
+        s.addObdPid(0x10, [this] { return encU16(m_mafGps * 100.0); });
+        s.addObdPid(0x14, [this, trim] {
+            QByteArray a = encU8(m_ctx.sensors.o2.voltage() / 0.005);
+            a.append(m_closedLoop ? trim(m_stft) : QByteArray(1, static_cast<char>(0xFF))); // FF: not used for trim
+            return a;
+        });
+        s.addDid(0x1010, [this] {
+            QByteArray a;
+            for (quint64 n : m_reportedMisfires)
+                a.append(encU8(static_cast<double>(n)));
+            return a;
+        });
+        s.addDid(0x1011, [this] { return encU16(m_ctx.sensors.maf.voltage() * 1000.0); });
+
+        DiagnosticServer::Routine reset;
+        reset.start = [this](const QByteArray &option, QByteArray &status) -> quint8 {
+            if (!option.isEmpty())
+                return Nrc::IncorrectMessageLength;
+            m_ltft = 0.0;
+            m_stft = 0.0;
+            status = encU8(DiagnosticServer::RoutineCompleted);
+            return 0;
+        };
+        s.addRoutine(kResetFuelTrims, reset);
+    }
+    if (m_obdPack)
+        setSnapshotDids({0xF404, 0xF405, 0xF406, 0xF407, 0xF40C, 0xF40D, 0xF410, 0xF411, 0xF442});
+    else
+        setSnapshotDids({0xF404, 0xF405, 0xF40C, 0xF40D, 0xF411, 0xF442});
 
     every(10, [this] { task10ms(); });
     every(100, [this] { task100ms(); });
@@ -133,6 +181,16 @@ void Ecm::onWake()
     m_runMs = 0;
     m_haveFuel = false;
     m_prevRpm = 0.0;
+    m_o2Dead = false;
+    m_closedLoop = false;
+    // Monitor windows start empty in every driving cycle: firings and O2 swings from the last
+    // trip must not count towards this one.
+    m_windowFirings = 0;
+    m_windowMisfires = {};
+    m_misfireBits = 0;
+    m_o2WindowMs = 0;
+    m_o2Min = 1.0;
+    m_o2Max = 0.0;
 }
 
 void Ecm::onSleep()
@@ -142,7 +200,133 @@ void Ecm::onSleep()
         abortAdaptation();
     m_ctx.vehicle.fuelEnable = false;
     m_ctx.vehicle.throttleCmd = 0.0;
+    m_ctx.vehicle.mixtureControl = false;
     m_running = false;
+    m_milFlash = false;
+}
+
+void Ecm::mixtureControl10ms()
+{
+    using namespace dtc;
+    auto &v = m_ctx.vehicle;
+    const Sensor &maf = m_ctx.sensors.maf;
+
+    // --- air: the meter, checked against a speed-density model from rpm and throttle ---------
+    const double mafVolts = maf.voltage();
+    const bool mafLow = mafVolts < 0.2;
+    const bool mafHigh = mafVolts > 4.8;
+    dtcs().report(P0102, mafLow);
+    dtcs().report(P0103, mafHigh);
+    const double modelled = VehicleModel::expectedAirGps(m_rpm, m_throttlePct / 100.0);
+    const double measured = maf.value();
+    if (m_running && m_runMs > 5000 && m_coolant > 60.0 && !mafLow && !mafHigh)
+        dtcs().report(P0101, std::abs(measured - modelled) > 0.3 * std::max(modelled, 2.0));
+    m_mafOk = !mafLow && !mafHigh && !dtcs().testFailed(P0101) && !dtcs().testFailed(P0102)
+        && !dtcs().testFailed(P0103);
+    m_mafGps = m_mafOk ? measured : modelled; // substitute: speed-density
+
+    // --- closed loop: a P-jump at every switch of the sensor, then a slow ramp -----------------
+    const double o2Volts = m_ctx.sensors.o2.voltage();
+    const bool fuelCut = v.fuelRateLph() <= 0.0;
+    // The heated sensor is ready 3 s after the start. If it then sits around the 0.45 V bias for
+    // 3 s although the loop drives the mixture, it is dead or disconnected: back to open loop
+    // instead of chasing it, until it moves again.
+    if (o2Volts > 0.55 || o2Volts < 0.35) {
+        m_o2ActiveMs = now();
+        m_o2Dead = false;
+    }
+    if (m_closedLoop && now() - m_o2ActiveMs > 3000)
+        m_o2Dead = true;
+    const bool wasClosed = m_closedLoop;
+    m_closedLoop = m_running && m_runMs > 3000 && m_coolant > 40.0 && m_o2Ok && !m_o2Dead && !fuelCut;
+    if (m_closedLoop && !wasClosed)
+        m_o2ActiveMs = now(); // give the loop time to make the sensor switch
+    if (m_closedLoop) {
+        const int side = o2Volts > 0.45 ? 1 : -1; // rich : lean
+        if (m_o2Side != 0 && side != m_o2Side)
+            m_stft -= side * 0.03; // P-jump at every switch
+        m_stft -= side * 0.0004;   // then 4 %/s towards the other side
+        m_o2Side = side;
+        m_stft = std::clamp(m_stft, -kTrimLimit, kTrimLimit);
+    } else if (!fuelCut) {
+        m_stft = 0.0; // open loop: the learned value alone
+        m_o2Side = 0;
+    }
+    v.mixtureControl = true;
+    v.fuelMassGps = m_mafGps / 14.7 * (1.0 + m_stft + m_ltft);
+}
+
+void Ecm::obdMonitors100ms()
+{
+    using namespace dtc;
+    auto &v = m_ctx.vehicle;
+
+    // --- long-term adaptation: moves a persistent short-term correction into the learned value ---
+    // Only while the sensor really switches: a stuck sensor must not teach the adaptation.
+    if (m_closedLoop && now() - m_o2ActiveMs < 1000 && std::abs(m_stft) > 0.02) {
+        const double move = m_stft * 0.04;
+        m_ltft = std::clamp(m_ltft + move, -kTrimLimit, kTrimLimit);
+        m_stft -= move;
+    }
+
+    // --- oxygen sensor ---------------------------------------------------------------------------
+    const double o2Volts = m_ctx.sensors.o2.voltage();
+    const bool o2Expected = m_running && m_runMs > 3000 && m_coolant > 40.0 && v.fuelRateLph() > 0.0;
+    dtcs().report(P0132, o2Volts > 1.2);
+    if (o2Expected) {
+        dtcs().report(P0131, o2Volts < 0.04);
+        m_o2Min = std::min(m_o2Min, o2Volts);
+        m_o2Max = std::max(m_o2Max, o2Volts);
+        m_o2WindowMs += 100;
+        if (m_o2WindowMs >= 10000) {
+            dtcs().report(P0134, m_o2Max < 0.6 && m_o2Min > 0.3);
+            m_o2Min = 1.0;
+            m_o2Max = 0.0;
+            m_o2WindowMs = 0;
+        }
+    }
+    m_o2Ok = o2Volts <= 1.2 && !dtcs().testFailed(P0131) && !dtcs().testFailed(P0132) && !dtcs().testFailed(P0134);
+
+    // --- mixture: trims at the limit mean the engine gets air or fuel the ECM does not know about ---
+    if (m_closedLoop && m_runMs > 8000) {
+        const double total = m_stft + m_ltft;
+        dtcs().report(P0171, total > 0.23);
+        dtcs().report(P0172, total < -0.23);
+    }
+
+    // --- misfire: counted per cylinder over 200 revolutions (400 firings) ----------------------------
+    const quint64 firings = v.firingEvents();
+    const bool crankOk = m_ctx.sensors.ckp.circuit() == CircuitState::Ok;
+    if (m_running && crankOk && m_runMs > 1000) {
+        m_windowFirings += firings - m_lastFirings;
+        for (int c = 0; c < 4; ++c)
+            m_windowMisfires[static_cast<size_t>(c)] += v.misfires(c + 1) - m_lastMisfires[static_cast<size_t>(c)];
+    }
+    m_lastFirings = firings;
+    for (int c = 0; c < 4; ++c)
+        m_lastMisfires[static_cast<size_t>(c)] = v.misfires(c + 1);
+    if (m_windowFirings >= 400) {
+        int cylinders = 0;
+        quint64 total = 0;
+        quint8 bits = 0;
+        for (int c = 0; c < 4; ++c) {
+            const quint64 n = m_windowMisfires[static_cast<size_t>(c)];
+            const bool bad = static_cast<double>(n) / (static_cast<double>(m_windowFirings) / 4.0) > 0.05;
+            dtcs().report(misfireDtc(c + 1), bad);
+            cylinders += bad ? 1 : 0;
+            bits |= bad ? static_cast<quint8>(1u << c) : 0;
+            total += n;
+            m_reportedMisfires[static_cast<size_t>(c)] = n;
+        }
+        dtcs().report(P0300, cylinders > 1);
+        // Above 8 % of all firings the unburned fuel overheats the catalyst: the MIL flashes.
+        m_milFlash = static_cast<double>(total) / static_cast<double>(m_windowFirings) > 0.08;
+        m_misfireBits = bits;
+        m_windowFirings = 0;
+        m_windowMisfires = {};
+    }
+    if (!m_running)
+        m_milFlash = false;
 }
 
 QByteArray Ecm::adaptationStatus() const
@@ -266,6 +450,8 @@ void Ecm::task10ms()
     else
         v.throttleCmd = m_limp ? std::min(pedal, 0.25) : pedal;
     m_throttlePct = tpsFault ? v.throttleCmd * 100.0 : sensors.tps.value();
+    if (m_obdPack)
+        mixtureControl10ms();
 
     send(msg::EcmEngine, {{QStringLiteral("EngineRPM"), m_rpm},
                              {QStringLiteral("ThrottlePos"), m_throttlePct},
@@ -338,13 +524,24 @@ void Ecm::task100ms()
     // The lamp is lit with the engine stopped (no pressure) and, fail-safe, with a sensor fault.
     m_oilWarn = !eopOk || m_oilBar < 0.4;
 
+    if (m_obdPack)
+        obdMonitors100ms();
+
     m_mil = dtcs().milRequested();
 
     send(msg::EcmStatus, {{QStringLiteral("CoolantTemp"), m_coolant},
                              {QStringLiteral("MilReq"), m_mil ? 1 : 0},
                              {QStringLiteral("CoolantWarnReq"), m_coolantWarn ? 1 : 0},
                              {QStringLiteral("EngineRunning"), m_running ? 1 : 0},
-                             {QStringLiteral("EngineLimp"), m_limp ? 1 : 0}});
+                             {QStringLiteral("EngineLimp"), m_limp ? 1 : 0},
+                             {QStringLiteral("MilFlash"), m_milFlash ? 1 : 0}});
+    if (m_obdPack)
+        send(msg::EcmMixture, {{QStringLiteral("AirMassFlow"), m_mafGps},
+                                  {QStringLiteral("O2Voltage"), sensors.o2.voltage()},
+                                  {QStringLiteral("ShortTermFuelTrim"), m_stft * 100.0},
+                                  {QStringLiteral("LongTermFuelTrim"), m_ltft * 100.0},
+                                  {QStringLiteral("ClosedLoop"), m_closedLoop ? 1 : 0},
+                                  {QStringLiteral("MisfireCyl"), m_misfireBits}});
     send(msg::EcmFuel, {{QStringLiteral("FuelLevel"), fuelLevel()},
                            {QStringLiteral("FuelLevelValid"), m_fuelValid ? 1 : 0},
                            {QStringLiteral("OilPressureWarn"), m_oilWarn ? 1 : 0},

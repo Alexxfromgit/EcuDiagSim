@@ -53,7 +53,7 @@ const QList<EquipmentInfo> &VehicleConfig::catalog()
                            "detection from the crankshaft speed."),
             {QStringLiteral("MAF sensor"), QStringLiteral("O2 sensor B1S1"), QStringLiteral("Fuel trims"),
                 QStringLiteral("Misfire monitor"), QStringLiteral("P0101–P0171, P0300–P0304")},
-            false},
+            true},
         {Equipment::Tpms, QStringLiteral("tpms"), QStringLiteral("Tyre pressure monitoring"),
             QStringLiteral("Four radio sensors in the wheels, read by the body control module. Sensor IDs are "
                            "learned with a scan tool routine."),

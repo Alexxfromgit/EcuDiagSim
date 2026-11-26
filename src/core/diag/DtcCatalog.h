@@ -33,6 +33,17 @@ constexpr quint32 P0500 = saeDtc('P', 0x0500);
 constexpr quint32 P0711 = saeDtc('P', 0x0711);
 constexpr quint32 P0712 = saeDtc('P', 0x0712);
 constexpr quint32 P0713 = saeDtc('P', 0x0713);
+// ECM, engine OBD pack: air flow, oxygen sensor, mixture, misfire
+constexpr quint32 P0101 = saeDtc('P', 0x0101);
+constexpr quint32 P0102 = saeDtc('P', 0x0102);
+constexpr quint32 P0103 = saeDtc('P', 0x0103);
+constexpr quint32 P0131 = saeDtc('P', 0x0131);
+constexpr quint32 P0132 = saeDtc('P', 0x0132);
+constexpr quint32 P0134 = saeDtc('P', 0x0134);
+constexpr quint32 P0171 = saeDtc('P', 0x0171);
+constexpr quint32 P0172 = saeDtc('P', 0x0172);
+constexpr quint32 P0300 = saeDtc('P', 0x0300);
+constexpr quint32 misfireDtc(int cylinder) { return saeDtc('P', 0x0300 + static_cast<quint32>(cylinder)); }
 // ECM: fuel level sender and oil pressure
 constexpr quint32 P0462 = saeDtc('P', 0x0462);
 constexpr quint32 P0463 = saeDtc('P', 0x0463);

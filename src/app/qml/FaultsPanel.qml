@@ -18,7 +18,7 @@ Panel {
         return null
     }
     readonly property string selectedType: typeBox.currentValue ?? ""
-    readonly property bool needsP1: ["stuck", "offset", "gain", "noise", "intermittent"].indexOf(selectedType) >= 0
+    readonly property bool needsP1: ["stuck", "offset", "gain", "noise", "intermittent", "misfire"].indexOf(selectedType) >= 0
     readonly property bool needsP2: selectedType === "intermittent"
 
     function selectTarget(id) {
@@ -180,7 +180,8 @@ Panel {
                     id: p1
                     visible: root.needsP1
                     Layout.preferredWidth: 90
-                    placeholderText: root.selectedType === "intermittent" ? "period ms" : "value"
+                    placeholderText: root.selectedType === "intermittent" ? "period ms"
+                                   : root.selectedType === "misfire" ? "cylinder 1–4" : "value"
                     validator: DoubleValidator {}
                     selectByMouse: true
                 }

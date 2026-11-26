@@ -13,6 +13,7 @@ definition is [`resources/dbc/vehicle.dbc`](../resources/dbc/vehicle.dbc); it op
 | 0x1A0 | TCM_Status | TCM | 20 ms | ECM, BCM, IPC |
 | 0x300 | ECM_Status | ECM | 100 ms | TCM, BCM, IPC |
 | 0x310 | ECM_Fuel | ECM | 100 ms | IPC |
+| 0x320 | ECM_Mixture | ECM | 100 ms | IPC — only with the *Engine OBD pack* |
 | 0x350 | BCM_Status | BCM | 100 ms | ECM, ABS, IPC |
 
 Lower identifiers have higher priority: safety relevant chassis data comes first. With the ignition
@@ -62,6 +63,7 @@ The vehicle speed is the mean of the valid wheels and stays valid with at least 
 | CoolantWarnReq | 9 | 1 | above 112 °C |
 | EngineRunning | 10 | 1 | |
 | EngineLimp | 11 | 1 | throttle opening limited |
+| MilFlash | 12 | 1 | catalyst-damaging misfire: the MIL flashes |
 
 ### 0x310 ECM_Fuel
 
@@ -75,6 +77,16 @@ The vehicle speed is the mean of the valid wheels and stays valid with at least 
 
 The cluster's trip computer integrates `FuelRate` and the vehicle speed: l/100 km now, the average
 since the trip reset, and the range from the tank level.
+
+### 0x320 ECM_Mixture (engine OBD pack)
+
+| Signal | Start bit | Length | Notes |
+|---|---|---|---|
+| AirMassFlow | 0 | 16 | factor 0.01 g/s; the model's value while the meter is not trusted |
+| O2Voltage | 16 | 8 | factor 0.005 V, upstream sensor B1S1 |
+| ShortTermFuelTrim / LongTermFuelTrim | 24 / 32 | 8 | factor 0.78125 %, offset −100 % |
+| ClosedLoop | 40 | 1 | |
+| MisfireCyl | 44 | 4 | bit n−1 = cylinder n misfires in the last window |
 
 ### 0x1A0 TCM_Status
 

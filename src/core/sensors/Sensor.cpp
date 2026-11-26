@@ -32,6 +32,7 @@ constexpr FaultName kFaultNames[] = {
     {FaultType::BadChecksum, "bad_checksum", "Wrong checksum"},
     {FaultType::BusShort, "bus_short", "CAN wiring short"},
     {FaultType::Unconfigured, "unconfigured", "Replaced, not configured"},
+    {FaultType::Misfire, "misfire", "Misfire (cylinder)"},
 };
 } // namespace
 
@@ -195,6 +196,13 @@ SensorSet::SensorSet()
     // reads "empty", never "full".
     fls = Sensor({QStringLiteral("fls"), QStringLiteral("Fuel level sender"), QStringLiteral("l"), QStringLiteral("ECM"),
         0.0, VehicleModel::kTankLitres, 4.5, 0.5, 5.0, false, QStringLiteral("Fuel level"), QStringLiteral("FUEL")});
+    // Hot-film air flow meter, 0.5..4.5 V for 0..200 g/s, pull-down: unplugged reads 0 V.
+    maf = Sensor({QStringLiteral("maf"), QStringLiteral("Mass air flow sensor"), QStringLiteral("g/s"),
+        QStringLiteral("ECM"), 0.0, 200.0, 0.5, 4.5, 0.0, false, QStringLiteral("Air flow"), QStringLiteral("MAF"), false});
+    // Narrowband zirconia cell: the value is its voltage. The ECM biases the input to 0.45 V,
+    // so an open circuit sits in the middle and never switches.
+    o2 = Sensor({QStringLiteral("o2"), QStringLiteral("Oxygen sensor B1S1"), QStringLiteral("V"), QStringLiteral("ECM"),
+        0.0, 1.0, 0.0, 1.0, 0.45, false, QStringLiteral("O2 B1S1"), QStringLiteral("O2"), false});
     ckp = Sensor({QStringLiteral("ckp"), QStringLiteral("Crankshaft position sensor"), QStringLiteral("rpm"),
         QStringLiteral("ECM"), 0.0, 8000.0, 0.0, 0.0, 0.0, true, QStringLiteral("Crankshaft"), QStringLiteral("CKP")});
 }
@@ -209,12 +217,29 @@ void SensorSet::update(const VehicleModel &vehicle, qint64 nowMs)
     tft.update(vehicle.transTemp(), nowMs);
     eop.update(vehicle.oilPressureBar(), nowMs);
     fls.update(vehicle.fuelLevel(), nowMs);
+    if (maf.config().fitted) {
+        maf.update(vehicle.airMassGps(), nowMs);
+        o2.update(vehicle.o2SensorVolts(), nowMs);
+    }
+}
+
+void SensorSet::fitEngineObd(bool fitted)
+{
+    for (Sensor *s : {&maf, &o2}) {
+        Sensor::Config c = s->config();
+        c.fitted = fitted;
+        *s = Sensor(c);
+    }
 }
 
 QList<Sensor *> SensorSet::all()
 {
     // Table order: wheels, then the engine and transmission sensors.
-    return {&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps, &eop, &fls, &tft};
+    QList<Sensor *> list{&wss[0], &wss[1], &wss[2], &wss[3], &ckp, &ect, &tps};
+    if (maf.config().fitted)
+        list << &maf << &o2;
+    list << &eop << &fls << &tft;
+    return list;
 }
 
 Sensor *SensorSet::byId(const QString &id)

@@ -41,7 +41,10 @@ Panel {
         "bulb_low_left": { x: 112, y: 2, left: true }, "abs_e2e": { x: 120, y: 162 },
         "throttle_body": { x: 194, y: 112 },
         "eop": { x: 104, y: 64 }, "oil_pump": { x: 104, y: 82 },
-        "fls": { x: 196, y: 392 }, "park_brake_switch": { x: 236, y: 314 }
+        "fls": { x: 196, y: 392 }, "park_brake_switch": { x: 236, y: 314 },
+        // engine OBD pack
+        "maf": { x: 244, y: 52 }, "o2": { x: 150, y: 180 },
+        "ignition_coils": { x: 162, y: 12 }, "intake_leak": { x: 214, y: 12 }
     })
     readonly property var spots: App.faultTargets.filter(t => root.spotPlaces[t.id] !== undefined)
     readonly property var faultedIds: App.activeFaults.map(f => f.targetId)

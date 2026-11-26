@@ -20,12 +20,12 @@ No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus
 | Area | Details |
 |---|---|
 | Vehicle | Longitudinal model with a 6-speed automatic and a park brake, coolant / transmission temperature, battery and alternator, fuel tank with consumption and overrun cut-off, oil pressure; trip computer in the cluster |
-| Sensors | 4 wheel speed, crankshaft, coolant temperature, throttle position, oil pressure, fuel level, transmission fluid temperature — analog ones modelled as a voltage at the ECU pin |
+| Sensors | 4 wheel speed, crankshaft, coolant temperature, throttle position, oil pressure, fuel level, transmission fluid temperature; optional mass air flow and oxygen sensor — analog ones modelled as a voltage at the ECU pin |
 | Faults | Open circuit, short to ground / battery, stuck, offset, gain, noise, intermittent, erratic; alternator, water pump, oil pump and bulb failures, stuck park brake switch; replaced parts without coding or adaptation; ECU power loss and bus-off; wrong checksum / frozen alive counter; CAN wiring short |
 | CAN | ID-priority arbitration, real bit timing and bus load, signals defined in [`resources/dbc/vehicle.dbc`](resources/dbc/vehicle.dbc), end-to-end protection (CRC-8 + alive counter) |
 | Fault memory | ISO 14229 status byte, counter debounce, pending / confirmed with one- and two-trip DTCs, lamp healing, aging, snapshots (freeze frames) |
 | Diagnostics | ISO-TP (ISO 15765-2) incl. flow control; OBD-II modes 01, 02, 03, 04, 07, 09; UDS 0x10, 0x11, 0x14, 0x19, 0x22, 0x27, 0x2E (coding), 0x2F, 0x31 (routines), 0x3E with negative response codes and S3 timeout |
-| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, twenty scripted lessons in JSON |
+| Tools | Decoded CAN trace (chronological or per ID), scan tool with guided functions and a raw console, candump / Vector ASC export, log replay, twenty-three scripted lessons in JSON |
 
 ## Download
 
@@ -157,6 +157,11 @@ step. The same lessons run as automated tests.
 | 18 | [Fuel level sender, open circuit](docs/lessons/18-fuel-sender-open.md) | Beginner | pull-up circuits again, why a fuel sender sets the MIL |
 | 19 | [Oil lamp: pump or sensor?](docs/lessons/19-oil-pressure.md) | Intermediate | circuit versus performance codes, live value versus reality |
 | 20 | [Park brake](docs/lessons/20-park-brake.md) | Beginner | switch inputs, a fault no monitor can see |
+| 21 | [Vacuum leak, fuel trims](docs/lessons/21-vacuum-leak.md) ⚙ | Intermediate | closed loop, short and long term trims, P0171, resetting adaptations |
+| 22 | [Misfire on cylinder 3](docs/lessons/22-misfire.md) ⚙ | Intermediate | misfire counters, the flashing MIL, freeze frames |
+| 23 | [Dirty air flow meter](docs/lessons/23-dirty-maf.md) ⚙ | Advanced | plausibility against a model, substitute values, leak versus sensor |
+
+⚙ needs the *Engine OBD pack*; the lesson fits it for its run.
 
 ## Documentation
 
@@ -165,7 +170,7 @@ step. The same lessons run as automated tests.
 - [DTC catalog](docs/dtc-catalog.md) — every fault code and how it is detected
 - [Diagnostics reference](docs/diagnostics.md) — supported OBD-II and UDS services, identifiers, security access
 - [Scenario format](docs/scenarios.md) — write your own lessons
-- [Lessons](#lessons) — twenty guided lessons, from a first sensor fault to coding and adaptation
+- [Lessons](#lessons) — twenty-three guided lessons, from a first sensor fault to fuel trims and misfires
 
 ## Scope and simplifications
 

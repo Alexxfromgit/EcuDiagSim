@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QtGlobal>
+
 #include <array>
 #include <cmath>
 
@@ -38,6 +40,9 @@ public:
     static constexpr int kGearCount = 6;
     static constexpr double kTankLitres = 55.0;
     static constexpr double kStartFuelLitres = 40.0;
+    /// The injectors deliver 3 % less than the ECM's calculation (part tolerance): the closed
+    /// loop corrects it, and the long-term trim learns it.
+    static constexpr double kInjectorFlow = 0.97;
 
     // --- actuators (written by ECUs) ---
     double throttleCmd = 0.0; ///< ECM: throttle plate command 0..1
@@ -48,7 +53,13 @@ public:
     bool alternatorFailed = false;
     bool coolingFailed = false;
     bool bulbLowLeftOpen = false;
+    // --- engine OBD pack: closed-loop fuelling (written by the ECM when fitted) ---
+    bool mixtureControl = false; ///< the ECM meters the fuel itself (otherwise lambda stays 1)
+    double fuelMassGps = 0.0;    ///< injected fuel, g/s
+
     bool oilPumpFailed = false;        ///< worn pump / oil level far too low
+    double vacuumLeakGps = 0.0;        ///< unmetered air entering behind the air flow meter
+    int misfireCylinder = 0;           ///< 1..4: that cylinder does not fire, 0 = none
     bool parkBrakeSwitchStuck = false; ///< switch reports "applied" whatever the lever does
 
     void step(double dt, const DriverInputs &driver);
@@ -73,6 +84,18 @@ public:
     double fuelLevel() const { return m_fuel; }          ///< litres in the tank
     double fuelRateLph() const { return m_fuelRate; }    ///< what the injectors deliver, l/h
     double oilPressureBar() const { return m_oilPressure; }
+    /// Air through the intake, as the air flow meter sees it (without any leak behind it), g/s.
+    double airMassGps() const { return m_air; }
+    /// Exhaust lambda at the upstream oxygen sensor (lagged by the gas transport).
+    double lambda() const { return m_lambda; }
+    /// Narrowband O2 sensor output for the current exhaust: 0.1 V lean ... 0.9 V rich.
+    double o2SensorVolts() const;
+    /// Combustion events since start, and misfires per cylinder (1..4). The ECM derives these
+    /// from the crankshaft tooth timing; the simulator hands over the result.
+    quint64 firingEvents() const { return m_firings; }
+    quint64 misfires(int cylinder) const;
+    /// What the engine draws at this speed and throttle: displacement x volumetric efficiency.
+    static double expectedAirGps(double rpm, double throttle01);
     /// Gear the transmission is mechanically in: 0 = no drive, 1..6, -1 = reverse.
     int engagedGear() const { return m_gear; }
 
@@ -95,6 +118,15 @@ private:
     double m_fuel = kStartFuelLitres;
     double m_fuelRate = 0.0;
     double m_oilPressure = 0.0;
+    double m_air = 0.0;
+    double m_lambda = 1.0;
+    /// Exhaust transport: the gas needs 60..150 ms from the valves to the sensor (1 ms samples).
+    std::array<double, 400> m_exhaust{};
+    size_t m_exhaustIndex = 0;
+    double m_revs = 0.0;
+    int m_firingIndex = 0;
+    quint64 m_firings = 0;
+    std::array<quint64, 4> m_misfires{};
     bool m_parkBrake = false;
     double m_voltage = 12.6;
     double m_restVoltage = 12.6;

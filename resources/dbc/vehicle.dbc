@@ -38,6 +38,15 @@ BO_ 768 ECM_Status: 8 ECM
  SG_ CoolantWarnReq : 9|1@1+ (1,0) [0|1] "" IPC
  SG_ EngineRunning : 10|1@1+ (1,0) [0|1] "" TCM,ABS,BCM,IPC
  SG_ EngineLimp : 11|1@1+ (1,0) [0|1] "" IPC
+ SG_ MilFlash : 12|1@1+ (1,0) [0|1] "" IPC
+
+BO_ 800 ECM_Mixture: 8 ECM
+ SG_ AirMassFlow : 0|16@1+ (0.01,0) [0|655.35] "g/s" IPC
+ SG_ O2Voltage : 16|8@1+ (0.005,0) [0|1.275] "V" IPC
+ SG_ ShortTermFuelTrim : 24|8@1+ (0.78125,-100) [-100|99.2] "%" IPC
+ SG_ LongTermFuelTrim : 32|8@1+ (0.78125,-100) [-100|99.2] "%" IPC
+ SG_ ClosedLoop : 40|1@1+ (1,0) [0|1] "" IPC
+ SG_ MisfireCyl : 44|4@1+ (1,0) [0|15] "" IPC
 
 BO_ 784 ECM_Fuel: 8 ECM
  SG_ FuelLevel : 0|8@1+ (0.25,0) [0|63.75] "l" IPC
@@ -75,6 +84,9 @@ CM_ BO_ 176 "Wheel speeds, 10 ms. Protected end-to-end by an alive counter and a
 CM_ BO_ 177 "ABS vehicle speed and lamp requests, 20 ms.";
 CM_ BO_ 256 "Fast engine data, 10 ms.";
 CM_ BO_ 768 "Slow engine data and lamp requests, 100 ms.";
+CM_ BO_ 800 "Mixture control (engine OBD pack only), 100 ms.";
+CM_ SG_ 800 MisfireCyl "Bit n-1 set: cylinder n misfires";
+CM_ SG_ 768 MilFlash "Catalyst-damaging misfire: the MIL flashes";
 CM_ BO_ 784 "Fuel and oil: tank level from the fuel sender, fuel rate, oil pressure, 100 ms.";
 CM_ BO_ 416 "Transmission status, 20 ms.";
 CM_ BO_ 848 "Body status, 100 ms. Sent permanently (BCM is on terminal 30).";
@@ -92,6 +104,7 @@ BA_ "GenMsgCycleTime" BO_ 177 20;
 BA_ "GenMsgCycleTime" BO_ 256 10;
 BA_ "GenMsgCycleTime" BO_ 768 100;
 BA_ "GenMsgCycleTime" BO_ 784 100;
+BA_ "GenMsgCycleTime" BO_ 800 100;
 BA_ "GenMsgCycleTime" BO_ 416 20;
 BA_ "GenMsgCycleTime" BO_ 848 100;
 

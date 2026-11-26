@@ -12,7 +12,8 @@ Simulation::Simulation(const VehicleConfig &config)
     if (!m_dbc.loadFile(QStringLiteral(":/ecusim/dbc/vehicle.dbc")))
         m_error = QStringLiteral("CAN database: ") + m_dbc.errorString();
 
-    m_ctx = std::make_unique<SimContext>(SimContext{m_bus, m_dbc, m_vehicle, m_driver, m_sensors});
+    m_sensors.fitEngineObd(m_config.has(Equipment::EngineObd));
+    m_ctx = std::make_unique<SimContext>(SimContext{m_bus, m_dbc, m_vehicle, m_driver, m_sensors, m_config});
     m_abs = std::make_unique<AbsEcu>(*m_ctx);
     m_ecm = std::make_unique<Ecm>(*m_ctx);
     m_tcm = std::make_unique<Tcm>(*m_ctx);
@@ -137,6 +138,12 @@ void Simulation::buildFaultTargets()
         FaultTarget::Kind::Component, {}, failure, QStringLiteral("OIL")});
     m_targets.append({QStringLiteral("park_brake_switch"), QStringLiteral("Park brake switch (stuck closed)"),
         QStringLiteral("BCM"), FaultTarget::Kind::Component, {}, failure, QStringLiteral("PB")});
+    if (m_config.has(Equipment::EngineObd)) {
+        m_targets.append({QStringLiteral("intake_leak"), QStringLiteral("Intake hose (vacuum leak)"), QStringLiteral("ECM"),
+            FaultTarget::Kind::Component, {}, failure, QStringLiteral("VAC")});
+        m_targets.append({QStringLiteral("ignition_coils"), QStringLiteral("Ignition coils"), QStringLiteral("ECM"),
+            FaultTarget::Kind::Component, {}, {FaultType::Misfire}, QStringLiteral("COIL")});
+    }
     m_targets.append({QStringLiteral("throttle_body"), QStringLiteral("Throttle body (electronic throttle)"),
         QStringLiteral("ECM"), FaultTarget::Kind::Component, {}, {FaultType::Unconfigured}, QStringLiteral("THR")});
     for (Ecu *e : ecus()) {
@@ -173,6 +180,10 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         m_vehicle.coolingFailed = on;
     } else if (id == QLatin1String("bulb_low_left")) {
         m_vehicle.bulbLowLeftOpen = on;
+    } else if (id == QLatin1String("intake_leak")) {
+        m_vehicle.vacuumLeakGps = on ? 1.2 : 0.0; // a cracked hose: about half the idle air again
+    } else if (id == QLatin1String("ignition_coils")) {
+        m_vehicle.misfireCylinder = on ? std::clamp(fault.hasP1 ? static_cast<int>(fault.p1) : 3, 1, 4) : 0;
     } else if (id == QLatin1String("oil_pump")) {
         m_vehicle.oilPumpFailed = on;
     } else if (id == QLatin1String("park_brake_switch")) {

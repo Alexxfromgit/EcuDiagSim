@@ -51,6 +51,27 @@ double VehicleModel::speedKphFor(double rpm, int gear)
     return wheelRps * 2.0 * std::numbers::pi * kWheelRadius * 3.6;
 }
 
+double VehicleModel::expectedAirGps(double rpm, double throttle01)
+{
+    // 2.0 l four-stroke: one displacement every two revolutions, air at 1.2 g/l, 85 % filling;
+    // the throttle plate sets the manifold pressure (the closed plate still lets idle air through).
+    const double manifold = 0.16 + 0.84 * std::clamp(throttle01, 0.0, 1.0);
+    return rpm / 120.0 * 2.0 * 1.2 * 0.85 * manifold;
+}
+
+double VehicleModel::o2SensorVolts() const
+{
+    if (!m_running)
+        return 0.45; // cold or no exhaust flow: the ECM's bias voltage
+    // A zirconia cell switches steeply around lambda = 1, between about 0.08 V and 0.86 V.
+    return 0.47 + 0.39 * std::tanh((1.0 - m_lambda) * 40.0);
+}
+
+quint64 VehicleModel::misfires(int cylinder) const
+{
+    return cylinder >= 1 && cylinder <= 4 ? m_misfires[static_cast<size_t>(cylinder - 1)] : 0;
+}
+
 void VehicleModel::setFuelLevel(double litres)
 {
     m_fuel = std::clamp(litres, 0.0, kTankLitres);
@@ -58,6 +79,8 @@ void VehicleModel::setFuelLevel(double litres)
 
 void VehicleModel::step(double dt, const DriverInputs &driver)
 {
+    if (m_exhaust[0] == 0.0 && m_exhaustIndex == 0)
+        m_exhaust.fill(1.0);
     const bool ignitionOn = driver.ignition != Ignition::Off;
 
     // The manual valve selects P/R/N/D hydraulically; the TCM only picks the forward gear.
@@ -118,6 +141,8 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
             m_torque += 30.0 * (1.0 - effThrottle);          // idle controller holds the engine up
         else
             m_torque -= 25.0 * (1.0 - effThrottle);          // engine braking
+        if (misfireCylinder >= 1 && misfireCylinder <= 4 && m_torque > 0.0)
+            m_torque *= 0.75;                                 // one of four cylinders does no work
     } else {
         m_rpm = approach(m_rpm, m_starter ? kCrankRpm : 0.0, dt, m_starter ? 0.1 : 0.3);
         if (m_rpm < 1.0)
@@ -136,6 +161,38 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     } else {
         m_fuelRate = 0.0;
     }
+
+    // --- combustion: firing order 1-3-4-2, one firing every half revolution ------------------
+    static constexpr int kFiringOrder[4] = {1, 3, 4, 2};
+    m_revs += m_rpm / 60.0 * dt;
+    while (m_revs >= 0.5) {
+        m_revs -= 0.5;
+        if (!m_running)
+            continue;
+        const int cylinder = kFiringOrder[m_firingIndex];
+        m_firingIndex = (m_firingIndex + 1) % 4;
+        ++m_firings;
+        if (cylinder == misfireCylinder)
+            ++m_misfires[static_cast<size_t>(cylinder - 1)];
+    }
+
+    // --- mixture ------------------------------------------------------------------------
+    m_air = m_running || m_starter ? expectedAirGps(m_rpm, m_throttle) : 0.0;
+    double lambdaRaw = 1.0;
+    if (m_running && m_fuelRate <= 0.0)
+        lambdaRaw = 4.0; // overrun fuel cut: pure air
+    else if (m_running && mixtureControl && fuelMassGps > 0.0)
+        lambdaRaw = (m_air + vacuumLeakGps) / (fuelMassGps * kInjectorFlow * 14.7);
+    // Unburned charge from a misfiring cylinder carries its oxygen past the sensor: reads lean.
+    if (m_running && misfireCylinder >= 1 && misfireCylinder <= 4)
+        lambdaRaw *= 1.15;
+    // Dead time first (shorter at higher engine speed), then the cell's own response.
+    const double deadTime = 0.03 + 0.12 * kIdleRpm / std::max(m_rpm, 400.0);
+    const size_t delay = std::clamp<size_t>(static_cast<size_t>(deadTime / std::max(dt, 1e-4)), 1, m_exhaust.size() - 1);
+    m_exhaust[m_exhaustIndex] = lambdaRaw;
+    const double delayed = m_exhaust[(m_exhaustIndex + m_exhaust.size() - delay) % m_exhaust.size()];
+    m_exhaustIndex = (m_exhaustIndex + 1) % m_exhaust.size();
+    m_lambda = approach(m_lambda, delayed, dt, 0.06);
 
     // --- oil pressure ----------------------------------------------------------
     // The pump delivers with engine speed; hot oil is thinner and holds less pressure.
