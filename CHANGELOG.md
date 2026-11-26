@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.3.0...v0.3.1) (2026-11-26)
+
+
+### Bug Fixes
+
+* keep tooltips off the element they describe so clicks reach it ([#12](https://github.com/Alexxfromgit/EcuDiagSim/issues/12)) ([26cc92a](https://github.com/Alexxfromgit/EcuDiagSim/commit/26cc92abea808b4976f33e90a14f4b974836dac9))
+
 ## [0.3.0](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.2.0...v0.3.0) (2026-11-26)
 
 
