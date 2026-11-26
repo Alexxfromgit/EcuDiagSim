@@ -183,6 +183,14 @@ void Ecm::onWake()
     m_prevRpm = 0.0;
     m_o2Dead = false;
     m_closedLoop = false;
+    // Monitor windows start empty in every driving cycle: firings and O2 swings from the last
+    // trip must not count towards this one.
+    m_windowFirings = 0;
+    m_windowMisfires = {};
+    m_misfireBits = 0;
+    m_o2WindowMs = 0;
+    m_o2Min = 1.0;
+    m_o2Max = 0.0;
 }
 
 void Ecm::onSleep()
