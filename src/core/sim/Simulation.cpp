@@ -207,9 +207,10 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
         const qsizetype wheel = QStringList{QStringLiteral("tpms_fl"), QStringLiteral("tpms_fr"),
             QStringLiteral("tpms_rl"), QStringLiteral("tpms_rr")}.indexOf(id);
         TpmsSensor &sensor = m_sensors.tpms[static_cast<size_t>(std::max<qsizetype>(0, wheel))];
-        sensor.dead = fault.type == FaultType::Failure;                       // flat battery
-        sensor.id = fault.type == FaultType::Unconfigured ? sensor.factoryId ^ 0x00777700u // a new sensor
-                                                         : sensor.factoryId;
+        // Failure: flat battery, silent. Unconfigured: a new sensor with its own ID. Repair puts
+        // the configured sensor back - after a relearn that is the new one, not the factory part.
+        sensor.dead = fault.type == FaultType::Failure;
+        sensor.id = fault.type == FaultType::Unconfigured ? sensor.installedId ^ 0x00777700u : sensor.installedId;
     } else if (id == QLatin1String("oil_pump")) {
         m_vehicle.oilPumpFailed = on;
     } else if (id == QLatin1String("park_brake_switch")) {

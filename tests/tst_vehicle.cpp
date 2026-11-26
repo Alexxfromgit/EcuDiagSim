@@ -1007,6 +1007,15 @@ void tst_Vehicle::tpmsDeadSensorAndManualId()
     sim.run(2000);
     QVERIFY(sim.activeFaults().isEmpty());
     QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+
+    // Review finding: repairing a later fault on that wheel put the factory sensor back, which the
+    // BCM no longer knows. The repair restores the sensor that is configured now.
+    QVERIFY(sim.injectFault(QStringLiteral("tpms_rl"), {FaultType::Failure}));
+    sim.run(500);
+    sim.clearFault(QStringLiteral("tpms_rl"));
+    sim.run(2000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+    QCOMPARE(sim.sensors().tpms[2].id, 0x1A5C4B33u);
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

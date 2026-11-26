@@ -102,11 +102,11 @@ speed: all wheels invalid, `VehicleSpeedValid` = 0, ABS and TCS lamps on, P0500 
 | B1601-13 | Left low beam circuit open | no lamp current while the output is on (only with lamp monitoring coded) |
 | U3000-55 | Control module not configured | variant coding blank for 0.5 s; every coded function is off |
 | C0750-87 / C0755-87 / C0760-87 / C0765-87 | Tire pressure sensor FL / FR / RL / RR, missing message | no radio message with the learned ID for 10 s with the ignition on — flat sensor battery, or a new sensor not learned yet. Only with tyre pressure monitoring. |
+| U0100-87, U0101-87, U0121-87 | Lost communication with ECM / TCM / ABS | message timeout |
 
 A tyre below 75 % of the placard pressure (1.8 bar) is a warning, not a DTC: the TPMS lamp is on
 steadily. A missing sensor is a system fault: the lamp flashes for 60 s after each ignition on, then
 stays on (FMVSS 138), until the sensor is heard again.
-| U0100-87, U0101-87, U0121-87 | Lost communication with ECM / TCM / ABS | message timeout |
 
 B1318 and B1601 are manufacturer specific examples.
 

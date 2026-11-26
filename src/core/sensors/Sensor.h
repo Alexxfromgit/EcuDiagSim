@@ -114,9 +114,10 @@ private:
 /// by radio. Only with Equipment::Tpms.
 struct TpmsSensor
 {
-    quint32 factoryId = 0; ///< the ID of the sensor fitted at the factory
-    quint32 id = 0;        ///< the ID it transmits (another one after a replacement)
-    bool dead = false;     ///< flat battery: silent
+    quint32 factoryId = 0;   ///< the ID of the sensor fitted at the factory
+    quint32 id = 0;          ///< the ID it transmits (another one after a replacement)
+    quint32 installedId = 0; ///< the configured sensor on this wheel: what a repair puts back
+    bool dead = false;       ///< flat battery: silent
 };
 
 /// The sensors fitted to the virtual vehicle.
@@ -134,8 +135,8 @@ struct SensorSet
     // engine OBD pack (fitted only with Equipment::EngineObd)
     Sensor maf;                ///< mass air flow (ECM)
     Sensor o2;                 ///< upstream oxygen sensor, bank 1 sensor 1 (ECM)
-    std::array<TpmsSensor, 4> tpms{{{0x1A2B3C11, 0x1A2B3C11}, {0x1A2B3C22, 0x1A2B3C22},
-        {0x1A2B3C33, 0x1A2B3C33}, {0x1A2B3C44, 0x1A2B3C44}}}; ///< FL, FR, RL, RR
+    std::array<TpmsSensor, 4> tpms{{{0x1A2B3C11, 0x1A2B3C11, 0x1A2B3C11}, {0x1A2B3C22, 0x1A2B3C22, 0x1A2B3C22},
+        {0x1A2B3C33, 0x1A2B3C33, 0x1A2B3C33}, {0x1A2B3C44, 0x1A2B3C44, 0x1A2B3C44}}}; ///< FL, FR, RL, RR
 
     /// Marks the engine OBD pack sensors fitted or not; unfitted sensors are left out of all().
     void fitEngineObd(bool fitted);

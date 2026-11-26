@@ -193,9 +193,12 @@ void Bcm::tpms100ms(bool ignition, double speed)
     // A replaced sensor whose ID is now known: the "not configured" fault is over.
     static const char *kTargets[4] = {"tpms_fl", "tpms_fr", "tpms_rl", "tpms_rr"};
     for (int i = 0; i < 4; ++i) {
-        const TpmsSensor &sensor = m_ctx.sensors.tpms[static_cast<size_t>(i)];
-        if (sensor.id != sensor.factoryId && m_tpmsIds[static_cast<size_t>(i)] == sensor.id && onConfigured)
-            onConfigured(QString::fromLatin1(kTargets[i]));
+        TpmsSensor &sensor = m_ctx.sensors.tpms[static_cast<size_t>(i)];
+        if (sensor.id != sensor.installedId && m_tpmsIds[static_cast<size_t>(i)] == sensor.id) {
+            sensor.installedId = sensor.id; // the new sensor is the configured one from now on
+            if (onConfigured)
+                onConfigured(QString::fromLatin1(kTargets[i]));
+        }
     }
     if (m_tpmsLearn == Learn::Running) {
         if (m_tpmsLearnedMask == 0x0F)
