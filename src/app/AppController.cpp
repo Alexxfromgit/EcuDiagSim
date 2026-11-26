@@ -405,12 +405,14 @@ void AppController::crash()
     const double kph = m_sim->vehicle().speedKph();
     m_sim->crash();
     setMessage(QStringLiteral("Frontal crash at %1 km/h").arg(kph, 0, 'f', 0));
+    emit frameUpdated(); // the car stands at once, also while paused
 }
 
 void AppController::replaceAirbags()
 {
     m_sim->replaceAirbags();
     setMessage(QStringLiteral("New airbags fitted"));
+    emit frameUpdated(); // the cushions and the button change at once, also while paused
 }
 
 void AppController::refuel(double litres)

@@ -60,6 +60,10 @@ Srs::Srs(SimContext &ctx)
 void Srs::setCodingBlank(bool blank)
 {
     if (blank) {
+        // The removed module keeps its non-volatile memory: putting it back brings its coding
+        // and its crash record back too.
+        if (!m_codingBlank)
+            m_removed = {m_coding, m_crashRecord, m_crashDeltaV, m_crashBelted};
         // A new module from the parts store: no coding, no history.
         m_codingBlank = true;
         m_crashRecord = false;
@@ -68,8 +72,12 @@ void Srs::setCodingBlank(bool blank)
         m_crashBelted = false;
         dtcs().clear(0xFFFFFF);
     } else if (m_codingBlank) {
+        // The original module is back, with what it remembers.
         m_codingBlank = false;
-        m_coding = kDefaultCoding;
+        m_coding = m_removed.coding;
+        m_crashRecord = m_removed.crashRecord;
+        m_crashDeltaV = m_removed.deltaV;
+        m_crashBelted = m_removed.belted;
     }
 }
 

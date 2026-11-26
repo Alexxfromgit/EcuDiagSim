@@ -1123,6 +1123,13 @@ void tst_Vehicle::srsCrashDeploysAndLocksTheRecord()
     sim.run(2500);
     QVERIFY(!sim.srs()->dtcs().testFailed(dtc::squib(0, dtc::FtbResistanceHigh)));
     QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("7F 14 22"));
+    // Swapping in a blank module and putting the old one back (Repair) brings its record back.
+    QVERIFY(sim.injectFault(QStringLiteral("srs"), {FaultType::Unconfigured}));
+    QVERIFY(!sim.srs()->crashRecorded());
+    sim.clearFault(QStringLiteral("srs"));
+    QVERIFY(sim.srs()->crashRecorded());
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "22 01 00"), hex("62 01 00 03"));
+    QCOMPARE(ask(sim, DiagId::SrsRequest, "14 FF FF FF"), hex("7F 14 22"));
     // New module: no record, but blank coding.
     QVERIFY(sim.injectFault(QStringLiteral("srs"), {FaultType::Unconfigured}));
     QVERIFY(!sim.srs()->crashRecorded());

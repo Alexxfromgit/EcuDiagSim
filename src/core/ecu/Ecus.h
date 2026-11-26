@@ -293,6 +293,15 @@ private:
     double m_crashDeltaV = 0.0;
     bool m_crashBelted = false;
     bool m_lamp = false;
+    /// The module taken out while a blank one is fitted ("unconfigured" fault): a repair puts it back.
+    struct RemovedModule
+    {
+        quint8 coding = kDefaultCoding;
+        bool crashRecord = false;
+        double deltaV = 0.0;
+        bool belted = false;
+    };
+    RemovedModule m_removed;
 };
 
 /// What the instrument cluster currently shows.
