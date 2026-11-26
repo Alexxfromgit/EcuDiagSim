@@ -72,6 +72,12 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             list.append({wheel(i, FtbSignalInvalid), "ABS", kWheelText[i],
                 "Speed deviates more than 25 % from the median of the other wheels above 10 km/h for 0.5 s."});
         }
+        static const char *kTpmsText[4] = {"Left front tire pressure sensor", "Right front tire pressure sensor",
+            "Left rear tire pressure sensor", "Right rear tire pressure sensor"};
+        for (int i = 0; i < 4; ++i)
+            list.append({tpmsSensor(i), "BCM", kTpmsText[i],
+                "No radio message with the learned sensor ID for 10 s with the ignition on (flat battery, "
+                "or a new sensor whose ID has not been learned)."});
         list.append({B1318, "BCM", "Battery voltage low", "Supply voltage below 11.0 V with ignition on for 3 s."});
         list.append({B1601, "BCM", "Left low beam circuit",
             "No lamp current although the low beam output is switched on (bulb or wiring open)."});

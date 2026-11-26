@@ -33,6 +33,7 @@ constexpr FaultName kFaultNames[] = {
     {FaultType::BusShort, "bus_short", "CAN wiring short"},
     {FaultType::Unconfigured, "unconfigured", "Replaced, not configured"},
     {FaultType::Misfire, "misfire", "Misfire (cylinder)"},
+    {FaultType::Leak, "leak", "Slow puncture (tyre)"},
 };
 } // namespace
 

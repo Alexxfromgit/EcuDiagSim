@@ -10,6 +10,7 @@ Ipc::Ipc(SimContext &ctx)
     subscribe(msg::EcmEngine, 200);
     subscribe(msg::EcmStatus, 1000);
     subscribe(msg::EcmFuel, 1000);
+    subscribe(msg::BcmTpms, 2000);
     subscribe(msg::TcmStatus, 200);
     subscribe(msg::BcmStatus, 500);
     every(20, [this] { task20ms(); });
@@ -79,6 +80,15 @@ void Ipc::task20ms()
     s.averageConsumption = m_tripKm > 0.2 ? m_tripFuel / m_tripKm * 100.0 : -1.0;
     const double perHundred = s.averageConsumption > 0.0 ? s.averageConsumption : kDefaultConsumption;
     s.rangeKm = s.fuelLevel / perHundred * 100.0;
+
+    // --- tyre pressure monitoring (FMVSS 138 lamp behaviour) -----------------------------
+    if (m_ctx.config.has(Equipment::Tpms)) {
+        const bool tpmsLost = !grace && rxTimedOut(msg::BcmTpms);
+        const int request = tpmsLost ? 2 : static_cast<int>(sig(msg::BcmTpms, "TpmsLampReq"));
+        s.tpmsFlash = request == 2 && awakeForMs() < 60000 + kBulbCheckMs;
+        const bool blinkOff = s.tpmsFlash && (awakeForMs() / 500) % 2 == 1;
+        s.tpms = bulbCheck || (request > 0 && !blinkOff);
+    }
     m_state = s;
 }
 

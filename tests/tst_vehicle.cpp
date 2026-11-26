@@ -37,6 +37,10 @@ private slots:
     void vacuumLeakLeansOutAndLearns();
     void misfireFlashesTheMil();
     void oxygenAndAirFlowSensorFaults();
+    void tyrePhysicsWithoutTpms();
+    void tpmsLowPressureWarning();
+    void tpmsReplacedSensorAndRelearn();
+    void tpmsDeadSensorAndManualId();
 };
 
 namespace {
@@ -45,6 +49,31 @@ VehicleConfig obdPack()
     VehicleConfig c;
     c.fit(Equipment::EngineObd);
     return c;
+}
+
+VehicleConfig withTpms()
+{
+    VehicleConfig c;
+    c.fit(Equipment::Tpms);
+    return c;
+}
+
+QByteArray unlockAndAsk(Simulation &sim, quint32 id, const char *request)
+{
+    if (ask(sim, id, "10 03").left(2) != hex("50 03"))
+        return {};
+    const QByteArray seed = ask(sim, id, "27 01");
+    if (seed.size() != 6)
+        return {};
+    quint32 s = 0;
+    for (int i = 2; i < 6; ++i)
+        s = (s << 8) | static_cast<quint8>(seed[i]);
+    const quint32 key = securityKeyFromSeed(s);
+    QByteArray keyRequest = hex("27 02");
+    for (int shift = 24; shift >= 0; shift -= 8)
+        keyRequest.append(static_cast<char>((key >> shift) & 0xFF));
+    exchange(sim, id, keyRequest);
+    return ask(sim, id, request);
 }
 } // namespace
 
@@ -854,6 +883,149 @@ void tst_Vehicle::oxygenAndAirFlowSensorFaults()
     QVERIFY(sim.injectFault(QStringLiteral("maf"), {FaultType::OpenCircuit}));
     QVERIFY(sim.runUntil([&] { return sim.ecm().dtcs().testFailed(dtc::P0102); }, 2000));
     QVERIFY(sim.vehicle().engineRunning());
+}
+
+// Tyres exist on every car: warm tyres read higher, and a soft one turns faster - nobody tells the
+// driver without TPMS.
+void tst_Vehicle::tyrePhysicsWithoutTpms()
+{
+    Simulation sim;
+    QVERIFY(!sim.faultTarget(QStringLiteral("tpms_fl")));
+    QVERIFY(sim.faultTarget(QStringLiteral("tyres")));
+    startEngine(sim);
+    QCOMPARE(sim.vehicle().tyrePressure(0), VehicleModel::kPlacardBar);
+    driveTo(sim, 100.0, 0.8);
+    sim.run(60000);
+    QVERIFY(sim.vehicle().tyreTemp(0) > 21.0); // flexing warms them (slowly: minutes)
+    QVERIFY(sim.vehicle().tyrePressure(0) > VehicleModel::kPlacardBar); // warm
+    QCOMPARE(sim.vehicle().tyrePressureCold(0), VehicleModel::kPlacardBar);
+
+    Fault leak{FaultType::Leak, 2.0, 0.0, true}; // front right
+    QVERIFY(sim.injectFault(QStringLiteral("tyres"), leak));
+    sim.run(80000);
+    QVERIFY(sim.vehicle().tyrePressureCold(1) < 1.7);
+    QCOMPARE(sim.vehicle().tyrePressureCold(0), VehicleModel::kPlacardBar);
+    // Indirect: the soft tyre's wheel turns faster - well inside the ABS plausibility window.
+    QVERIFY(sim.vehicle().wheelSpeedKph(1) > sim.vehicle().wheelSpeedKph(0) * 1.005);
+    QCOMPARE(sim.abs().dtcs().storedCount(), 0);
+    QVERIFY(!sim.ipc().state().tpms);
+    QVERIFY(!sim.hasSignal(QStringLiteral("TpmsLampReq")));
+
+    sim.clearFault(QStringLiteral("tyres"));
+    QCOMPARE(sim.vehicle().tyrePressureCold(1), VehicleModel::kPlacardBar);
+}
+
+void tst_Vehicle::tpmsLowPressureWarning()
+{
+    Simulation sim(withTpms());
+    QCOMPARE(sim.bcm().coding(), quint8(Bcm::LampMonitoring | Bcm::Tpms));
+    startEngine(sim);
+    sim.run(2000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsLampReq")), 0.0);
+    QVERIFY(!sim.ipc().state().tpms);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("TirePressure_RL")) - 2.4) < 0.05);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "22 40 22"), hex("62 40 22 78")); // 120 x 0.02 bar
+
+    sim.vehicle().setTyrePressureCold(2, 1.7); // a night with a nail in the tyre
+    sim.run(2000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsLampReq")), 1.0);
+    QVERIFY(sim.ipc().state().tpms);
+    QVERIFY(!sim.ipc().state().tpmsFlash); // low pressure: steady
+    QCOMPARE(sim.bcm().dtcs().storedCount(), 0); // low pressure is a warning, not a fault
+
+    // Switched off by coding: no lamp, no monitoring.
+    QCOMPARE(unlockAndAsk(sim, DiagId::BcmRequest, "2E 01 00 01"), hex("6E 01 00"));
+    sim.run(1000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsLampReq")), 0.0);
+    // ... and a car without TPMS refuses the bit.
+    Simulation base;
+    base.driver().ignition = Ignition::On;
+    base.run(1500);
+    QCOMPARE(unlockAndAsk(base, DiagId::BcmRequest, "2E 01 00 09"), hex("7F 2E 31"));
+}
+
+void tst_Vehicle::tpmsReplacedSensorAndRelearn()
+{
+    Simulation sim(withTpms());
+    startEngine(sim);
+    QVERIFY(sim.injectFault(QStringLiteral("tpms_fr"), {FaultType::Unconfigured}));
+    sim.run(11000);
+    QVERIFY(sim.bcm().dtcs().testFailed(dtc::tpmsSensor(1)));
+    QCOMPARE(sim.signal(QStringLiteral("TpmsLampReq")), 2.0);
+    // The new sensor is heard, but belongs to no wheel.
+    const QByteArray unknown = ask(sim, DiagId::BcmRequest, "22 03 14");
+    QCOMPARE(unknown.left(4), hex("62 03 14 01"));
+    QCOMPARE(unknown.mid(4), hex("1A 5C 4B 22"));
+
+    // FMVSS 138: flashing for a minute after ignition on, then steady.
+    ignitionCycle(sim);
+    sim.run(5000);
+    QVERIFY(sim.ipc().state().tpmsFlash);
+    sim.run(60000);
+    QVERIFY(!sim.ipc().state().tpmsFlash);
+    QVERIFY(sim.ipc().state().tpms);
+
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "31 01 03 01"), hex("71 01 03 01 01 00"));
+    sim.run(2000);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "31 03 03 01"), hex("71 03 03 01 02 0F"));
+    QCOMPARE(sim.bcm().tpmsLearnedId(1), 0x1A5C4B22u);
+    QVERIFY(sim.activeFaults().isEmpty()); // the new sensor is configured
+    sim.run(1000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+    QVERIFY(!sim.bcm().dtcs().testFailed(dtc::tpmsSensor(1)));
+
+    // Not while driving.
+    startEngine(sim); // the ignition cycle above stopped it
+    driveTo(sim, 20.0);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "31 01 03 01"), hex("7F 31 22"));
+
+    // Switching the ignition off ends a relearn: aborted, not "running" with the receiver off.
+    Simulation off(withTpms());
+    off.driver().ignition = Ignition::On;
+    off.run(1500);
+    QCOMPARE(ask(off, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(off, DiagId::BcmRequest, "31 01 03 01").left(5), hex("71 01 03 01 01"));
+    off.driver().ignition = Ignition::Off;
+    off.run(300);
+    QCOMPARE(ask(off, DiagId::BcmRequest, "31 03 03 01").left(5), hex("71 03 03 01 03"));
+}
+
+void tst_Vehicle::tpmsDeadSensorAndManualId()
+{
+    Simulation sim(withTpms());
+    startEngine(sim);
+    QVERIFY(sim.injectFault(QStringLiteral("tpms_rl"), {FaultType::Failure}));
+    sim.run(11000);
+    QVERIFY(sim.bcm().dtcs().testFailed(dtc::tpmsSensor(2)));
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "22 03 14"), hex("62 03 14 00")); // nothing unknown: silent
+
+    // A relearn cannot find the silent sensor: failed, FL FR RR learned.
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "10 03").left(2), hex("50 03"));
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "31 01 03 01").left(5), hex("71 01 03 01 01"));
+    sim.run(Bcm::kTpmsLearnMs + 1000);
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "10 03").left(2), hex("50 03")); // the session timed out meanwhile
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "31 03 03 01"), hex("71 03 03 01 04 0B"));
+
+    // New sensor fitted; its ID typed in from the box instead of a relearn.
+    sim.clearFault(QStringLiteral("tpms_rl"));
+    QVERIFY(sim.injectFault(QStringLiteral("tpms_rl"), {FaultType::Unconfigured}));
+    QCOMPARE(unlockAndAsk(sim, DiagId::BcmRequest, "2E 03 12 00 00 00 00"), hex("7F 2E 31"));
+    QCOMPARE(ask(sim, DiagId::BcmRequest, "2E 03 12 1A 5C 4B 33"), hex("6E 03 12"));
+    sim.run(2000);
+    QVERIFY(sim.activeFaults().isEmpty());
+    QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+
+    // Review finding: repairing a later fault on that wheel put the factory sensor back, which the
+    // BCM no longer knows. The repair restores the sensor that is configured now.
+    QVERIFY(sim.injectFault(QStringLiteral("tpms_rl"), {FaultType::Failure}));
+    sim.run(500);
+    sim.clearFault(QStringLiteral("tpms_rl"));
+    sim.run(2000);
+    QCOMPARE(sim.signal(QStringLiteral("TpmsSensorValid")), 15.0);
+    QCOMPARE(sim.sensors().tpms[2].id, 0x1A5C4B33u);
 }
 
 // The equipment list: identifiers, set operations and the lesson-file form.

@@ -72,6 +72,26 @@ quint64 VehicleModel::misfires(int cylinder) const
     return cylinder >= 1 && cylinder <= 4 ? m_misfires[static_cast<size_t>(cylinder - 1)] : 0;
 }
 
+double VehicleModel::tyrePressure(int wheel) const
+{
+    const auto i = static_cast<size_t>(std::clamp(wheel, 0, 3));
+    // Gay-Lussac on the absolute pressure: warm tyres read higher.
+    const double absolute = (m_tyreCold[i] + 1.013) * (m_tyreTemp[i] + 273.15) / (kAmbientTemp + 273.15);
+    return std::max(0.0, absolute - 1.013);
+}
+
+void VehicleModel::setTyrePressureCold(int wheel, double bar)
+{
+    m_tyreCold[static_cast<size_t>(std::clamp(wheel, 0, 3))] = std::clamp(bar, 0.0, 4.0);
+}
+
+double VehicleModel::wheelSpeedKph(int wheel) const
+{
+    // About 1 % less rolling radius per bar below the placard; correctly inflated = exactly 1.
+    const double deficit = std::max(0.0, kPlacardBar - m_tyreCold[static_cast<size_t>(std::clamp(wheel, 0, 3))]);
+    return std::abs(m_speed) * 3.6 / (1.0 - 0.01 * deficit);
+}
+
 void VehicleModel::setFuelLevel(double litres)
 {
     m_fuel = std::clamp(litres, 0.0, kTankLitres);
@@ -227,6 +247,12 @@ void VehicleModel::step(double dt, const DriverInputs &driver)
     m_speed = v;
     if (driver.selector == Selector::P && std::abs(m_speed) < 1.0)
         m_speed = 0.0; // parking pawl
+
+    // --- tyres: flexing warms them with speed; a puncture lets air out --------------
+    for (size_t i = 0; i < 4; ++i) {
+        m_tyreTemp[i] = approach(m_tyreTemp[i], kAmbientTemp + std::abs(m_speed) * 3.6 * 0.2, dt, 300.0);
+        m_tyreCold[i] = std::max(0.0, m_tyreCold[i] - tyreLeakBarPerS[i] * dt);
+    }
 
     // --- thermal ---------------------------------------------------------
     const double load = m_running ? m_throttle : 0.0;

@@ -188,6 +188,17 @@ void ScenarioRunner::execute(const QJsonObject &step)
     } else if (action == QLatin1String("parkBrake")) {
         driver.parkBrake = value.toBool() || value.toString() == QLatin1String("on");
         act(QStringLiteral("Park brake %1").arg(driver.parkBrake ? QLatin1String("applied") : QLatin1String("released")));
+    } else if (action == QLatin1String("tyre")) {
+        // { "action": "tyre", "wheel": "FL", "value": 1.6 } - cold pressure in bar
+        const QString w = step.value(QLatin1String("wheel")).toString().toUpper();
+        const qsizetype wheel = QStringList{QStringLiteral("FL"), QStringLiteral("FR"), QStringLiteral("RL"),
+            QStringLiteral("RR")}.indexOf(w);
+        if (wheel < 0) {
+            fail(QStringLiteral("Unknown wheel '%1'").arg(w));
+        } else {
+            m_sim.vehicle().setTyrePressureCold(static_cast<int>(wheel), value.toDouble());
+            act(QStringLiteral("Tyre %1 at %2 bar (cold)").arg(w).arg(value.toDouble()));
+        }
     } else if (action == QLatin1String("fuel")) {
         m_sim.vehicle().setFuelLevel(value.toDouble());
         act(QStringLiteral("Fuel in the tank: %1 l").arg(m_sim.vehicle().fuelLevel()));
@@ -335,6 +346,10 @@ void ScenarioRunner::expect(const QJsonObject &step)
             actual = c.mil || c.milFlash; // flashing counts as on
         else if (lamp == QLatin1String("milFlashing"))
             actual = c.milFlash;
+        else if (lamp == QLatin1String("tpms"))
+            actual = c.tpms || c.tpmsFlash;
+        else if (lamp == QLatin1String("tpmsFlashing"))
+            actual = c.tpmsFlash;
         else if (lamp == QLatin1String("abs"))
             actual = c.abs;
         else if (lamp == QLatin1String("tcs"))

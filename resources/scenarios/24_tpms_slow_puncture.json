@@ -1,0 +1,29 @@
+{
+  "name": "Slow puncture - the TPMS warning",
+  "description": "A nail in the right front tyre. The valve sensor reports the falling pressure by radio; 25 % below the placard the BCM requests the TPMS lamp - steady, because the system works and a tyre is low. No DTC: a soft tyre is a warning, not a fault.",
+  "lesson": "docs/lessons/24-tpms-slow-puncture.md",
+  "level": "Beginner",
+  "topics": ["BCM", "TPMS", "Warning lamps"],
+  "equipment": ["tpms"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+    { "action": "expect", "lamp": "tpms", "value": false },
+    { "action": "expect", "signal": "TpmsSensorValid", "op": "==", "value": 15, "note": "1. All four sensors heard (BCM_Tpms)" },
+    { "action": "uds", "ecu": "BCM", "request": "22 40 21", "expect": "62 40 21 78", "note": "Tyre pressure FR (DID 0x4021): 0x78 x 0.02 = 2.4 bar" },
+
+    { "action": "inject", "target": "tyres", "fault": "leak", "p1": 2, "note": "2. A nail in the right front tyre: about 0.6 bar a minute" },
+    { "action": "waitFor", "signal": "TpmsLampReq", "op": "==", "value": 1, "timeout": 120000, "note": "Below 1.8 bar (25 % under the placard) the BCM requests the lamp" },
+    { "action": "wait", "ms": 600 },
+    { "action": "expect", "lamp": "tpms", "value": true, "note": "3. TPMS lamp on ..." },
+    { "action": "expect", "lamp": "tpmsFlashing", "value": false, "note": "... steady: low pressure, the system itself is fine" },
+    { "action": "expect", "dtc": "C0755-87", "ecu": "BCM", "status": "absent", "note": "No DTC: a soft tyre is not a fault of the car" },
+    { "action": "expect", "signal": "TirePressure_FR", "op": "<", "value": 1.85, "note": "About 1.8 bar (the signal has 0.02 bar steps)" },
+
+    { "action": "clearFault", "target": "tyres", "note": "4. Tyre plugged and inflated" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "expect", "lamp": "tpms", "value": false }
+  ]
+}

@@ -24,8 +24,8 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 `level` (`Beginner`, `Intermediate` or `Advanced`) and `topics` are optional; the *Lessons* tab
 shows them as tags and filters by level.
 
-`equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`
-(available), `tpms`, `srs`, `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
+`equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`,
+`tpms` (available), `srs`, `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
 these, so a lesson always finds what it needs; the lesson card shows them as chips. Base-car lessons
 leave it out.
 
@@ -43,6 +43,7 @@ as *failed* if at least one expectation was not met.
 | `throttle`, `brake` | `value`: 0…100 % |
 | `headlamps` | `value`: `"off"`, `"park"`, `"low"` |
 | `parkBrake` | `value`: true / false |
+| `tyre` | `wheel`: `FL`, `FR`, `RL`, `RR`; `value`: cold pressure in bar (placard 2.4) |
 | `fuel` | `value`: litres in the tank (0…55) — empty it, or refuel |
 | `log` | `text`: a line for the lesson log, nothing else happens |
 | `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`; `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
@@ -75,6 +76,8 @@ completed); `clearFault` instead puts the old, configured part back.
 | `maf` `o2` | the sensor faults above — engine OBD pack only |
 | `intake_leak` | `failure` (a vacuum leak behind the air flow meter) — engine OBD pack only |
 | `ignition_coils` | `misfire`, `p1` = cylinder 1…4 (default 3) — engine OBD pack only |
+| `tyres` | `leak`, `p1` = tyre 1 FL, 2 FR, 3 RL, 4 RR (default 1), 0.6 bar a minute; `clearFault` plugs and inflates |
+| `tpms_fl` `tpms_fr` `tpms_rl` `tpms_rr` | `failure` (flat battery: silent), `unconfigured` (new sensor, new ID) — TPMS only |
 | `alternator` `cooling` `bulb_low_left` `oil_pump` `park_brake_switch` | `failure` (the switch sticks closed) |
 | `throttle_body` | `unconfigured` — new part, adaptation not learned (run routine 0x0201) |
 | `ecm` `tcm` `abs` `bcm` `ipc` | `power_loss`, `bus_off` |
@@ -88,7 +91,7 @@ completed); `clearFault` instead puts the old, configured part back.
 |---|---|
 | `{ "action": "expect", "signal": "AbsLampReq", "op": "==", "value": 1 }` | CAN signal, received within the last `maxAgeMs` (default 1000) |
 | `{ "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" }` | fault memory, read directly from the ECU. Without the failure type byte any `C0035-xx` matches. `status`: `confirmed`, `pending`, `testFailed`, `warning`, `stored` (pending or confirmed), `notConfirmed`, `absent` |
-| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing); `mil` counts a flashing MIL as on, `milFlashing` checks the flashing alone |
+| `{ "action": "expect", "lamp": "abs", "value": true }` | cluster lamp: `mil`, `abs`, `tcs`, `battery`, `coolant`, `trans`, `lampFault`, `door`, `lowBeam`, `highBeam`, `oil`, `lowFuel`, `parkBrake` (also while flashing); `mil` counts a flashing MIL as on, `milFlashing` checks the flashing alone; `tpms` and `tpmsFlashing` the same way |
 
 ## Scan tool
 

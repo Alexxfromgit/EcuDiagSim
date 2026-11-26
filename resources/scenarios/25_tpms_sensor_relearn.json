@@ -1,0 +1,38 @@
+{
+  "name": "New TPMS sensor - the relearn routine",
+  "description": "A new tyre came with a new valve sensor. It transmits fine, but with an ID the BCM does not know - so for the BCM the right front sensor is missing: C0755-87, and the TPMS lamp flashes for a minute after every ignition on, then stays on. The relearn routine (UDS 0x31) teaches the BCM the new ID.",
+  "lesson": "docs/lessons/25-tpms-relearn.md",
+  "level": "Intermediate",
+  "topics": ["BCM", "TPMS", "Routine control"],
+  "equipment": ["tpms"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 3500 },
+    { "action": "inject", "target": "tpms_fr", "fault": "unconfigured", "note": "1. New tyre on the right front, with a new sensor" },
+    { "action": "wait", "ms": 11000, "note": "After 10 s without the learned ID the sensor counts as missing" },
+    { "action": "expect", "dtc": "C0755-87", "ecu": "BCM", "status": "testFailed", "note": "C0755-87: right front sensor, missing message" },
+    { "action": "expect", "signal": "TpmsLampReq", "op": "==", "value": 2, "note": "Lamp request 2: system fault" },
+    { "action": "uds", "ecu": "BCM", "request": "22 03 14", "expect": "62 03 14 01 1A 5C 4B 22", "note": "2. DID 0x0314: one ID received that belongs to no wheel - the new sensor is alive" },
+    { "action": "uds", "ecu": "BCM", "request": "22 03 11", "expect": "62 03 11 1A 2B 3C 22", "note": "DID 0x0311: the BCM still expects the old ID on the right front" },
+
+    { "action": "ignition", "value": "off", "note": "3. Next drive" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "ignition", "value": "on" },
+    { "action": "wait", "ms": 5000 },
+    { "action": "expect", "lamp": "tpmsFlashing", "value": true, "note": "FMVSS 138: a system fault flashes the lamp for a minute after ignition on ..." },
+    { "action": "wait", "ms": 60000 },
+    { "action": "expect", "lamp": "tpmsFlashing", "value": false },
+    { "action": "expect", "lamp": "tpms", "value": true, "note": "... then it stays on, so it cannot be mistaken for a low tyre" },
+
+    { "action": "uds", "ecu": "BCM", "request": "10 03", "expect": "50 03", "note": "4. Relearn" },
+    { "action": "uds", "ecu": "BCM", "request": "31 01 03 01", "expect": "71 01 03 01 01", "note": "Started: the tool triggers each wheel's sensor, the BCM stores the IDs" },
+    { "action": "wait", "ms": 2000 },
+    { "action": "uds", "ecu": "BCM", "request": "31 03 03 01", "expect": "71 03 03 01 02 0F", "note": "Completed (02), all four positions learned (0F)" },
+    { "action": "uds", "ecu": "BCM", "request": "22 03 11", "expect": "62 03 11 1A 5C 4B 22" },
+    { "action": "wait", "ms": 1500 },
+    { "action": "expect", "signal": "TpmsSensorValid", "op": "==", "value": 15 },
+    { "action": "uds", "ecu": "BCM", "request": "14 FF FF FF", "expect": "54" },
+    { "action": "wait", "ms": 500 },
+    { "action": "expect", "lamp": "tpms", "value": false, "note": "5. Lamp off" }
+  ]
+}

@@ -15,6 +15,7 @@ definition is [`resources/dbc/vehicle.dbc`](../resources/dbc/vehicle.dbc); it op
 | 0x310 | ECM_Fuel | ECM | 100 ms | IPC |
 | 0x320 | ECM_Mixture | ECM | 100 ms | IPC — only with the *Engine OBD pack* |
 | 0x350 | BCM_Status | BCM | 100 ms | ECM, ABS, IPC |
+| 0x360 | BCM_Tpms | BCM | 500 ms | IPC — only with *Tyre pressure monitoring* |
 
 Lower identifiers have higher priority: safety relevant chassis data comes first. With the ignition
 on the bus carries 330 frames per second, about 8 % load.
@@ -114,6 +115,15 @@ since the trip reset, and the range from the tank level.
 | BatteryVoltage | 16 | 8 | factor 0.1 V |
 
 The BCM is on permanent supply and sends this message with the ignition off as well.
+
+### 0x360 BCM_Tpms (tyre pressure monitoring)
+
+| Signal | Start bit | Length | Notes |
+|---|---|---|---|
+| TirePressure_FL / FR / RL / RR | 0 / 8 / 16 / 24 | 8 | factor 0.02 bar, as last received from the wheel's sensor |
+| TpmsLampReq | 32 | 2 | 0 off, 1 low pressure (steady), 2 system fault (flashes 60 s after ignition on, then steady) |
+| TpmsSensorValid | 34 | 4 | bit n: wheel n (FL, FR, RL, RR) heard since ignition on and not timed out |
+| TpmsLearnActive | 38 | 1 | relearn routine running |
 
 ## Diagnostic identifiers (ISO 15765-4)
 

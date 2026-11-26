@@ -39,6 +39,7 @@ public:
     static constexpr double kIdleRpm = 800.0;
     static constexpr int kGearCount = 6;
     static constexpr double kTankLitres = 55.0;
+    static constexpr double kPlacardBar = 2.4; ///< cold inflation pressure on the door sticker
     static constexpr double kStartFuelLitres = 40.0;
     /// The injectors deliver 3 % less than the ECM's calculation (part tolerance): the closed
     /// loop corrects it, and the long-term trim learns it.
@@ -60,6 +61,7 @@ public:
     bool oilPumpFailed = false;        ///< worn pump / oil level far too low
     double vacuumLeakGps = 0.0;        ///< unmetered air entering behind the air flow meter
     int misfireCylinder = 0;           ///< 1..4: that cylinder does not fire, 0 = none
+    std::array<double, 4> tyreLeakBarPerS{}; ///< slow puncture per tyre FL, FR, RL, RR
     bool parkBrakeSwitchStuck = false; ///< switch reports "applied" whatever the lever does
 
     void step(double dt, const DriverInputs &driver);
@@ -70,7 +72,13 @@ public:
     /// Signed velocity: negative while rolling backwards.
     double velocityKph() const { return m_speed * 3.6; }
     /// Passive wheel speed sensors measure the magnitude only, not the direction.
-    double wheelSpeedKph(int) const { return std::abs(m_speed) * 3.6; }
+    /// A soft tyre rolls on a smaller radius and turns slightly faster (what indirect TPMS uses).
+    double wheelSpeedKph(int wheel) const;
+    /// Tyre pressure (gauge, bar) at the current tyre temperature; and the same at 20 degC.
+    double tyrePressure(int wheel) const;
+    double tyrePressureCold(int wheel) const { return m_tyreCold[static_cast<size_t>(wheel)]; }
+    double tyreTemp(int wheel) const { return m_tyreTemp[static_cast<size_t>(wheel)]; }
+    void setTyrePressureCold(int wheel, double bar);
     double engineRpm() const { return m_rpm; }
     bool engineRunning() const { return m_running; }
     bool starterEngaged() const { return m_starter; }
@@ -127,6 +135,8 @@ private:
     int m_firingIndex = 0;
     quint64 m_firings = 0;
     std::array<quint64, 4> m_misfires{};
+    std::array<double, 4> m_tyreCold{kPlacardBar, kPlacardBar, kPlacardBar, kPlacardBar};
+    std::array<double, 4> m_tyreTemp{kAmbientTemp, kAmbientTemp, kAmbientTemp, kAmbientTemp};
     bool m_parkBrake = false;
     double m_voltage = 12.6;
     double m_restVoltage = 12.6;
