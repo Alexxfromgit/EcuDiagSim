@@ -398,6 +398,7 @@ void AppController::refuel(double litres)
     VehicleModel &v = m_sim->vehicle();
     v.setFuelLevel(litres < 0.0 ? VehicleModel::kTankLitres : litres);
     setMessage(QStringLiteral("Tank filled to %1 l").arg(v.fuelLevel(), 0, 'f', 1));
+    emit frameUpdated(); // the tank is plant state: show it at once, also while paused
 }
 
 void AppController::resetTrip()

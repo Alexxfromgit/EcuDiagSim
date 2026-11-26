@@ -83,6 +83,13 @@ void tst_App::opensPaused()
     QCOMPARE(app.simTime(), 0.0);
     QCOMPARE(app.sim().bus().frameCount(), quint64(0));
 
+    // Refuelling while paused shows the new level at once (the view does not wait for a step).
+    QSignalSpy frames(&app, &AppController::frameUpdated);
+    app.refuel(12.0);
+    QCOMPARE(frames.count(), 1);
+    QCOMPARE(app.vehicle().value(QStringLiteral("fuel")).toDouble(), 12.0);
+    QCOMPARE(app.simTime(), 0.0);
+
     // A lesson starts by itself.
     app.runScenario(app.scenarios().first().toMap().value(QStringLiteral("path")).toString());
     QVERIFY(app.running());
