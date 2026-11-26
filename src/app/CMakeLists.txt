@@ -37,6 +37,7 @@ qt_add_qml_module(EcuDiagSim
         qml/ScannerPanel.qml
         qml/ScenariosPanel.qml
         qml/SettingsPage.qml
+        qml/ToolTipPlacement.qml
 )
 
 target_include_directories(EcuDiagSim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

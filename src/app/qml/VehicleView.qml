@@ -805,9 +805,33 @@ Panel {
                 color: Qt.rgba(0.06, 0.07, 0.09, 0.9)
                 border.color: Qt.rgba(0.29, 0.66, 1, 0.55)
                 z: 20
-                opacity: root.waiting ? 1 : 0
+                // Hidden with the ✕ so the parts underneath can be reached; back for the next vehicle.
+                property bool dismissed: false
+                readonly property bool shown: root.waiting && !dismissed
+                Connections {
+                    target: root
+                    function onWaitingChanged() { if (root.waiting) prompt.dismissed = false }
+                }
+                opacity: shown ? 1 : 0
                 visible: opacity > 0.01
-                scale: root.waiting ? 1 : 0.96
+                scale: shown ? 1 : 0.96
+                // The card owns the pointer: sensors and control units under it must not show
+                // tooltips or look clickable while the card hides them and catches their clicks.
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.AllButtons
+                    enabled: prompt.shown
+                }
+                ToolButton {
+                    anchors { top: parent.top; right: parent.right; margins: 2 }
+                    z: 1
+                    text: "✕"
+                    enabled: prompt.shown
+                    onClicked: prompt.dismissed = true
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Hide this card to reach the parts under it. The car stays paused."
+                }
                 Behavior on opacity { NumberAnimation { duration: App.reducedMotion ? 0 : 220; easing.type: Easing.OutCubic } }
                 Behavior on scale { NumberAnimation { duration: App.reducedMotion ? 0 : 220; easing.type: Easing.OutCubic } }
                 ColumnLayout {

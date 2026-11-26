@@ -52,6 +52,8 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+,"; onActivated: settings.open() }
 
     SettingsPage { id: settings }
+    // Tooltips must never cover the element they describe, or they swallow its clicks.
+    ToolTipPlacement {}
     function openSettings() { settings.open() }
     function openUds(index) {
         App.scanner.target = index
