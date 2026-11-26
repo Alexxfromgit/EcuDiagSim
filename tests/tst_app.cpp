@@ -3,7 +3,9 @@
 #include "WindowGeometry.h"
 
 #include <QAbstractItemModelTester>
+#include <QSettings>
 #include <QSignalSpy>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <algorithm>
@@ -42,6 +44,11 @@ class tst_App : public QObject
     Q_OBJECT
 
 private slots:
+    void initTestCase();
+    void opensPaused();
+    void settingsArePersisted();
+    void equipmentCatalogAndChoice();
+    void viewModelsDescribeTheVehicle();
     void pollingDoesNotLeakIntoDtcTable();
     void overlappingRequestsKeepTheirOwnRows();
     void userRequestsAreLoggedAfterResetDuringPoll();
@@ -52,6 +59,123 @@ private slots:
     void swappedFaultRefreshesViews();
     void windowFitsTheScreen();
 };
+
+// Settings go to an INI file in a temporary folder, never to the user's real settings.
+void tst_App::initTestCase()
+{
+    static QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QCoreApplication::setOrganizationName(QStringLiteral("EcuDiagSimTest"));
+    QCoreApplication::setApplicationName(QStringLiteral("tst_app"));
+    QSettings::setDefaultFormat(QSettings::IniFormat);
+    QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, dir.path());
+    QSettings().clear();
+}
+
+// Opening the app must not start the clock: nothing on the bus until the user presses Run.
+void tst_App::opensPaused()
+{
+    AppController app;
+    QVERIFY(!app.startOnLaunch());
+    QVERIFY(!app.running());
+    QTest::qWait(300); // the display timer runs, the simulation does not
+    QCOMPARE(app.simTime(), 0.0);
+    QCOMPARE(app.sim().bus().frameCount(), quint64(0));
+
+    // A lesson starts by itself.
+    app.runScenario(app.scenarios().first().toMap().value(QStringLiteral("path")).toString());
+    QVERIFY(app.running());
+    app.stopScenario();
+}
+
+void tst_App::settingsArePersisted()
+{
+    {
+        AppController app;
+        QSignalSpy changed(&app, &AppController::settingsChanged);
+        app.setStartOnLaunch(true);
+        app.setDefaultSpeed(2.0);
+        app.setReducedMotion(true);
+        QCOMPARE(changed.size(), 3);
+        app.setStartOnLaunch(true); // unchanged: no signal
+        QCOMPARE(changed.size(), 3);
+        app.setDefaultSpeed(99.0); // clamped
+        QCOMPARE(app.defaultSpeed(), 20.0);
+        app.setDefaultSpeed(2.0);
+    }
+    {
+        AppController app;
+        QVERIFY(app.running());
+        QCOMPARE(app.speedFactor(), 2.0);
+        QVERIFY(app.reducedMotion());
+        app.setStartOnLaunch(false);
+        app.setDefaultSpeed(1.0);
+        app.setReducedMotion(false);
+    }
+    AppController app;
+    QVERIFY(!app.running());
+    QCOMPARE(app.speedFactor(), 1.0);
+}
+
+void tst_App::equipmentCatalogAndChoice()
+{
+    AppController app;
+    const QVariantList catalog = app.equipmentCatalog();
+    QCOMPARE(catalog.size(), VehicleConfig::catalog().size());
+    for (const QVariant &v : catalog) {
+        const QVariantMap m = v.toMap();
+        QVERIFY(!m.value(QStringLiteral("name")).toString().isEmpty());
+        QVERIFY(m.contains(QStringLiteral("implemented")) && m.contains(QStringLiteral("lessons")));
+    }
+    QVERIFY(app.equipment().isEmpty());
+    QVERIFY(app.fitted().isEmpty());
+
+    // Only known, implemented items survive; the choice is saved for the next start.
+    QStringList implemented;
+    for (const EquipmentInfo &e : VehicleConfig::catalog())
+        if (e.implemented)
+            implemented << e.id;
+    app.setEquipment(QStringList{QStringLiteral("turbo")} + implemented);
+    QCOMPARE(app.equipment(), implemented);
+    QCOMPARE(app.fitted(), implemented);
+    QCOMPARE(QSettings().value(QLatin1String(AppController::kEquipmentKey)).toStringList(), implemented);
+    app.setEquipment({});
+    QVERIFY(app.equipment().isEmpty());
+}
+
+void tst_App::viewModelsDescribeTheVehicle()
+{
+    AppController app;
+    // Scan tool target index of every diagnosable control unit; the cluster has none.
+    QHash<QString, int> index;
+    for (const QVariant &v : app.ecus()) {
+        const QVariantMap m = v.toMap();
+        index.insert(m.value(QStringLiteral("name")).toString(), m.value(QStringLiteral("diagIndex")).toInt());
+    }
+    QCOMPARE(index.value(QStringLiteral("ECM")), 0);
+    QCOMPARE(index.value(QStringLiteral("TCM")), 1);
+    QCOMPARE(index.value(QStringLiteral("ABS")), 2);
+    QCOMPARE(index.value(QStringLiteral("BCM")), 3);
+    QCOMPARE(index.value(QStringLiteral("IPC")), -1);
+    for (int i = 0; i < 4; ++i)
+        QVERIFY(app.scanner()->ecuNames().at(i).startsWith(index.key(i)));
+
+    for (const QVariant &v : app.sensors()) {
+        const QVariantMap m = v.toMap();
+        QVERIFY(!m.value(QStringLiteral("shortName")).toString().isEmpty());
+        QVERIFY(!m.value(QStringLiteral("label")).toString().isEmpty());
+    }
+    QVERIFY(app.vehicle().contains(QStringLiteral("velocity")));
+
+    // The sensor table's model only changes with the equipment, not on every refresh.
+    QStringList ids;
+    for (const QVariant &v : app.sensors())
+        ids << v.toMap().value(QStringLiteral("id")).toString();
+    QCOMPARE(app.sensorIds(), ids);
+    QSignalSpy equipment(&app, &AppController::equipmentChanged);
+    app.step(500);
+    QVERIFY(equipment.isEmpty());
+}
 
 // Review finding: with "Refresh live data" on, Read codes showed live-data rows as DTC cards.
 void tst_App::pollingDoesNotLeakIntoDtcTable()

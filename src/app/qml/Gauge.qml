@@ -19,9 +19,34 @@ Item {
     readonly property real startAngle: 135   // degrees, clockwise from 3 o'clock
     readonly property real sweep: 270
     readonly property real clamped: Math.max(minimum, Math.min(maximum, value))
+    // The needle has a little mass: it follows the CAN value through a damped spring, so the
+    // 20 ms steps of the cluster's input never show as jitter.
+    property real shown: clamped
+    Behavior on shown { SpringAnimation { spring: 6; damping: 0.62; epsilon: (root.maximum - root.minimum) / 4000 } }
+    // Self test at ignition on: the needle sweeps to full scale and back (see selfTest()).
+    property real sweepFraction: 0
+    readonly property bool sweeping: sweepAnim.running
+    readonly property real needleValue: sweeping
+        ? Math.max(minimum + sweepFraction * (maximum - minimum), shown) : shown
     // The arc follows in steps of 0.25 % of the range: the path is rebuilt only when that changes,
     // not on every frame.
-    readonly property real arcFraction: Math.round((clamped - minimum) / (maximum - minimum) * 400) / 400
+    readonly property real arcFraction: Math.round((needleValue - minimum) / (maximum - minimum) * 400) / 400
+
+    /// Needle sweep, as a real cluster does during its bulb check. Durations are wall time at 1x.
+    function selfTest(timeScale) {
+        const s = Math.max(0.25, timeScale)
+        upAnim.duration = 650 / s
+        holdAnim.duration = 180 / s
+        downAnim.duration = 850 / s
+        sweepAnim.restart()
+    }
+    SequentialAnimation {
+        id: sweepAnim
+        paused: running && !App.running
+        NumberAnimation { id: upAnim; target: root; property: "sweepFraction"; from: 0; to: 1; easing.type: Easing.InOutCubic }
+        PauseAnimation { id: holdAnim }
+        NumberAnimation { id: downAnim; target: root; property: "sweepFraction"; from: 1; to: 0; easing.type: Easing.InOutCubic }
+    }
 
     implicitWidth: 200
     implicitHeight: 200
@@ -120,7 +145,7 @@ Item {
             fillColor: "transparent"
             strokeWidth: 3
             capStyle: ShapePath.RoundCap
-            strokeColor: root.clamped >= root.redFrom ? Qt.rgba(1, 0.35, 0.3, 0.85) : Qt.rgba(0.29, 0.66, 1, 0.75)
+            strokeColor: root.needleValue >= root.redFrom ? Qt.rgba(1, 0.35, 0.3, 0.85) : Qt.rgba(0.29, 0.66, 1, 0.75)
             PathAngleArc {
                 centerX: root.width / 2; centerY: root.height / 2
                 radiusX: arc.r - 2; radiusY: arc.r - 2
@@ -134,7 +159,7 @@ Item {
     Item {
         anchors.centerIn: parent
         width: 1; height: 1
-        rotation: root.startAngle + (root.clamped - root.minimum) / (root.maximum - root.minimum) * root.sweep
+        rotation: root.startAngle + (root.needleValue - root.minimum) / (root.maximum - root.minimum) * root.sweep
         Rectangle {
             x: -8; y: -1.5
             width: Math.min(root.width, root.height) / 2 - 22 + 8

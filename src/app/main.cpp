@@ -45,10 +45,11 @@ int main(int argc, char *argv[])
     const QCommandLineOption afterOpt(QStringLiteral("after"),
         QStringLiteral("Milliseconds to wait before the screenshot (default 3000)."), QStringLiteral("ms"),
         QStringLiteral("3000"));
+    const QCommandLineOption settingsOpt(QStringLiteral("settings"), QStringLiteral("Open the settings page at start."));
     const QCommandLineOption sizeOpt(QStringLiteral("size"),
         QStringLiteral("Window size, e.g. 1366x768 (for screenshots and testing small screens)."),
         QStringLiteral("WxH"));
-    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt});
+    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt, settingsOpt});
     parser.process(app);
 
     QQmlApplicationEngine engine;
@@ -76,6 +77,8 @@ int main(int argc, char *argv[])
     }
     if (parser.isSet(tabOpt))
         root->setProperty("currentTab", parser.value(tabOpt).toInt());
+    if (parser.isSet(settingsOpt))
+        QMetaObject::invokeMethod(root, "openSettings", Qt::QueuedConnection);
     if (parser.isSet(sizeOpt)) {
         const QStringList wh = parser.value(sizeOpt).split(QLatin1Char('x'));
         if (wh.size() == 2) {

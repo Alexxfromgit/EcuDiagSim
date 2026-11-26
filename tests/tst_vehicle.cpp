@@ -27,6 +27,7 @@ private slots:
     void lampCircuitFault();
     void reverseWhileRollingForwardBrakes();
     void deterministic();
+    void vehicleConfig();
 };
 
 void tst_Vehicle::sensorCircuitModel()
@@ -538,6 +539,48 @@ void tst_Vehicle::deterministic()
             testerPresent << line.section(u' ', 2).left(3);
     QVERIFY(testerPresent.size() >= 4);
     QCOMPARE(testerPresent.mid(0, 4), QStringList({"7E0", "7E1", "7E2", "7E3"}));
+}
+
+// The equipment list: identifiers, set operations and the lesson-file form.
+void tst_Vehicle::vehicleConfig()
+{
+    const QList<EquipmentInfo> &catalog = VehicleConfig::catalog();
+    QCOMPARE(catalog.size(), 4);
+    QStringList ids;
+    for (const EquipmentInfo &e : catalog) {
+        QVERIFY(!e.name.isEmpty() && !e.description.isEmpty() && !e.adds.isEmpty());
+        QCOMPARE(VehicleConfig::fromId(e.id), std::optional<Equipment>(e.item));
+        QCOMPARE(VehicleConfig::info(e.item)->id, e.id);
+        ids << e.id;
+    }
+    QCOMPARE(ids, QStringList({"engine_obd", "tpms", "srs", "esc"}));
+    QVERIFY(!VehicleConfig::fromId(QStringLiteral("turbo")).has_value());
+    QCOMPARE(VehicleConfig::fromId(QStringLiteral("TPMS")), std::optional<Equipment>(Equipment::Tpms));
+
+    VehicleConfig a;
+    QVERIFY(a.isEmpty());
+    a.fit(Equipment::Esc);
+    a.fit(Equipment::Tpms);
+    QVERIFY(a.has(Equipment::Tpms) && a.has(Equipment::Esc) && !a.has(Equipment::Srs));
+    QCOMPARE(a.ids(), QStringList({"tpms", "esc"})); // catalog order, not insertion order
+    VehicleConfig b;
+    b.fit(Equipment::Srs);
+    const VehicleConfig both = a.united(b);
+    QCOMPARE(both.ids(), QStringList({"tpms", "srs", "esc"}));
+    a.fit(Equipment::Esc, false);
+    QCOMPARE(a.ids(), QStringList({"tpms"}));
+    QVERIFY(a != both);
+
+    // Only implemented items can be fitted from settings or lesson files; unknown ids are ignored.
+    const VehicleConfig loaded = VehicleConfig::fromIds({QStringLiteral("turbo"), QStringLiteral("tpms")});
+    QCOMPARE(loaded.has(Equipment::Tpms), VehicleConfig::info(Equipment::Tpms)->implemented);
+    QVERIFY(!loaded.ids().contains(QStringLiteral("turbo")));
+    QCOMPARE(VehicleConfig::fromJson(QJsonArray{QStringLiteral("tpms")}), loaded);
+
+    // The simulation keeps what it was built with.
+    Simulation sim(both);
+    QCOMPARE(sim.config(), both);
+    QVERIFY(Simulation().config().isEmpty());
 }
 
 QTEST_GUILESS_MAIN(tst_Vehicle)

@@ -165,6 +165,20 @@ Panel {
                                         tone: Theme.textDim
                                     }
                                 }
+                                // Optional equipment the lesson needs; it is fitted for the run if missing.
+                                Repeater {
+                                    model: card.modelData.equipment ?? []
+                                    Chip {
+                                        required property var modelData
+                                        readonly property bool owned: App.equipment.indexOf(modelData.id) >= 0
+                                        text: "⚙ " + modelData.name + (owned ? "" : "  · fitted for this lesson")
+                                        tone: Theme.accent
+                                        ToolTip.visible: chipHover.hovered
+                                        ToolTip.text: owned ? "Fitted to your vehicle (Settings)"
+                                                            : "Not in your vehicle: running the lesson fits it for this run only"
+                                        HoverHandler { id: chipHover }
+                                    }
+                                }
                             }
                         }
                         Button {

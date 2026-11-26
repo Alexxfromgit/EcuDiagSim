@@ -10,7 +10,11 @@ Rectangle {
     border.color: Theme.border
     radius: Theme.radius
 
+    signal settingsRequested()
+
     readonly property var speeds: [0.25, 0.5, 1, 2, 5, 10]
+    // Fresh vehicle that has never run: the Run button invites a click.
+    readonly property bool waiting: !App.running && App.simTime === 0 && !App.replaying
     // Below this width (1366x768 laptops) the less important items give way.
     readonly property bool compact: width < 1450
 
@@ -29,10 +33,32 @@ Rectangle {
         Rectangle { visible: !root.compact; width: 1; Layout.fillHeight: true; Layout.margins: 10; color: Theme.border }
 
         Button {
+            id: runButton
             text: App.running ? "❚❚  Pause" : "▶  Run"
             highlighted: !App.running
             implicitWidth: 96
             onClicked: App.running = !App.running
+            ToolTip.visible: hovered
+            ToolTip.text: App.running ? "Pause the simulation (Space)" : "Start the simulation (Space)"
+            // Soft breathing ring while the simulation waits for its first start.
+            Rectangle {
+                z: -1
+                anchors.centerIn: parent
+                width: parent.width + 8; height: parent.height + 8
+                radius: 8
+                color: "transparent"
+                border.color: Theme.accent
+                border.width: 2
+                visible: root.waiting
+                // With reduced motion the ring stays, steady, instead of breathing.
+                opacity: App.reducedMotion ? 0.6 : 0
+                SequentialAnimation on opacity {
+                    running: root.waiting && !App.reducedMotion
+                    loops: Animation.Infinite
+                    NumberAnimation { from: 0.0; to: 0.7; duration: 900; easing.type: Easing.InOutSine }
+                    NumberAnimation { from: 0.7; to: 0.0; duration: 900; easing.type: Easing.InOutSine }
+                }
+            }
         }
         Button {
             text: "Step 10 ms"
@@ -103,6 +129,11 @@ Rectangle {
             text: "LESSON RUNNING"
             tone: Theme.accent
         }
+        Chip {
+            visible: !App.running && !root.waiting
+            text: "PAUSED"
+            tone: Theme.warn
+        }
         ToolButton {
             id: versionButton
             text: "v" + App.updates.currentVersion + (App.updates.updateReady ? "  ●" : "")
@@ -138,6 +169,13 @@ Rectangle {
                     onTriggered: Qt.openUrlExternally(App.updates.releaseNotesUrl)
                 }
             }
+        }
+        ToolButton {
+            text: "⚙"
+            font.pixelSize: 16
+            onClicked: root.settingsRequested()
+            ToolTip.visible: hovered
+            ToolTip.text: "Settings: vehicle equipment, start-up, display (Ctrl+,)"
         }
         Button {
             text: "Reset"

@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSettings>
 
 #include <algorithm>
 #include <cmath>
@@ -38,6 +39,19 @@ QString faultSignature(const QList<ActiveFault> &faults)
     return s;
 }
 
+/// Lesson file "equipment" array -> [{id, name}] for the lesson cards.
+QVariantList equipmentNames(const QJsonArray &ids)
+{
+    QVariantList list;
+    for (const QJsonValue &v : ids) {
+        const std::optional<Equipment> item = VehicleConfig::fromId(v.toString());
+        const EquipmentInfo *info = item ? VehicleConfig::info(*item) : nullptr;
+        list.append(QVariantMap{{QStringLiteral("id"), info ? info->id : v.toString()},
+            {QStringLiteral("name"), info ? info->name : v.toString()}});
+    }
+    return list;
+}
+
 QString circuitText(CircuitState c)
 {
     switch (c) {
@@ -55,7 +69,11 @@ AppController::AppController(QObject *parent)
     , m_scanner(new ScannerViewModel(this))
     , m_updates(new UpdateService(this))
 {
-    createSimulation();
+    m_userConfig = VehicleConfig::fromIds(QSettings().value(QLatin1String(kEquipmentKey)).toStringList());
+    // The app opens paused unless the user asked otherwise: nothing moves before "Run".
+    m_running = startOnLaunch();
+    m_speed = defaultSpeed();
+    createSimulation(m_userConfig);
 
     const QDir dir(QStringLiteral(":/ecusim/scenarios"));
     for (const QString &file : dir.entryList({QStringLiteral("*.json")}, QDir::Files, QDir::Name)) {
@@ -69,6 +87,7 @@ AppController::AppController(QObject *parent)
             {QStringLiteral("lesson"), o.value(QLatin1String("lesson")).toString()},
             {QStringLiteral("level"), o.value(QLatin1String("level")).toString()},
             {QStringLiteral("topics"), o.value(QLatin1String("topics")).toVariant()},
+            {QStringLiteral("equipment"), equipmentNames(o.value(QLatin1String("equipment")).toArray())},
             {QStringLiteral("steps"), o.value(QLatin1String("steps")).toArray().size()}});
     }
 
@@ -82,9 +101,9 @@ AppController::AppController(QObject *parent)
 
 AppController::~AppController() = default;
 
-void AppController::createSimulation()
+void AppController::createSimulation(const VehicleConfig &config)
 {
-    m_sim = std::make_unique<Simulation>();
+    m_sim = std::make_unique<Simulation>(config);
     m_trace->setDatabase(&m_sim->dbc());
     m_sim->bus().addListener([this](const BusFrame &frame) { m_trace->append(frame); });
     m_sim->tester().onResult = [this](const DiagResult &result) { m_scanner->onResult(result); };
@@ -106,9 +125,15 @@ void AppController::createSimulation()
 
 void AppController::reset()
 {
+    rebuild(m_userConfig);
+}
+
+void AppController::rebuild(const VehicleConfig &config)
+{
+    const bool equipmentDiffers = config != m_sim->config();
     m_scenarioLog.clear();
     m_trace->clear();
-    createSimulation();
+    createSimulation(config);
     m_scanner->simulationReset();
     m_debtMs = 0.0;
     setMessage(QStringLiteral("Simulation reset"));
@@ -117,12 +142,93 @@ void AppController::reset()
     emit scenarioChanged();
     emit frameUpdated();
     emit slowUpdated();
+    if (equipmentDiffers)
+        emit equipmentChanged();
 }
 
 void AppController::setMessage(const QString &text)
 {
     m_message = text;
     emit messageChanged();
+}
+
+// --- settings -------------------------------------------------------------------
+
+bool AppController::startOnLaunch() const
+{
+    return QSettings().value(QLatin1String(kStartOnLaunchKey), false).toBool();
+}
+
+void AppController::setStartOnLaunch(bool on)
+{
+    if (on == startOnLaunch())
+        return;
+    QSettings().setValue(QLatin1String(kStartOnLaunchKey), on);
+    emit settingsChanged();
+}
+
+double AppController::defaultSpeed() const
+{
+    return std::clamp(QSettings().value(QLatin1String(kDefaultSpeedKey), 1.0).toDouble(), 0.1, 20.0);
+}
+
+void AppController::setDefaultSpeed(double factor)
+{
+    factor = std::clamp(factor, 0.1, 20.0);
+    if (qFuzzyCompare(factor, defaultSpeed()))
+        return;
+    QSettings().setValue(QLatin1String(kDefaultSpeedKey), factor);
+    emit settingsChanged();
+}
+
+bool AppController::reducedMotion() const
+{
+    return QSettings().value(QLatin1String(kReducedMotionKey), false).toBool();
+}
+
+void AppController::setReducedMotion(bool on)
+{
+    if (on == reducedMotion())
+        return;
+    QSettings().setValue(QLatin1String(kReducedMotionKey), on);
+    emit settingsChanged();
+}
+
+// --- equipment ------------------------------------------------------------------
+
+QVariantList AppController::equipmentCatalog() const
+{
+    QVariantList list;
+    for (const EquipmentInfo &e : VehicleConfig::catalog()) {
+        QStringList lessons;
+        for (const QVariant &v : m_scenarios) {
+            const QVariantMap s = v.toMap();
+            for (const QVariant &item : s.value(QStringLiteral("equipment")).toList())
+                if (item.toMap().value(QStringLiteral("id")).toString() == e.id)
+                    lessons << s.value(QStringLiteral("name")).toString();
+        }
+        list.append(QVariantMap{{QStringLiteral("id"), e.id},
+            {QStringLiteral("name"), e.name},
+            {QStringLiteral("description"), e.description},
+            {QStringLiteral("adds"), e.adds},
+            {QStringLiteral("implemented"), e.implemented},
+            {QStringLiteral("lessons"), lessons}});
+    }
+    return list;
+}
+
+void AppController::setEquipment(const QStringList &ids)
+{
+    const VehicleConfig config = VehicleConfig::fromIds(ids);
+    QSettings().setValue(QLatin1String(kEquipmentKey), config.ids());
+    const bool choiceChanged = config != m_userConfig;
+    m_userConfig = config;
+    if (!choiceChanged && m_sim->config() == config)
+        return;
+    rebuild(config);
+    emit equipmentChanged(); // the user's choice changed even when the vehicle already had it
+    setMessage(config.isEmpty() ? QStringLiteral("New vehicle with the base equipment")
+                                : QStringLiteral("New vehicle with: ") + config.ids().join(QStringLiteral(", ")));
 }
 
 // --- time ---------------------------------------------------------------------
@@ -322,6 +428,7 @@ QVariantMap AppController::vehicle() const
 {
     const VehicleModel &v = m_sim->vehicle();
     return {{QStringLiteral("speed"), v.speedKph()},
+        {QStringLiteral("velocity"), v.velocityKph()},
         {QStringLiteral("rpm"), v.engineRpm()},
         {QStringLiteral("engineRunning"), v.engineRunning()},
         {QStringLiteral("cranking"), v.starterEngaged()},
@@ -372,9 +479,20 @@ QVariantList AppController::ecus() const
             {QStringLiteral("state"), state},
             {QStringLiteral("dtcCount"), e->dtcs().storedCount()},
             {QStringLiteral("confirmed"), confirmed},
-            {QStringLiteral("hasDiag"), e->identity().requestId != 0}});
+            {QStringLiteral("hasDiag"), e->identity().requestId != 0},
+            // scan tool target index: physical request IDs count up from 0x7E0
+            {QStringLiteral("diagIndex"), e->identity().requestId != 0
+                    ? static_cast<int>(e->identity().requestId) - static_cast<int>(DiagId::EcmRequest) : -1}});
     }
     return list;
+}
+
+QStringList AppController::sensorIds() const
+{
+    QStringList ids;
+    for (Sensor *s : m_sim->sensors().all())
+        ids << s->config().id;
+    return ids;
 }
 
 QVariantList AppController::sensors() const
@@ -384,6 +502,8 @@ QVariantList AppController::sensors() const
         const Sensor::Config &c = s->config();
         list.append(QVariantMap{{QStringLiteral("id"), c.id},
             {QStringLiteral("name"), c.name},
+            {QStringLiteral("shortName"), c.shortName.isEmpty() ? c.name : c.shortName},
+            {QStringLiteral("label"), c.label},
             {QStringLiteral("unit"), c.unit},
             {QStringLiteral("ecu"), c.ecu},
             {QStringLiteral("digital"), c.digital},
@@ -413,6 +533,7 @@ QVariantList AppController::faultTargets() const
             {QStringLiteral("ecu"), t.ecu},
             {QStringLiteral("kind"), QString::fromLatin1(kKinds[static_cast<int>(t.kind)])},
             {QStringLiteral("unit"), t.unit},
+            {QStringLiteral("label"), t.label},
             {QStringLiteral("types"), types}});
     }
     return list;
@@ -524,10 +645,17 @@ double AppController::scenarioProgress() const
 
 void AppController::runScenario(const QString &path)
 {
-    // A lesson always starts from a known state.
-    reset();
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        setMessage(QStringLiteral("Scenario: cannot open %1: %2").arg(path, file.errorString()));
+        return;
+    }
+    const QByteArray json = file.readAll();
+    // A lesson always starts from a known state, with the equipment it needs fitted.
+    const QJsonArray needed = QJsonDocument::fromJson(json).object().value(QLatin1String("equipment")).toArray();
+    rebuild(m_userConfig.united(VehicleConfig::fromJson(needed)));
     QString error;
-    if (!m_sim->scenario().loadFile(path, &error)) {
+    if (!m_sim->scenario().loadJson(json, &error)) {
         setMessage(QStringLiteral("Scenario: ") + error);
         return;
     }

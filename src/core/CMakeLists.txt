@@ -1,6 +1,7 @@
 qt_add_library(ecusim_core STATIC
     can/VirtualCanBus.h can/VirtualCanBus.cpp
     dbc/DbcDatabase.h dbc/DbcDatabase.cpp
+    vehicle/VehicleConfig.h vehicle/VehicleConfig.cpp
     vehicle/VehicleModel.h vehicle/VehicleModel.cpp
     sensors/Sensor.h sensors/Sensor.cpp
     diag/DtcManager.h diag/DtcManager.cpp

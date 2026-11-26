@@ -35,6 +35,15 @@ Simulation
  └─ ScenarioRunner
 ```
 
+## Vehicle equipment
+
+`VehicleConfig` (`src/core/vehicle/VehicleConfig.h`) is the equipment list of one vehicle: the base
+car is always there, optional systems (`Equipment::EngineObd`, `Tpms`, `Srs`, `Esc`) are fitted or
+not. It is passed to the `Simulation` constructor and fixed for its lifetime; fitting something means
+building a new vehicle, so runs stay reproducible and no ECU is ever hot-plugged. The catalog
+(`VehicleConfig::catalog()`) carries the names and descriptions the Settings page shows. The app
+saves the user's choice with `QSettings`; a lesson's `equipment` array is added to it for the run.
+
 ## Plant and controllers
 
 The vehicle model knows nothing about ECUs. Controllers read it *only through sensors* and act
@@ -96,5 +105,7 @@ are readable three ways: Mode 01, Mode 02 from the stored snapshot, and as UDS i
 ## Application
 
 `AppController` is the QML singleton `App`. It owns the `Simulation`, steps it in real time and
-exposes driver inputs, cluster state, faults and lessons. `TraceModel` batches frames into a list
+exposes driver inputs, cluster state, faults and lessons, plus the persisted settings (start paused
+or running, start speed, reduced motion, equipment). The app opens paused unless the user enabled
+*Start the simulation when the app opens*. `TraceModel` batches frames into a list
 model at 30 Hz. `ScannerViewModel` turns button presses into requests and responses into tables.

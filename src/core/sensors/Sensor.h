@@ -71,6 +71,8 @@ public:
         double voltsAtMax = 4.5;
         double openVolts = 5.0; ///< what the ADC reads with the sensor unplugged
         bool digital = false;
+        QString shortName;      ///< for tables, e.g. "Wheel FL"
+        QString label;          ///< tag on the vehicle drawing, e.g. "WSS"
     };
 
     Sensor() = default;

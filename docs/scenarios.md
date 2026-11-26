@@ -24,6 +24,11 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 `level` (`Beginner`, `Intermediate` or `Advanced`) and `topics` are optional; the *Lessons* tab
 shows them as tags and filters by level.
 
+`equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`,
+`tpms`, `srs`, `esc`. Running the lesson builds the vehicle with the user's equipment (Settings) plus
+these, so a lesson always finds what it needs; the lesson card shows them as chips. Base-car lessons
+leave it out.
+
 Any step may carry a `"note"`. A failed expectation is logged and the scenario continues; it ends
 as *failed* if at least one expectation was not met.
 
