@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.3.0](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.2.0...v0.3.0) (2026-11-26)
+
+
+### Features
+
+* airbag system with SRS module, crash record and belt reminder, three lessons ([#10](https://github.com/Alexxfromgit/EcuDiagSim/issues/10)) ([95040f7](https://github.com/Alexxfromgit/EcuDiagSim/commit/95040f7c2f3d7c0b6dc491a7d719b4495cf98f6f))
+* coding (UDS 0x2E) and routines (UDS 0x31), replaced-part faults, three lessons ([#6](https://github.com/Alexxfromgit/EcuDiagSim/issues/6)) ([bac8e17](https://github.com/Alexxfromgit/EcuDiagSim/commit/bac8e17cf7d2d47ea8a314a2dfdccf78d993132d))
+* engine OBD pack with closed-loop fuelling, fuel trims and misfire detection ([#8](https://github.com/Alexxfromgit/EcuDiagSim/issues/8)) ([a0c4f9e](https://github.com/Alexxfromgit/EcuDiagSim/commit/a0c4f9ed2509c82386f311350405b562c6da61b8))
+* nine new lessons, a redrawn car with working lights, adaptive layout ([#3](https://github.com/Alexxfromgit/EcuDiagSim/issues/3)) ([ba3de74](https://github.com/Alexxfromgit/EcuDiagSim/commit/ba3de74da3615b2250c863e6f6c2e49a608c8636))
+* open paused, settings page, equipment plumbing and smoother animations ([#5](https://github.com/Alexxfromgit/EcuDiagSim/issues/5)) ([1fcc05c](https://github.com/Alexxfromgit/EcuDiagSim/commit/1fcc05c697ac8f3b25698f7f012a6eec3b1aff57))
+* park brake, fuel system with consumption, oil pressure, four lessons ([#7](https://github.com/Alexxfromgit/EcuDiagSim/issues/7)) ([d439e06](https://github.com/Alexxfromgit/EcuDiagSim/commit/d439e0652e046f1531bb30afeef527defbe53026))
+* steering, road surfaces, real ABS slip control and stability control (ESC) ([#11](https://github.com/Alexxfromgit/EcuDiagSim/issues/11)) ([d684897](https://github.com/Alexxfromgit/EcuDiagSim/commit/d68489738a9365f296a7a03503821fa8271cd8d0))
+* tyre pressure monitoring with relearn routine, FMVSS lamp and three lessons ([#9](https://github.com/Alexxfromgit/EcuDiagSim/issues/9)) ([41df06a](https://github.com/Alexxfromgit/EcuDiagSim/commit/41df06a3da5d9a8f8ac165092f4fe57f4661747b))
+
 ## [0.2.0](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.1.0...v0.2.0) (2026-11-11)
 
 
