@@ -199,6 +199,9 @@ void AbsEcu::task10ms()
     }
 
     // --- plausibility: compare each wheel with the median of the others ----
+    // In a tight corner the inner wheels turn up to a third slower than the outer ones. The two
+    // wheels on one side run on nearly the same radius, so a wheel that matches the other wheel
+    // on its side is cornering, not a sensor fault.
     std::array<bool, 4> plausible{true, true, true, true};
     for (int i = 0; i < 4; ++i) {
         const auto idx = static_cast<size_t>(i);
@@ -213,7 +216,10 @@ void AbsEcu::task10ms()
         std::sort(others.begin(), others.end());
         const double reference = others[others.size() / 2];
         if (reference > 10.0 || m_wheel[idx] > 10.0) {
-            plausible[idx] = std::abs(m_wheel[idx] - reference) <= 0.25 * std::max(reference, 10.0);
+            const auto within = [](double a, double b) { return std::abs(a - b) <= 0.25 * std::max(b, 10.0); };
+            const size_t sameSide = idx ^ 2u; // FL <-> RL, FR <-> RR
+            plausible[idx] = within(m_wheel[idx], reference)
+                || (electricalOk[sameSide] && within(m_wheel[idx], m_wheel[sameSide]));
             dtcs().report(wheel(i, FtbSignalInvalid), !plausible[idx]);
         }
     }

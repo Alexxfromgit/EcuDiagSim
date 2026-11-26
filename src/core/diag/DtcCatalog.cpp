@@ -70,7 +70,8 @@ const QList<DtcCatalogEntry> &dtcCatalog()
             list.append({wheel(i, FtbShortBattery), "ABS", kWheelText[i], "Sensor line shorted to battery for 0.2 s."});
             list.append({wheel(i, FtbOpen), "ABS", kWheelText[i], "Sensor circuit open for 0.2 s."});
             list.append({wheel(i, FtbSignalInvalid), "ABS", kWheelText[i],
-                "Speed deviates more than 25 % from the median of the other wheels above 10 km/h for 0.5 s."});
+                "Speed deviates more than 25 % from the median of the other wheels and from the other wheel on its side "
+                "(cornering) above 10 km/h for 0.5 s."});
         }
         list.append({C0460Low, "ABS", "Steering angle sensor circuit low", "Sensor voltage below 0.2 V for 0.2 s."});
         list.append({C0460Calibration, "ABS", "Steering angle sensor missing calibration",

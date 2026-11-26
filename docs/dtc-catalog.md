@@ -98,7 +98,7 @@ Four DTCs per wheel: C0035 (front left), C0040 (front right), C0045 (rear left),
 | -11 | circuit short to ground | 0.2 s |
 | -12 | circuit short to battery | 0.2 s |
 | -13 | circuit open | 0.2 s |
-| -29 | signal invalid | deviates > 25 % from the median of the other wheels above 10 km/h for 0.5 s |
+| -29 | signal invalid | deviates > 25 % from the median of the other wheels and from the other wheel on its side (a corner is no fault) above 10 km/h for 0.5 s |
 
 Reaction: the wheel is flagged invalid on 0x0B0 and left out of the vehicle speed; ABS and traction
 control are switched off and both lamps requested. The lamp stays on until the end of the ignition

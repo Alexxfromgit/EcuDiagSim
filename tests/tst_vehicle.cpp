@@ -46,6 +46,7 @@ private slots:
     void srsSeatBelt();
     void absOnIce();
     void steeringAndUndersteer();
+    void tightTurnIsNoWheelSensorFault();
     void escInterventionAndDegradation();
     void escSteeringAngleCalibration();
 };
@@ -1278,6 +1279,28 @@ void tst_Vehicle::steeringAndUndersteer()
     const double vSnow = sim.vehicle().speedKph() / 3.6;
     const double asked = vSnow / VehicleModel::kWheelbase * std::tan(6.0 * 3.14159265 / 180.0) * 180.0 / 3.14159265;
     QVERIFY(sim.vehicle().yawRate() < asked - 4.0);
+}
+
+// Parking-speed manoeuvring at full lock: the inner wheels turn a third slower than the outer
+// ones. That is cornering, not a broken wheel speed sensor.
+void tst_Vehicle::tightTurnIsNoWheelSensorFault()
+{
+    Simulation sim;
+    startEngine(sim);
+    driveTo(sim, 16.0, 0.3);
+    sim.driver().throttlePedal = 0.12;
+    sim.driver().steering = 540.0;
+    sim.run(4000);
+    QVERIFY2(sim.vehicle().wheelSpeedKph(0) < 0.8 * sim.vehicle().wheelSpeedKph(1),
+        qPrintable(QStringLiteral("%1 / %2").arg(sim.vehicle().wheelSpeedKph(0)).arg(sim.vehicle().wheelSpeedKph(1))));
+    QVERIFY(sim.vehicle().speedKph() > 10.0);
+    QCOMPARE(sim.abs().dtcs().storedCount(), 0);
+    QVERIFY(!sim.ipc().state().abs);
+
+    // A sensor that really reads wrong is still caught in the same corner.
+    QVERIFY(sim.injectFault(QStringLiteral("wss_rl"), {FaultType::Gain, 0.4, 0.0, true}));
+    sim.run(1500);
+    QVERIFY(sim.abs().dtcs().testFailed(dtc::wheel(2, dtc::FtbSignalInvalid)));
 }
 
 void tst_Vehicle::escInterventionAndDegradation()
