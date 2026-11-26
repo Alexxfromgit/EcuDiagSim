@@ -63,7 +63,9 @@ void Srs::setCodingBlank(bool blank)
         // A new module from the parts store: no coding, no history.
         m_codingBlank = true;
         m_crashRecord = false;
+        m_crashThisCycle = false; // it has seen no crash: CrashDetected and DeltaV go back to 0
         m_crashDeltaV = 0.0;
+        m_crashBelted = false;
         dtcs().clear(0xFFFFFF);
     } else if (m_codingBlank) {
         m_codingBlank = false;

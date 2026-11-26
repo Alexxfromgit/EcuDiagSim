@@ -127,12 +127,12 @@ ECU would reject a request meant for one of them.
 | 0100 | BCM | variant coding, **writable**: bit 0 lamp monitoring, bit 1 auto-lock above 15 km/h, bit 2 daytime running lights, bit 3 tyre pressure monitoring (only with that equipment; its default coding is `09`) | 1 byte, `FF` = blank |
 | 4020…4023 | BCM (TPMS) | tyre pressure FL, FR, RL, RR | 1 byte, 0.02 bar |
 | 4024 | BCM (TPMS) | tyre temperatures FL, FR, RL, RR | 4 bytes, −40 °C |
+| 0310…0313 | BCM (TPMS) | learned sensor ID FL, FR, RL, RR, **writable** (extended session + unlock) | 4 bytes |
+| 0314 | BCM (TPMS) | IDs received that belong to no wheel: count, then 4 bytes each | variable |
 | 0100 | SRS | variant coding, **writable**: bit 0 passenger airbag fitted, bit 1 seat belt reminder | 1 byte, default `03`, `FF` = blank |
 | 5001 / 5002 | SRS | driver / passenger squib resistance | 2 bytes, 0.01 Ω, `FFFF` = open |
 | 5003 | SRS | belt switch: bit 0 buckled, bit 1 circuit open | 1 byte |
 | 5010 | SRS | crash record: stored (0/1), delta-v km/h, driver belted | 3 bytes |
-| 0310…0313 | BCM (TPMS) | learned sensor ID FL, FR, RL, RR, **writable** (extended session + unlock) | 4 bytes |
-| 0314 | BCM (TPMS) | IDs received that belong to no wheel: count, then 4 bytes each | variable |
 | 2001 / 2002 / 2003 | TCM | gear / fluid temperature (−40) / sensor voltage mV | |
 | 3001…3004 | ABS | wheel speed FL, FR, RL, RR | 2 bytes, 0.01 km/h |
 | 3005 | ABS | brake pressure | 1 byte, bar |

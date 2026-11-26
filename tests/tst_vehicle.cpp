@@ -1127,6 +1127,9 @@ void tst_Vehicle::srsCrashDeploysAndLocksTheRecord()
     QVERIFY(sim.injectFault(QStringLiteral("srs"), {FaultType::Unconfigured}));
     QVERIFY(!sim.srs()->crashRecorded());
     sim.run(1000);
+    // Review finding: the new module kept broadcasting the old module's crash.
+    QCOMPARE(sim.signal(QStringLiteral("CrashDetected")), 0.0);
+    QCOMPARE(sim.signal(QStringLiteral("DeltaV")), 0.0);
     QVERIFY(sim.srs()->dtcs().testFailed(dtc::U3000NotConfigured));
     QVERIFY(sim.ipc().state().airbag);
     QCOMPARE(unlockAndAsk(sim, DiagId::SrsRequest, "2E 01 00 04"), hex("7F 2E 31"));

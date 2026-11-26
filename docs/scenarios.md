@@ -25,7 +25,7 @@ A scenario is a JSON file with a list of steps that run one after the other. Loa
 shows them as tags and filters by level.
 
 `equipment` (optional) lists the optional systems a lesson needs, by identifier: `engine_obd`,
-`tpms`, `srs` (available), `esc` (coming). The `input` action also takes `seatBelt`. Running the lesson builds the vehicle with the user's equipment (Settings) plus
+`tpms`, `srs` (available), `esc` (coming). Running the lesson builds the vehicle with the user's equipment (Settings) plus
 these, so a lesson always finds what it needs; the lesson card shows them as chips. Base-car lessons
 leave it out.
 
@@ -48,7 +48,7 @@ as *failed* if at least one expectation was not met.
 | `replaceAirbags` | workshop: new airbags in place of fired ones (the module keeps its crash record) |
 | `fuel` | `value`: litres in the tank (0…55) — empty it, or refuel |
 | `log` | `text`: a line for the lesson log, nothing else happens |
-| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`; `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
+| `input` | `name`: `highBeam`, `turnLeft`, `turnRight`, `hazard`, `doorLock`, `doorFL`, `doorFR`, `doorRL`, `doorRR`, `seatBelt` (driver buckled, airbag system); `value`: true / false. Left and right turn signals exclude each other, as on the stalk. |
 
 ## Time
 
