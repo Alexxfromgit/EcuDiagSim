@@ -109,10 +109,14 @@ QVariantList ScannerViewModel::codings() const
             {QStringLiteral("hint"), hint}, {QStringLiteral("example"), example}};
     };
     switch (m_target) {
-    case 2:
+    case 2: {
+        // With ESC fitted the factory flags are 01: an example of 00 would code the ESC out.
+        const bool esc = m_app->sim().abs().escFitted();
         return {item(0x0100, QStringLiteral("Variant coding"),
-            QStringLiteral("3 bytes: flags (bit0 stability control), rolling circumference in mm, e.g. 07 9C = 1948 mm"),
-            QStringLiteral("00 07 9C"))};
+            QStringLiteral("3 bytes: flags (bit0 stability control%1), rolling circumference in mm, e.g. 07 9C = 1948 mm")
+                .arg(esc ? QStringLiteral(", fitted: keep it set") : QStringLiteral(", not fitted: 00")),
+            esc ? QStringLiteral("01 07 9C") : QStringLiteral("00 07 9C"))};
+    }
     case 4:
         return {item(0x0100, QStringLiteral("Variant coding"),
             QStringLiteral("1 byte: bit0 passenger airbag fitted, bit1 seat belt reminder"), QStringLiteral("03"))};

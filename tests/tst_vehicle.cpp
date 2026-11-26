@@ -1351,6 +1351,15 @@ void tst_Vehicle::escSteeringAngleCalibration()
     QVERIFY(!sim.abs().dtcs().testFailed(dtc::C0460Plausibility));
     QVERIFY(!sim.abs().escOff());
 
+    // Review finding: a second alignment after the calibration, then Repair, left the sensor 15 deg
+    // off the other way. The offset is relative to what was calibrated.
+    QVERIFY(sim.injectFault(QStringLiteral("sas"), {FaultType::Unconfigured}));
+    sim.run(100);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle")) - 15.0) < 0.5);
+    sim.clearFault(QStringLiteral("sas"));
+    sim.run(100);
+    QVERIFY(std::abs(sim.signal(QStringLiteral("SteeringAngle"))) < 0.5);
+
     // A new ABS module has never seen this steering wheel.
     QVERIFY(sim.injectFault(QStringLiteral("abs"), {FaultType::Unconfigured}));
     sim.run(200);

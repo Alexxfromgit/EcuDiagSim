@@ -203,7 +203,7 @@ void Simulation::applyFault(const QString &id, const Fault &fault)
     const bool on = fault.type != FaultType::None;
     if (Sensor *s = m_sensors.byId(id)) {
         if (id == QLatin1String("sas") && fault.type == FaultType::Unconfigured)
-            m_vehicle.sasMountOffset = 15.0; // the sensor now reads 15 deg with the wheel straight
+            m_vehicle.sasMountOffset += 15.0; // the sensor now reads 15 deg more with the wheel straight
         else
             s->setFault(fault);
     } else if (id == QLatin1String("alternator")) {
@@ -278,8 +278,9 @@ void Simulation::clearFault(const QString &targetId)
     for (qsizetype i = 0; i < m_activeFaults.size(); ++i) {
         if (m_activeFaults.at(i).targetId == targetId) {
             // Undoing the wheel alignment puts the steering wheel back where the sensor expects it.
+            // Relative, because a calibration in between may have learned an earlier offset.
             if (targetId == QLatin1String("sas") && m_activeFaults.at(i).fault.type == FaultType::Unconfigured)
-                m_vehicle.sasMountOffset = 0.0;
+                m_vehicle.sasMountOffset -= 15.0;
             m_activeFaults.removeAt(i);
             applyFault(targetId, {});
             return;

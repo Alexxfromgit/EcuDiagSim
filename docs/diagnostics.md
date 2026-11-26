@@ -153,8 +153,8 @@ state `00` off, `01` on.
 |---|---|---|---|---|
 | 0201 | ECM | throttle adaptation: opens the plate fully, closes it, learns the closed stop (3 s) | ignition on, engine stopped, pedal released, car at rest | status (01 running, 02 completed, 03 aborted, 04 failed), closed position mV (2 bytes) |
 | 0202 | ECM (engine OBD pack) | reset the fuel trim adaptation: long- and short-term trim to 0 | none | 02 completed |
-| 0401 | ABS (ESC) | steering angle calibration: learns the current reading as straight ahead | car at rest, sensor circuit intact, extended session **and unlocked** | 02 completed |
 | 0301 | BCM (TPMS) | sensor relearn: stores the ID heard from each wheel position (max. 30 s) | ignition on, car at rest, TPMS coded | status (01 running, 02 completed, 03 aborted, 04 failed), bit mask of the learned positions |
+| 0401 | ABS (ESC) | steering angle calibration: learns the current reading as straight ahead | car at rest, sensor circuit intact, extended session **and unlocked** | 02 completed |
 
 Pressing the pedal or cranking aborts the adaptation; it fails if the throttle sensor does not
 follow the plate within 15 %.
