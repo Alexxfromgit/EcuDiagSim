@@ -53,6 +53,7 @@ if(ECUSIM_HAS_VEHICLE_3D)
             "${vehicle_web_dir}/viewer.js"
             "${vehicle_web_dir}/vehicle-model.js"
             "${vehicle_web_dir}/vehicle-state.js"
+            "${vehicle_web_dir}/vehicle-network.js"
             "${vehicle_web_dir}/vendor/three.module.min.js"
             "${vehicle_web_dir}/vendor/three.core.min.js"
             "${vehicle_web_dir}/vendor/OrbitControls.js"

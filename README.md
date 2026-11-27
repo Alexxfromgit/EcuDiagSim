@@ -108,8 +108,14 @@ button and drag to orbit, scroll to zoom, and click markers to inspect sensors o
 The inspector opens the existing fault controls and UDS scanner. Diagnostic/exterior modes,
 system and fault filters, camera presets, live values and equipment changes work offline.
 
+The modern four-door sedan has curved body panels, wheel openings, separate glazing, alloy wheels,
+and slim lights. The fitted Engine OBD, TPMS, SRS and ESC packs add their physical components,
+markers and connections. Diagnostic mode shows solid sensor/CAN wiring and dashed TPMS radio
+paths with animated signal pulses. Flow respects pause, reduced motion and panel visibility;
+**Wiring** and **Data flow** can also be switched off. Routing and packet timing are illustrative.
+
 The generic car is original procedural geometry with illustrative component locations; it is
-an interaction prototype, not a production automotive asset. The viewer uses bundled Three.js
+not an OEM engineering model or a photorealistic asset. The viewer uses bundled Three.js
 under MIT and LGPL Qt modules, without Qt Quick 3D. **Diagram** preserves the original view.
 Configure with `-DECUSIM_VEHICLE_3D=OFF` to omit WebEngine entirely. If its Qt modules are absent,
 the build falls back to the diagram with a CMake warning. Software-rendered Qt sessions default

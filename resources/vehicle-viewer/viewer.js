@@ -1,13 +1,15 @@
 import * as THREE from "./vendor/three.module.min.js";
 import { OrbitControls } from "./vendor/OrbitControls.js";
 import { createVehicle } from "./vehicle-model.js";
-import { targetsFromSnapshot, visibleTargets, SelectionGesture } from "./vehicle-state.js";
+import { createVehicleNetwork } from "./vehicle-network.js";
+import { targetsFromSnapshot, visibleTargets, shouldAnimateFlow, systemColors, SelectionGesture } from "./vehicle-state.js";
 
 const byId = id => document.getElementById(id);
 let bridge;
 let viewer;
 
 function fail(message) {
+    viewer?.setDisplayActive(false);
     byId("viewer-error").textContent = message;
     byId("viewer-error").hidden = false;
     bridge?.viewerFailed(message);
@@ -51,6 +53,8 @@ class VehicleViewer {
         this.addEnvironment();
         this.vehicle = createVehicle();
         this.scene.add(this.vehicle.root);
+        this.network = createVehicleNetwork();
+        this.scene.add(this.network.root);
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
             new THREE.ShadowMaterial({ opacity: .26 }));
         floor.rotation.x = -Math.PI / 2; floor.position.y = .012; floor.receiveShadow = true;
@@ -67,6 +71,8 @@ class VehicleViewer {
         this.faultsOnly = false;
         this.diagnosticMode = true;
         this.displayActive = true;
+        this.wiresEnabled = true;
+        this.flowEnabled = true;
         this.gesture = new SelectionGesture();
         this.listen();
         this.resizeObserver = new ResizeObserver(() => this.resize());
@@ -134,9 +140,13 @@ class VehicleViewer {
             this.vehicle.diagnostic(this.diagnosticMode);
             byId("diagnostic").setAttribute("aria-pressed", String(this.diagnosticMode));
             byId("exterior").setAttribute("aria-pressed", String(!this.diagnosticMode));
-            byId("scene-caption").textContent = this.diagnosticMode ? "Systems revealed" : "Exterior overview";
+            byId("scene-caption").textContent = this.diagnosticMode ? "Connected systems · schematic routing" : "Modern executive sedan";
+            this.filter();
+            this.syncNetwork();
             this.invalidate();
         });
+        byId("wiring").addEventListener("change", event => { this.wiresEnabled = event.target.checked; this.syncNetwork(); this.invalidate(); });
+        byId("data-flow").addEventListener("change", event => { this.flowEnabled = event.target.checked; this.syncNetwork(); this.invalidate(); });
         byId("system").addEventListener("change", event => { this.system = event.target.value; this.filter(); });
         byId("faults-only").addEventListener("change", event => { this.faultsOnly = event.target.checked; this.filter(); });
         byId("target-select").addEventListener("change", event => this.select(event.target.value));
@@ -146,12 +156,12 @@ class VehicleViewer {
             const ecu = target?.controller ?? this.snapshot.ecus?.find(item => item.name === target?.ecu);
             if (ecu?.diagIndex >= 0) bridge?.openEcu(ecu.diagIndex);
         });
-        document.addEventListener("visibilitychange", () => this.invalidate());
+        document.addEventListener("visibilitychange", () => this.setDisplayActive(this.displayActive));
     }
 
     cameraPreset(preset) {
-        this.controls.target.set(0, .70, 0);
-        const positions = { perspective: [-6.8, 4.4, -7.1], top: [0, 10, .001], front: [0, 2.1, -9] };
+        this.controls.target.set(0, .64, 0);
+        const positions = { perspective: [-6.4, 3.4, -6.8], top: [0, 9, .001], front: [0, 1.9, -8.6] };
         this.camera.position.set(...(positions[preset] ?? positions.perspective));
         this.controls.update(); this.invalidate();
     }
@@ -170,6 +180,16 @@ class VehicleViewer {
         this.snapshot = snapshot;
         this.targets = targetsFromSnapshot(snapshot);
         this.vehicle.applyState(snapshot);
+        this.network.applyState(snapshot);
+        const equipmentNames = { engine_obd: "Engine OBD", tpms: "TPMS", srs: "SRS", esc: "ESC" };
+        const fitted = snapshot.fitted ?? [];
+        const equipmentKey = fitted.join("|");
+        if (equipmentKey !== this.equipmentKey) {
+            this.equipmentKey = equipmentKey;
+            byId("equipment-strip").replaceChildren(...["Base vehicle", ...fitted.map(id => equipmentNames[id] ?? id)].map(name => {
+                const chip = document.createElement("span"); chip.textContent = name; return chip;
+            }));
+        }
         const systems = (snapshot.ecus ?? []).map(ecu => ecu.name);
         const systemKey = systems.join("|");
         if (this.systemKey !== systemKey) {
@@ -183,7 +203,7 @@ class VehicleViewer {
             if (!target.position) continue;
             if (!this.markers.has(target.id)) this.addMarker(target);
             const marker = this.markers.get(target.id);
-            const color = target.faulted ? 0xffb347 : target.state === "sleep" ? 0x6d7f92 : 0x61d5c7;
+            const color = target.faulted ? 0xffb347 : target.state === "sleep" ? 0x6d7f92 : systemColors[target.ecu] ?? 0x61d5c7;
             marker.mesh.material.color.set(color);
             marker.mesh.material.emissive.set(color).multiplyScalar(.4);
             marker.button.className = ["marker", target.controller ? "ecu" : "", target.faulted ? "faulted" : "",
@@ -224,7 +244,7 @@ class VehicleViewer {
         const filtered = visibleTargets(this.targets, this.system, this.faultsOnly);
         const ids = new Set(filtered.map(target => target.id));
         for (const [id, marker] of this.markers) {
-            marker.visible = ids.has(id);
+            marker.visible = ids.has(id) && (this.diagnosticMode || id === this.selectedId);
             marker.mesh.visible = marker.visible; marker.proxy.visible = marker.visible;
             marker.button.hidden = !marker.visible;
         }
@@ -247,6 +267,7 @@ class VehicleViewer {
         byId("target-select").value = this.selectedId;
         byId("target-count").textContent = String(filtered.length);
         this.renderInspector(); this.invalidate();
+        this.syncNetwork();
     }
 
     select(id) {
@@ -254,7 +275,9 @@ class VehicleViewer {
         this.selectedId = id;
         byId("target-select").value = id;
         for (const [markerId, marker] of this.markers) marker.button.classList.toggle("selected", markerId === id);
+        if (!this.diagnosticMode) this.filter();
         this.renderInspector(); this.invalidate();
+        this.syncNetwork();
     }
 
     renderInspector() {
@@ -269,6 +292,9 @@ class VehicleViewer {
         byId("selected-status").textContent = target.faulted ? "Fault active" : target.controller?.state ?? "Healthy";
         byId("selected-status").classList.toggle("faulted", target.faulted);
         const rows = [["Controller", target.ecu || "Vehicle network"]];
+        const connection = [...this.network.records.values()].find(record => record.edge.targetId === target.id);
+        if (connection) rows.push(["Connection", connection.edge.kind === "radio" ? "TPMS radio" :
+            connection.edge.kind === "can" ? "CAN bus" : "Wired circuit"]);
         const sensor = target.sensor;
         const number = (value, unit) => Number.isFinite(value) ? `${value.toFixed(2)} ${unit ?? ""}`.trim() : "—";
         if (sensor) rows.push(["True value", number(sensor.trueValue, sensor.unit)], ["ECU measures", number(sensor.value, sensor.unit)],
@@ -290,19 +316,66 @@ class VehicleViewer {
         byId("open-controls").disabled = !bridge;
     }
 
+    syncNetwork() {
+        const visibleIds = new Set(visibleTargets(this.targets, this.system, this.faultsOnly).map(target => target.id));
+        // A network target refers to controller branches rather than owning a physical cable.
+        if (visibleIds.has("can_bus")) for (const target of this.targets) if (target.controller) visibleIds.add(target.id);
+        if (visibleIds.has("abs_e2e")) visibleIds.add("abs");
+        this.network.setView({ visibleIds, system: this.system, selectedId: this.selectedId,
+            diagnostic: this.diagnosticMode, wires: this.wiresEnabled });
+        this.network.pulses.visible = this.flowEnabled;
+        const summary = this.network.summary();
+        byId("connection-summary").textContent = `${summary.wired} wired · ${summary.can} CAN · ${summary.radio} radio`;
+        byId("flow-state").textContent = !this.diagnosticMode || !this.wiresEnabled ? "Wiring hidden" :
+            !this.flowEnabled ? "Flow off" : this.snapshot.reducedMotion ? "Reduced motion" :
+                !this.snapshot.running ? "Flow paused" : this.network.hasActiveFlow() ? "Signal flow" : "No active links";
+    }
+
+    setDisplayActive(active) {
+        this.displayActive = active;
+        this.lastFrameTime = null;
+        if ((!active || document.hidden) && this.frame) {
+            cancelAnimationFrame(this.frame); this.frame = null;
+        }
+        if (active) this.invalidate();
+    }
+
     invalidate() {
         if (this.frame || !this.displayActive || document.hidden) return;
-        this.frame = requestAnimationFrame(() => {
+        this.frame = requestAnimationFrame(time => {
             this.frame = null;
-            this.renderer.render(this.scene, this.camera);
-            const bounds = this.stage.getBoundingClientRect();
-            for (const marker of this.markers.values()) {
-                if (!marker.visible) continue;
-                const position = marker.mesh.position.clone().project(this.camera);
-                marker.button.hidden = position.z < -1 || position.z > 1 || Math.abs(position.x) > 1 || Math.abs(position.y) > 1;
-                marker.button.style.left = `${(position.x + 1) * bounds.width / 2}px`;
-                marker.button.style.top = `${(1 - position.y) * bounds.height / 2}px`;
+            if (!this.displayActive || document.hidden) return;
+            const animate = shouldAnimateFlow(this.snapshot, this.displayActive, this.flowEnabled) && this.network.hasActiveFlow();
+            // Cap decorative signal flow at 30 fps. Camera movement still renders on demand.
+            if (!animate || this.interacting || !this.lastFrameTime || time - this.lastFrameTime >= 32) {
+                if (animate) {
+                    const elapsed = this.lastFrameTime ? Math.min(.08, (time - this.lastFrameTime) / 1000) : 0;
+                    this.network.advance(elapsed * Math.max(.1, Math.min(3, this.snapshot.speedFactor ?? 1)));
+                }
+                this.lastFrameTime = animate ? time : null;
+                this.renderer.render(this.scene, this.camera);
+                const bounds = this.stage.getBoundingClientRect();
+                const occupied = [];
+                const markers = [...this.markers.values()].sort((a, b) => {
+                    const priority = marker => marker.button.classList.contains("selected") ? 3 :
+                        marker.button.classList.contains("faulted") ? 2 : marker.button.classList.contains("ecu") ? 1 : 0;
+                    return priority(b) - priority(a);
+                });
+                for (const marker of markers) {
+                    if (!marker.visible) continue;
+                    const position = marker.mesh.position.clone().project(this.camera);
+                    marker.button.hidden = position.z < -1 || position.z > 1 || Math.abs(position.x) > 1 || Math.abs(position.y) > 1;
+                    marker.button.style.left = `${(position.x + 1) * bounds.width / 2}px`;
+                    marker.button.style.top = `${(1 - position.y) * bounds.height / 2}px`;
+                    const x = (position.x + 1) * bounds.width / 2, y = (1 - position.y) * bounds.height / 2;
+                    const labelWidth = marker.button.querySelector(".marker-label").textContent.length * 6 + 26;
+                    const collides = occupied.some(box => x < box.x + box.width && x + labelWidth > box.x && Math.abs(y - box.y) < 24);
+                    const label = marker.button.classList.contains("selected") || marker.button.classList.contains("faulted") || marker.button.classList.contains("ecu");
+                    marker.button.classList.toggle("label-hidden", collides && !marker.button.classList.contains("selected"));
+                    if (label && !collides && !marker.button.hidden) occupied.push({ x, y, width: labelWidth });
+                }
             }
+            if (animate) this.invalidate();
         });
     }
 }
@@ -319,8 +392,8 @@ function connectHost() {
             catch (error) { fail(`The vehicle state could not be displayed: ${error.message}`); }
         };
         bridge.stateJsonChanged.connect(apply);
-        bridge.displayActiveChanged.connect(() => { viewer.displayActive = bridge.displayActive; viewer.invalidate(); });
-        viewer.displayActive = bridge.displayActive;
+        bridge.displayActiveChanged.connect(() => viewer.setDisplayActive(bridge.displayActive));
+        viewer.setDisplayActive(bridge.displayActive);
         apply(); bridge.viewerReady();
     });
     document.head.append(script);
@@ -329,7 +402,12 @@ function connectHost() {
 try {
     viewer = new VehicleViewer();
     // Also allows the offline viewer to be exercised in a normal browser using recorded snapshots.
-    window.vehicleViewer = { setState: snapshot => viewer.setState(snapshot) };
+    window.vehicleViewer = {
+        setState: snapshot => viewer.setState(snapshot),
+        setDisplayActive: active => viewer.setDisplayActive(active),
+        getRenderState: () => ({ frames: viewer.renderer.info.render.frame, pulses: viewer.network.pulses.count,
+            firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)) })
+    };
     connectHost();
     document.body.dataset.viewerReady = "true";
 } catch (error) {

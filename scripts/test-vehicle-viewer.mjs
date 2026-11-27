@@ -2,7 +2,7 @@
 // Optional real-browser smoke test. See docs/vehicle-3d.md for the development-only dependency.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -81,11 +81,80 @@ try {
     assert.equal(await page.locator('[data-target="srs"]').count(), 0);
     await page.locator("#exterior").click();
     assert.equal(await page.locator("#exterior").getAttribute("aria-pressed"), "true");
+    await page.locator("#reset").click();
+    if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR) {
+        await mkdir(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, { recursive: true });
+        await page.locator("#target-select").selectOption("");
+        await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, "vehicle-exterior.png") });
+    }
     await page.locator("#diagnostic").click();
+    if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR)
+        await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, "vehicle-diagnostic.png") });
     await page.locator('[data-view="perspective"]').click();
     await page.locator("#target-select").selectOption("ect");
     await page.locator("#focus").click();
     await page.locator("#reset").click();
+    if (process.env.ECUSIM_VIEWER_FIXTURES) {
+        const cases = JSON.parse(await readFile(process.env.ECUSIM_VIEWER_FIXTURES, "utf8"));
+        assert.equal(cases.length, 16);
+        for (const state of cases) {
+            await page.evaluate(snapshot => window.vehicleViewer.setState(snapshot), state);
+            assert.equal(await page.locator("#target-count").textContent(), String(state.targets.length));
+            assert.equal(await page.locator('[data-target^="tpms_"]').count(), state.fitted.includes("tpms") ? 4 : 0);
+            for (const id of ["srs", "airbag_driver", "airbag_passenger", "belt_switch"])
+                assert.equal(await page.locator(`[data-target="${id}"]`).count(), state.fitted.includes("srs") ? 1 : 0);
+            for (const id of ["sas", "yaw"])
+                assert.equal(await page.locator(`[data-target="${id}"]`).count(), state.fitted.includes("esc") ? 1 : 0);
+            for (const id of ["maf", "o2", "ignition_coils", "intake_leak"])
+                assert.equal(await page.locator(`[data-target="${id}"]`).count(), state.fitted.includes("engine_obd") ? 1 : 0);
+            assert.match(await page.locator("#connection-summary").textContent(), new RegExp(`${state.ecus.length} CAN`));
+            assert.match(await page.locator("#connection-summary").textContent(), new RegExp(`${state.fitted.includes("tpms") ? 4 : 0} radio`));
+            for (const target of state.targets) assert.equal(await page.locator(`[data-target="${target.id}"]`).count(), 1, target.id);
+        }
+        const full = structuredClone(cases.at(-1));
+        full.running = true; full.reducedMotion = false;
+        await page.evaluate(state => window.vehicleViewer.setState(state), full);
+        await page.waitForTimeout(100);
+        const movingA = await page.evaluate(() => window.vehicleViewer.getRenderState());
+        await page.waitForTimeout(220);
+        const movingB = await page.evaluate(() => window.vehicleViewer.getRenderState());
+        assert.ok(movingB.frames > movingA.frames, "the moving scene must actually be rendered");
+        assert.notDeepEqual(movingA.firstPulse, movingB.firstPulse, "data pulses must move while the simulation runs");
+        for (const state of [{ ...full, running: false }, { ...full, reducedMotion: true }]) {
+            await page.evaluate(snapshot => window.vehicleViewer.setState(snapshot), state);
+            await page.waitForTimeout(100);
+            const still = await page.evaluate(() => window.vehicleViewer.getRenderState());
+            await page.waitForTimeout(150);
+            assert.deepEqual(await page.evaluate(() => window.vehicleViewer.getRenderState()), still,
+                "pause/reduced motion must freeze the data flow and stop idle rendering");
+        }
+        await page.evaluate(state => window.vehicleViewer.setState(state), full);
+        await page.waitForTimeout(100);
+        await page.evaluate(() => window.vehicleViewer.setDisplayActive(false));
+        const hidden = await page.evaluate(() => window.vehicleViewer.getRenderState());
+        await page.waitForTimeout(150);
+        assert.deepEqual(await page.evaluate(() => window.vehicleViewer.getRenderState()), hidden,
+            "a hidden native panel must stop rendering and animating");
+        await page.evaluate(() => window.vehicleViewer.setDisplayActive(true));
+        await page.locator("#wiring").uncheck();
+        assert.equal(await page.locator("#connection-summary").textContent(), "0 wired · 0 CAN · 0 radio");
+        await page.locator("#wiring").check();
+        await page.locator("#data-flow").uncheck();
+        assert.equal(await page.locator("#flow-state").textContent(), "Flow off");
+        await page.locator("#data-flow").check();
+        full.running = false; full.reducedMotion = true;
+        await page.evaluate(state => window.vehicleViewer.setState(state), full);
+        if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR) {
+            await page.locator("#target-select").selectOption("wss_fl");
+            await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, "vehicle-all-equipment.png") });
+            await page.locator("#target-select").selectOption("");
+            await page.locator("#exterior").click();
+            await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, "vehicle-exterior.png") });
+            await page.locator("#diagnostic").click();
+        }
+        console.log("PASS: all 16 actual C++ equipment settings, fitted geometry/markers, CAN and radio paths, animated flow, pause, reduced motion, hidden panel and wiring/flow switches");
+        await page.locator("#target-select").selectOption("ect");
+    }
     await page.setViewportSize({ width: 360, height: 740 });
     await page.waitForTimeout(100);
     assert.equal(await page.locator("#selected-name").isVisible(), true);

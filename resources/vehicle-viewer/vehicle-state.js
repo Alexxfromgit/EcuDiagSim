@@ -7,17 +7,68 @@ export const locations = Object.freeze({
     ckp: [-0.30, 0.69, -1.50], ect: [0.22, 1.02, -1.55], tps: [0.45, 1.02, -1.12],
     tft: [0.32, 0.58, -0.75], eop: [-0.48, 0.72, -1.24], fls: [0.14, 0.66, 1.43],
     maf: [0.63, 0.92, -1.67], o2: [-0.22, 0.43, -0.43],
-    sas: [-0.46, 1.15, -0.32], yaw: [0, 0.57, 0.35],
+    sas: [-0.43, 1.04, -0.45], yaw: [0, 0.57, 0.35],
     alternator: [-0.55, 0.76, -1.80], cooling: [0.22, 0.75, -2.04],
     bulb_low_left: [-0.73, 0.83, -2.27], oil_pump: [-0.28, 0.44, -1.47],
     park_brake_switch: [0.18, 0.97, 0.35], intake_leak: [0.57, 0.93, -1.37],
-    ignition_coils: [-0.18, 1.08, -1.35], throttle_body: [0.38, 0.87, -1.05],
-    airbag_driver: [-0.46, 1.29, -0.27], airbag_passenger: [0.49, 1.18, -0.43],
-    belt_switch: [-0.24, 0.82, 0.31], tyres: [-1.13, 0.52, 1.78],
-    ecm: [-0.74, 1.12, -0.93], tcm: [0.69, 0.75, -0.67], abs: [0.73, 1.10, -1.92],
-    bcm: [0.71, 0.99, 0.08], ipc: [-0.42, 1.30, -0.57], srs: [0, 0.67, 0.16],
+    ignition_coils: [-0.18, 0.97, -1.35], throttle_body: [0.38, 0.87, -1.05],
+    airbag_driver: [-0.43, 1.15, -0.45], airbag_passenger: [0.49, 1.13, -0.66],
+    belt_switch: [-0.24, 0.69, 0.31], tyres: [-1.13, 0.52, 1.78],
+    ecm: [-0.68, 0.91, -0.95], tcm: [0.56, 0.65, -0.85], abs: [0.70, 0.87, -1.85],
+    bcm: [0.68, 0.90, -0.15], ipc: [-0.44, 1.10, -0.65], srs: [0, 0.61, 0.25],
     abs_e2e: [0.65, 0.61, -0.15], can_bus: [0.10, 0.65, 0.78]
 });
+
+export const systemColors = Object.freeze({ ECM: 0x53ddd0, TCM: 0x71aaff, ABS: 0xf6c268,
+    BCM: 0xb19aff, IPC: 0x83c7ea, SRS: 0xf191af });
+
+// Physical signal/monitoring circuits only. Mechanical failures are selectable but do not
+// acquire fictitious electrical leads. Direct TPMS communicates by radio, not wheel wiring.
+const electricalComponents = new Set(["alternator", "bulb_low_left", "park_brake_switch",
+    "ignition_coils", "throttle_body", "airbag_driver", "airbag_passenger", "belt_switch"]);
+const commandedComponents = new Set(["bulb_low_left", "ignition_coils", "throttle_body"]);
+
+export function connectionsFromSnapshot(snapshot) {
+    const targets = targetsFromSnapshot(snapshot);
+    const controllers = new Map(targets.filter(target => target.controller && target.position)
+        .map(target => [target.controller.name, target]));
+    const connections = [];
+    for (const target of targets) {
+        const controller = controllers.get(target.ecu);
+        if (!controller || !target.position || target.controller) continue;
+        const radio = target.id.startsWith("tpms_");
+        if (!target.sensor && !radio && !electricalComponents.has(target.id)) continue;
+        connections.push({ id: `signal:${target.id}`, targetId: target.id, controllerId: controller.id,
+            system: target.ecu, kind: radio ? "radio" : "signal", from: target.position,
+            direction: commandedComponents.has(target.id) ? "outbound" : "inbound",
+            to: controller.position, target, controller: controller.controller });
+    }
+    for (const controller of controllers.values()) {
+        connections.push({ id: `can:${controller.id}`, targetId: controller.id,
+            controllerId: controller.id, system: controller.ecu, kind: "can",
+            from: controller.position, to: [.10, .53, 1.20], controller: controller.controller });
+    }
+    return connections;
+}
+
+export function connectionStatus(connection, snapshot) {
+    const ecu = connection.controller;
+    const faults = snapshot.faults ?? [];
+    const busShort = faults.some(fault => fault.targetId === "can_bus");
+    const ecuPowered = ecu && !["sleep", "nopower"].includes(ecu.state);
+    const missing = connection.target?.faulted && (connection.kind === "radio" ||
+        /open|short|missing/i.test(connection.target.sensor?.circuit ?? ""));
+    const blocked = !ecuPowered || (connection.kind === "can" && (busShort || ecu.state === "busoff")) || missing;
+    return { active: Boolean(ecuPowered && !blocked),
+        faulted: Boolean(connection.target?.faulted || ecu?.state === "nopower" ||
+            (connection.kind === "can" && (busShort || ecu?.state === "busoff"))),
+        color: !ecuPowered ? 0x536475 : blocked || connection.target?.faulted ? 0xffae49 :
+            connection.kind === "can" ? 0x46d4ec : connection.kind === "radio" ? 0xc393ff : systemColors[connection.system] ?? 0x53ddd0 };
+}
+
+export function shouldAnimateFlow(snapshot, visible = true, enabled = true) {
+    return visible && enabled && snapshot.running === true && snapshot.reducedMotion !== true;
+}
 
 export function targetsFromSnapshot(snapshot) {
     const sensors = new Map((snapshot.sensors ?? []).map(sensor => [sensor.id, sensor]));

@@ -15,16 +15,20 @@
             <div class="segmented"><button id="diagnostic" aria-pressed="true">Diagnostic</button><button id="exterior" aria-pressed="false">Exterior</button></div>
             <select id="system" aria-label="Filter by system"><option value="">All systems</option></select>
             <label class="check"><input type="checkbox" id="faults-only"> Faults only</label>
+            <label class="check"><input type="checkbox" id="wiring" checked> Wiring</label>
+            <label class="check"><input type="checkbox" id="data-flow" checked> Data flow</label>
             <button id="reset" title="Reset the camera">Reset view</button>
         </div>
+        <div class="equipment-strip" id="equipment-strip" aria-label="Fitted vehicle equipment"></div>
     </header>
     <main>
         <section id="stage" aria-label="Interactive car. Hold the left mouse button and drag to rotate; scroll to zoom.">
-            <div class="scene-heading"><span class="eyebrow">CONCEPT SEDAN</span><span id="scene-caption">Systems revealed</span></div>
+            <div class="scene-heading"><span class="eyebrow">EXECUTIVE SEDAN</span><span id="scene-caption">Connected systems · schematic routing</span><span id="connection-summary"></span></div>
+            <span id="flow-state" class="flow-state" role="status">Connecting</span>
             <div id="labels"></div>
             <div id="viewer-error" role="alert" hidden></div>
             <div class="view-presets" aria-label="Camera presets"><button data-view="perspective">Perspective</button><button data-view="top">Top</button><button data-view="front">Front</button></div>
-            <div class="scene-footer"><span>Drag to rotate · Scroll to zoom</span><span>Illustrative component locations</span></div>
+            <div class="scene-footer"><span>Drag to rotate · Scroll to zoom</span><span>Solid: circuit / CAN · Dashed: TPMS radio · Flow is illustrative</span></div>
         </section>
         <aside aria-label="Component inspector">
             <label class="eyebrow" for="target-select">COMPONENTS <span id="target-count"></span></label>

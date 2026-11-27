@@ -3,6 +3,10 @@
 #include "WindowGeometry.h"
 
 #include <QAbstractItemModelTester>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -48,6 +52,7 @@ private slots:
     void opensPaused();
     void settingsArePersisted();
     void equipmentCatalogAndChoice();
+    void vehicleViewerEquipmentSnapshots();
     void viewModelsDescribeTheVehicle();
     void codingReadFillsTheField();
     void pollingDoesNotLeakIntoDtcTable();
@@ -178,6 +183,48 @@ void tst_App::equipmentCatalogAndChoice()
     QCOMPARE(scanner->routines().size(), 1);
     // The coding example keeps the ESC flag: writing it must not code the stability control out.
     QCOMPARE(scanner->codings().value(0).toMap().value(QStringLiteral("example")).toString(), QStringLiteral("01 07 9C"));
+    app.setEquipment({});
+}
+
+void tst_App::vehicleViewerEquipmentSnapshots()
+{
+    AppController app;
+    app.setRunning(false);
+    const QStringList packs{QStringLiteral("engine_obd"), QStringLiteral("tpms"),
+        QStringLiteral("srs"), QStringLiteral("esc")};
+    QJsonArray snapshots;
+    for (int mask = 0; mask < 16; ++mask) {
+        QStringList fitted;
+        for (int bit = 0; bit < packs.size(); ++bit)
+            if ((mask & (1 << bit)) != 0)
+                fitted.append(packs.at(bit));
+        app.setEquipment(fitted);
+        app.setIgnition(1);
+        app.step(1500);
+        QCOMPARE(app.fitted(), fitted);
+        QStringList ids;
+        for (const QVariant &target : app.faultTargets())
+            ids.append(target.toMap().value(QStringLiteral("id")).toString());
+        QCOMPARE(ids.contains(QStringLiteral("maf")), fitted.contains(QStringLiteral("engine_obd")));
+        QCOMPARE(ids.contains(QStringLiteral("tpms_fl")), fitted.contains(QStringLiteral("tpms")));
+        QCOMPARE(ids.contains(QStringLiteral("srs")), fitted.contains(QStringLiteral("srs")));
+        QCOMPARE(ids.contains(QStringLiteral("yaw")), fitted.contains(QStringLiteral("esc")));
+        snapshots.append(QJsonObject{{QStringLiteral("fitted"), QJsonArray::fromStringList(app.fitted())},
+            {QStringLiteral("targets"), QJsonArray::fromVariantList(app.faultTargets())},
+            {QStringLiteral("sensors"), QJsonArray::fromVariantList(app.sensors())},
+            {QStringLiteral("ecus"), QJsonArray::fromVariantList(app.ecus())},
+            {QStringLiteral("faults"), QJsonArray::fromVariantList(app.activeFaults())},
+            {QStringLiteral("vehicle"), QJsonObject::fromVariantMap(app.vehicle())},
+            {QStringLiteral("running"), app.running()}, {QStringLiteral("reducedMotion"), true}});
+    }
+    // Optional fixtures for real-browser checks use the same snapshots the native viewer receives.
+    const QString exportPath = qEnvironmentVariable("ECUSIM_VIEWER_FIXTURES");
+    if (!exportPath.isEmpty()) {
+        QFile file(exportPath);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+        const QByteArray json = QJsonDocument(snapshots).toJson();
+        QCOMPARE(file.write(json), static_cast<qint64>(json.size()));
+    }
     app.setEquipment({});
 }
 
