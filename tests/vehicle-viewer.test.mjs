@@ -43,7 +43,7 @@ test("live state uses simulation IDs and never invents unfitted equipment", () =
     const targets = targetsFromSnapshot(snapshot);
     assert.equal(targets.length, 3);
     assert.equal(targets.some(target => target.id === "srs" || target.id.startsWith("tpms")), false);
-    assert.deepEqual(targets[0].position, [-1.12, .56, -1.48]);
+    assert.deepEqual(targets[0].position, [-.90, .36, -1.60]);
     assert.equal(targets[0].sensor.trueValue, 50);
     assert.equal(targets[0].sensor.value, 0);
     assert.equal(targets[2].controller.diagIndex, 2);
@@ -147,4 +147,51 @@ test("data flow respects simulation pause, reduced motion, visibility and the vi
     assert.equal(shouldAnimateFlow({ running: true, reducedMotion: true }), false);
     assert.equal(shouldAnimateFlow({ running: true }, false), false);
     assert.equal(shouldAnimateFlow({ running: true }, true, false), false);
+});
+
+test("CAN pulses require newly transmitted frames and clear on reset or power loss", () => {
+    const state = equippedSnapshot();
+    state.vehicle = { transmittedFrames: { ECM: 10, ABS: 20 } };
+    const network = createVehicleNetwork();
+    network.setView({ visibleIds: new Set(state.targets.map(t => t.id)) });
+    network.applyState(state);
+    const ecm = network.records.get("can:ecm");
+    assert.equal(ecm.events.length, 0, "initial totals must not invent an event");
+    network.applyState(state);
+    assert.equal(ecm.events.length, 0);
+    state.vehicle.transmittedFrames.ECM += 4; network.applyState(state);
+    assert.equal(ecm.events.length, 1, "a display batch represents new real frames");
+    network.advance(.05); assert.ok(ecm.events[0] > 0);
+    network.advance(10); assert.equal(ecm.events.length, 0);
+    state.vehicle.transmittedFrames.ECM++; network.applyState(state);
+    state.ecus[0].state = "nopower"; network.applyState(state);
+    assert.equal(ecm.events.length, 0);
+    state.ecus[0].state = "ok"; state.vehicle.transmittedFrames.ECM = 0; network.applyState(state);
+    assert.equal(ecm.events.length, 0, "a reset must not replay old activity");
+});
+
+test("sedan actuators reflect the outputs, without coupling high beam to a failed dipped bulb", () => {
+    const car = createVehicle();
+    const state = equippedSnapshot();
+    state.vehicle = { lowBeam: true, highBeam: true, parkLamps: true, bulbLowLeftOpen: true,
+        turnLeftLamp: true, turnRightLamp: false, braking: true, reversing: true, doors: [true, false, true, false],
+        roadWheelAngle: 12, steering: 180, tyres: [1, 2.4, 2.4, 2.4], throttle: 80, fuel: 12,
+        seatBelt: true, airbagFired: [true, false], wheels: [40, 40, 0, 40], velocity: -40 };
+    car.applyState(state);
+    const on = key => car.lights.get(key).every(mesh => mesh.userData.on);
+    assert.equal(on("low:l"), false); assert.equal(on("low:r"), true);
+    for (const key of ["high:l", "high:r", "park:l", "tail:r", "stop:center", "reverse:l", "reverse:r", "mirror:l", "turn:l"]) assert.equal(on(key), true, key);
+    for (const key of ["turn:r", "mirror:r"]) assert.equal(on(key), false, key);
+    assert.deepEqual([...car.doorPivots.values()].map(p => p.rotation.y), [-1.1, 0, -1.1, 0]);
+    assert.ok(Math.abs(car.wheels[0].rotation.y - 12 * Math.PI / 180) < 1e-8);
+    assert.equal(car.wheels[2].rotation.y, 0);
+    assert.equal(car.belt.visible, true); assert.deepEqual(car.bags.map(b => b.visible), [true, false]);
+    assert.equal(car.fuel.scale.y, 12 / 55);
+    assert.equal(car.hasMotion(state), true); assert.equal(car.hasMotion({ ...state, running: false }), false);
+    car.advance(.01);
+    assert.ok(car.wheelSpinners[0].rotation.x < 0, "reverse motion must reverse the wheel rotation");
+    assert.equal(car.wheelSpinners[2].rotation.x, 0, "a locked wheel must not roll");
+    car.applyState({ ...state, targets: [], vehicle: {} });
+    assert.equal(car.belt.visible, false); assert.deepEqual(car.bags.map(b => b.visible), [false, false]);
+    assert.ok([...car.lights.values()].flat().every(mesh => !mesh.userData.on));
 });

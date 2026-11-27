@@ -13,5 +13,10 @@ Archive SHA-256: `ad66d724565ee29a2467277fa84daa5ed0211d6b8d446e9ef29f6bae0cd141
 
 Upstream repository: <https://github.com/mrdoob/three.js/tree/r180>
 
-License: MIT. Preserve `LICENSE` when redistributing these files. Other files in this folder
-are not required. The application resources list is explicit in `src/app/CMakeLists.txt`.
+License: MIT. Preserve `LICENSE` when redistributing these files.
+
+`meshopt_decoder.module.js` is the unmodified `examples/jsm/libs/meshopt_decoder.module.js`
+from the same pinned archive. It embeds meshoptimizer 0.22's decoder, MIT, © 2016–2024
+Arseny Kapoulkine; retain `meshoptimizer-LICENSE.md` when redistributing that tool.
+Only `scripts/prepare-vehicle-asset.mjs` uses it. It is not embedded in the application.
+The application resources list is explicit in `src/app/CMakeLists.txt`.

@@ -19,6 +19,8 @@ class VehicleViewer {
     constructor() {
         this.stage = byId("stage");
         this.scene = new THREE.Scene();
+        this.scene.background = new THREE.Color(0x0c1823);
+        this.scene.fog = new THREE.FogExp2(0x0c1823, .04);
         this.camera = new THREE.PerspectiveCamera(34, 1, .05, 80);
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
@@ -41,14 +43,15 @@ class VehicleViewer {
         this.controls.addEventListener("change", () => this.invalidate());
         this.controls.addEventListener("start", () => { this.interacting = true; });
         this.controls.addEventListener("end", () => { this.interacting = false; this.invalidate(); });
-        this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x263645, 3.0));
-        const key = new THREE.DirectionalLight(0xe4f4ff, 4);
+        this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x263645, 1.6));
+        const key = new THREE.DirectionalLight(0xe4f4ff, 3);
         key.position.set(-3, 7, -4); key.castShadow = true;
-        key.shadow.mapSize.set(1024, 1024);
+        key.shadow.mapSize.set(2048, 2048);
         Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: .5, far: 20 });
-        key.shadow.bias = -.001;
+        key.shadow.bias = -.0002;
+        key.shadow.radius = 2;
         this.scene.add(key);
-        const rim = new THREE.DirectionalLight(0x40afdd, 3);
+        const rim = new THREE.DirectionalLight(0x99c6db, 1.6);
         rim.position.set(4, 2, 3); this.scene.add(rim);
         this.addEnvironment();
         this.vehicle = createVehicle();
@@ -56,12 +59,14 @@ class VehicleViewer {
         this.network = createVehicleNetwork();
         this.scene.add(this.network.root);
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
-            new THREE.ShadowMaterial({ opacity: .26 }));
+            new THREE.MeshStandardMaterial({ color: 0x020406, roughness: .8, metalness: 0, envMapIntensity: 0 }));
         floor.rotation.x = -Math.PI / 2; floor.position.y = .012; floor.receiveShadow = true;
         this.scene.add(floor);
+        this.floor = floor;
         const grid = new THREE.GridHelper(12, 24, 0x234e61, 0x163143);
         grid.material.transparent = true; grid.material.opacity = .28;
         this.scene.add(grid);
+        this.grid = grid;
         this.raycaster = new THREE.Raycaster();
         this.markers = new Map();
         this.targets = [];
@@ -138,9 +143,10 @@ class VehicleViewer {
         for (const mode of ["diagnostic", "exterior"]) byId(mode).addEventListener("click", () => {
             this.diagnosticMode = mode === "diagnostic";
             this.vehicle.diagnostic(this.diagnosticMode);
+            this.grid.visible = this.diagnosticMode;
             byId("diagnostic").setAttribute("aria-pressed", String(this.diagnosticMode));
             byId("exterior").setAttribute("aria-pressed", String(!this.diagnosticMode));
-            byId("scene-caption").textContent = this.diagnosticMode ? "Connected systems · schematic routing" : "Modern executive sedan";
+            byId("scene-caption").textContent = this.diagnosticMode ? "Sensor circuits · live CAN activity" : "Modern executive sedan";
             this.filter();
             this.syncNetwork();
             this.invalidate();
@@ -161,7 +167,7 @@ class VehicleViewer {
 
     cameraPreset(preset) {
         this.controls.target.set(0, .64, 0);
-        const positions = { perspective: [-6.4, 3.4, -6.8], top: [0, 9, .001], front: [0, 1.9, -8.6] };
+        const positions = { perspective: [-5.4, 2.9, -5.8], top: [0, 9, .001], front: [0, 1.7, -7.6], rear: [4.9, 2.4, 6.3], side: [-8, 1.8, 0] };
         this.camera.position.set(...(positions[preset] ?? positions.perspective));
         this.controls.update(); this.invalidate();
     }
@@ -180,6 +186,10 @@ class VehicleViewer {
         this.snapshot = snapshot;
         this.targets = targetsFromSnapshot(snapshot);
         this.vehicle.applyState(snapshot);
+        this.floor.material.roughness = snapshot.vehicle?.surface === 1 ? .25 : .8;
+        this.floor.material.color.set(snapshot.vehicle?.surface === 2 ? 0x52616d : snapshot.vehicle?.surface === 3 ? 0x14222d : 0x020406);
+        const v = snapshot.vehicle ?? {};
+        byId("vehicle-telemetry").textContent = `${Number(v.speed ?? 0).toFixed(0)} km/h · ${Number(v.rpm ?? 0).toFixed(0)} rpm · ${["P", "R", "N", "D"][v.selector ?? 0]} · Fuel ${Number(v.fuel ?? 0).toFixed(0)} L · ${v.parkBrake ? "Parking brake on" : "Parking brake off"} · ${["Dry", "Wet", "Snow", "Ice"][v.surface ?? 0]}`;
         this.network.applyState(snapshot);
         const equipmentNames = { engine_obd: "Engine OBD", tpms: "TPMS", srs: "SRS", esc: "ESC" };
         const fitted = snapshot.fitted ?? [];
@@ -345,12 +355,16 @@ class VehicleViewer {
         this.frame = requestAnimationFrame(time => {
             this.frame = null;
             if (!this.displayActive || document.hidden) return;
-            const animate = shouldAnimateFlow(this.snapshot, this.displayActive, this.flowEnabled) && this.network.hasActiveFlow();
+            const flowMotion = shouldAnimateFlow(this.snapshot, this.displayActive, this.flowEnabled) && this.network.hasActiveFlow();
+            const wheelMotion = this.vehicle.hasMotion(this.snapshot);
+            const animate = flowMotion || wheelMotion;
             // Cap decorative signal flow at 30 fps. Camera movement still renders on demand.
             if (!animate || this.interacting || !this.lastFrameTime || time - this.lastFrameTime >= 32) {
                 if (animate) {
                     const elapsed = this.lastFrameTime ? Math.min(.08, (time - this.lastFrameTime) / 1000) : 0;
-                    this.network.advance(elapsed * Math.max(.1, Math.min(3, this.snapshot.speedFactor ?? 1)));
+                    const simulationStep = elapsed * Math.max(.1, Math.min(3, this.snapshot.speedFactor ?? 1));
+                    if (flowMotion) this.network.advance(simulationStep);
+                    if (wheelMotion) this.vehicle.advance(simulationStep);
                 }
                 this.lastFrameTime = animate ? time : null;
                 this.renderer.render(this.scene, this.camera);
@@ -406,7 +420,12 @@ try {
         setState: snapshot => viewer.setState(snapshot),
         setDisplayActive: active => viewer.setDisplayActive(active),
         getRenderState: () => ({ frames: viewer.renderer.info.render.frame, pulses: viewer.network.pulses.count,
-            firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)) })
+            firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)),
+            controls: { doors: [...viewer.vehicle.doorPivots.values()].map(door => door.rotation.y),
+                steering: viewer.vehicle.wheels.map(wheel => wheel.rotation.y), rolling: viewer.vehicle.wheelSpinners.map(wheel => wheel.rotation.x),
+                belt: viewer.vehicle.belt.visible, bags: viewer.vehicle.bags.map(bag => bag.visible), fuel: viewer.vehicle.fuel.scale.y,
+                throttle: viewer.vehicle.throttle.rotation.z,
+                lights: Object.fromEntries([...viewer.vehicle.lights].map(([key, meshes]) => [key, meshes.some(mesh => mesh.userData.on)])) } })
     };
     connectHost();
     document.body.dataset.viewerReady = "true";

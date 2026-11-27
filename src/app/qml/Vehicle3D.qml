@@ -22,9 +22,7 @@ Rectangle {
             targets: App.faultTargets, sensors: App.sensors, ecus: App.ecus,
             faults: App.activeFaults, running: App.running, reducedMotion: App.reducedMotion,
             fitted: App.fitted, speedFactor: App.speedFactor,
-            vehicle: { speed: v.speed, lowBeam: v.lowBeam, highBeam: v.highBeam,
-                       parkLamps: v.parkLamps, bulbLowLeftOpen: v.bulbLowLeftOpen,
-                       braking: v.brake > 0.02, reversing: v.ignition && v.selector === 1 }
+            vehicle: v
         })
     }
 

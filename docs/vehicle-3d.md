@@ -2,7 +2,8 @@
 
 The viewer is a native Qt Quick panel hosting a local Three.js page through Qt WebEngine.
 It requires no service, account, purchased asset, CDN, Node runtime or commercial Qt module.
-Application code, original car geometry and generated lighting remain MIT. Three.js is MIT;
+Application code, diagnostic assemblies and generated lighting remain MIT. The artist-built
+sedan exterior is CC BY 4.0; see `resources/vehicle-viewer/assets/ATTRIBUTION.md`. Three.js is MIT;
 Qt WebEngine/WebChannel and Chromium retain their respective licenses.
 
 ## Build and use
@@ -35,7 +36,14 @@ a reload or a return to the diagram.
   radio sensors. SRS adds its controller, squib monitors and belt switch. ESC adds steering-angle
   and yaw sensors. Their physical bodies, markers and links are removed when the pack is unfitted.
   The equipment strip uses `App.fitted`, including temporary equipment required by a lesson.
-- **Wiring** shows the schematic connections; **Data flow** controls moving pulses. Colours group
+- Doors open independently; the front wheels steer and all four wheels roll at their individual
+  simulated speeds, including reverse and locked-wheel behavior. Low/high/position lamps,
+  indicators and mirror repeaters use the actual BCM outputs and blink phase. The left dipped
+  bulb fault affects only that bulb. Rear brake/center stop and reverse lights follow the
+  hardwired brake/ignition/selector inputs, including when BCM power is lost. Locks, seat belt,
+  deployed/replaced airbags, throttle and fuel are reflected physically. A live readout shows
+  speed, RPM, selector, fuel, parking brake and surface; the ground reflects dry/wet/snow/ice.
+- **Wiring** shows routed loom sleeves, twisted CAN pairs and colored circuit overlays; **Data flow** controls moving pulses. Colours group
   circuits by their owning ECU. A selected component highlights its route. Dashed violet paths
   are TPMS radio links, not physical wheel wiring. Solid paths are circuits or controller CAN links.
 - Sensor pulses run toward the ECU; lamp, throttle and ignition commands run toward the component.
@@ -49,17 +57,27 @@ a reload or a return to the diagram.
 - `src/app/qml/VehicleWorkspace.qml`: view switching and expansion; existing navigation signals.
 - `src/app/qml/Vehicle3D.qml`: a dedicated WebChannel bridge. Only a display snapshot and validated
   target/ECU navigation methods are published; the App singleton is never exposed to JavaScript.
-- `resources/vehicle-viewer/vehicle-model.js`: original procedural sedan and schematic internals.
+- `resources/vehicle-viewer/vehicle-model.js`: adapted exterior, additive internals and actuator mapping.
+- `assets/sedan-source.glb`: attributed CC BY source; `assets/sedan-mesh.js`: prepared geometry.
+- `scripts/prepare-vehicle-asset.mjs`: offline conversion, proportions, door cuts and lamp separation.
+  Run `node scripts/prepare-vehicle-asset.mjs` to regenerate the geometry deterministically.
+  The adapted body is 4.96 m long, 1.89 m wide and 1.46 m high; wheelbase is 2.84 m.
+  Only the prepared geometry is embedded. The raw GLB and meshoptimizer decoder are tool inputs.
 - `vehicle-state.js`: stable simulation ID → illustrative 3D anchor mapping, filters, click/drag logic.
 - `vehicle-network.js`: fitted circuit/CAN/radio topology, routed harness geometry and instanced pulses.
 - `viewer.js`: rendering, camera, markers, live inspector and bridge connection.
 - `vendor`: unmodified pinned Three.js 0.180.0 and its full MIT license.
 
-Snapshots are refreshed at 10 Hz only while the panel is visible. Signal animation renders at up
-to 30 fps while the simulation runs and a visible link is active. Pause, reduced motion, a hidden
-document/native panel, exterior mode or disabled wiring/flow stop that loop. Otherwise rendering
-is requested only when state, camera or layout changes. Simulation speed affects decorative flow
-speed within a readable limit; these pulses are not time-correlated CAN frames or actual wire traffic.
+Snapshots are refreshed at 10 Hz only while the panel is visible. Animation renders at up
+to 30 fps while the simulation runs and a visible link or rolling wheel is active. Pause, reduced
+motion and a hidden document/native panel stop animation. Exterior mode and disabled wiring/flow
+stop network animation; rolling wheels still animate. Otherwise rendering is requested only
+when state, camera or layout changes. CAN pulses are triggered by increases in per-sender
+transmitted-frame totals, independent of trace filtering or pause. One pulse aggregates frames
+from a 100 ms display batch, with slowed travel for readability. Static totals create no CAN
+pulses; reset, power loss and bus-off clear them. Sensor/actuator and radio pulses indicate
+active circuits, rather than sampled packet captures. Simulation speed scales display motion
+within a readable limit. This is a generic topology, not an OEM pinout or wire-color specification.
 Camera control never advances the simulation. The existing 2D view and UI-free core stay available.
 All page resources are compiled into Qt resources. Remote access, local filesystem access,
 storage, popup windows and navigation away from the bundled page are disabled. CSP blocks network
@@ -95,12 +113,18 @@ and frozen render/pulse state when paused, hidden or using reduced motion:
 
 ```sh
 ECUSIM_VIEWER_FIXTURES="$PWD/build/debug/equipment-snapshots.json" \
-    build/debug/tst_app vehicleViewerEquipmentSnapshots
+ECUSIM_VIEWER_CONTROL_FIXTURES="$PWD/build/debug/control-snapshots.json" \
+    build/debug/tst_app vehicleViewerEquipmentSnapshots vehicleViewerControlSnapshots
 ECUSIM_VIEWER_FIXTURES="$PWD/build/debug/equipment-snapshots.json" \
+ECUSIM_VIEWER_CONTROL_FIXTURES="$PWD/build/debug/control-snapshots.json" \
     node scripts/test-vehicle-viewer.mjs
 ```
 
-`ECUSIM_VIEWER_SCREENSHOT_DIR` optionally captures exterior and diagnostic previews. The offline
+The control fixtures also verify actual C++ lamp outputs against every rendered lamp bank,
+both hazard phases, ignition-off hazards, failed dipped bulb with working high beam, BCM power
+loss with hardwired stop/reverse lamps, four doors, steering, restraints, fuel and wheel motion.
+
+`ECUSIM_VIEWER_SCREENSHOT_DIR` optionally captures front, side, rear, diagnostic and control previews. The offline
 browser development API exposes `setState`, `setDisplayActive` and read-only `getRenderState`
 measurements; none of these exposes the native App singleton or injects simulation faults.
 
@@ -112,16 +136,18 @@ EcuDiagSim --vehicle-3d --scenario 1 --size 1440x900 --after 8000 --screenshot v
 
 ## MVP limitations and production follow-up
 
-The sedan is an original contemporary interaction model, with approximate component locations.
-It is not an OEM model or a finished photorealistic asset. A production model can replace the
-geometry builder while retaining the simulation ID mapping and the viewer/bridge interface.
-Wheel/door animations, OEM-accurate harness routing and automated performance budgets are not
-implemented. Labels prioritize selected/faulted targets and suppress overlaps; all components remain
-available through the selector. External GLB import is not yet implemented. The renderer must be
+The exterior is a licensed artist model adapted for this generic simulator. Its material shading,
+interior, door segmentation and component locations are approximations. Door cuts follow geometric
+regions rather than a supplied production rig; opening them does not expose a detailed factory
+interior. This is not a manufacturer-specific digital twin or a photorealistic configurator.
+OEM pinouts, exact harness routes and automated performance budgets remain follow-up work.
+Labels prioritize selected/faulted targets and suppress overlaps; the selector retains all targets.
+Arbitrary user-supplied GLB import is not implemented. The renderer must be
 tested on representative Windows, Linux and macOS hardware; local macOS testing alone does not
 establish cross-platform graphics or packaging compatibility.
 
-Three.js's full license and the project's notices are installed in the app. Before public
+Three.js's full license, the exterior's CC BY license/attribution and the project's notices are
+installed in the app. Before public
 distribution, inventory the actually bundled Qt/Chromium libraries, ship their complete license
 texts/notices, and provide the corresponding library sources or an appropriate offer through
 a publisher-controlled arrangement. Merely linking to Qt's source website is insufficient.

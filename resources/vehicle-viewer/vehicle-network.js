@@ -15,7 +15,7 @@ export function createVehicleNetwork() {
     const transform = new THREE.Matrix4();
     const position = new THREE.Vector3();
     const color = new THREE.Color();
-    let topologyKey = "", snapshot = {}, phase = 0;
+    let topologyKey = "", snapshot = {}, phase = 0, lastCounts = {};
     let view = { diagnostic: true, wires: true, system: "", selectedId: "", visibleIds: new Set() };
 
     function curveFor(edge) {
@@ -49,14 +49,26 @@ export function createVehicleNetwork() {
         } else {
             const material = new THREE.MeshBasicMaterial({ color: 0x53ddd0, transparent: true, opacity: .52,
                 depthTest: false, depthWrite: false });
-            line = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, edge.kind === "can" ? .012 : .0075, 5, false), material);
+            line = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, edge.kind === "can" ? .006 : .0045, 5, false), material);
+            const sleeve = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, edge.kind === "can" ? .019 : .010, 6, false),
+                new THREE.MeshStandardMaterial({ color: 0x1b2630, roughness: .85, transparent: true, opacity: .72 }));
+            sleeve.name = "loom-sleeve"; group.add(sleeve);
             if (edge.kind === "can") {
-                const companion = new THREE.Mesh(line.geometry, material);
-                companion.position.x = .026; group.add(companion);
+                const normal = curve.computeFrenetFrames(80, false);
+                for (const strand of [-1, 1]) {
+                    const points = [];
+                    for (let i = 0; i <= 80; i++) {
+                        const point = curve.getPointAt(i / 80), angle = i / 80 * curve.getLength() * 35;
+                        point.addScaledVector(normal.normals[i], Math.cos(angle) * .008 * strand);
+                        point.addScaledVector(normal.binormals[i], Math.sin(angle) * .008 * strand); points.push(point);
+                    }
+                    const twisted = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 100, .003, 4, false), material);
+                    twisted.renderOrder = 8; group.add(twisted);
+                }
             }
         }
         line.renderOrder = 8; group.add(line); root.add(group);
-        return { edge, curve, group, line, length: curve.getLength(), visible: true, active: false, color: 0x53ddd0 };
+        return { edge, curve, group, line, length: curve.getLength(), visible: true, active: false, color: 0x53ddd0, events: [] };
     }
 
     function updateVisibility() {
@@ -77,10 +89,10 @@ export function createVehicleNetwork() {
         for (const record of records.values()) {
             if (!record.visible || !record.active) continue;
             const { edge, curve, length } = record;
-            const count = edge.kind === "can" ? 3 : 2;
+            const count = edge.kind === "can" ? record.events.length : 2;
             const offset = edge.targetId.charCodeAt(0) / 255;
             for (let i = 0; i < count; i++) {
-                const t = (phase * .9 / Math.max(.5, length) + i / count + offset) % 1;
+                const t = edge.kind === "can" ? record.events[i] : (phase * .9 / Math.max(.5, length) + i / count + offset) % 1;
                 curve.getPointAt(edge.direction === "outbound" ? 1 - t : t, position);
                 transform.makeTranslation(position.x, position.y, position.z);
                 pulses.setMatrixAt(index, transform);
@@ -100,7 +112,10 @@ export function createVehicleNetwork() {
         if (key !== topologyKey) {
             for (const record of records.values()) {
                 root.remove(record.group);
-                record.line.geometry.dispose(); record.line.material.dispose();
+                const geometries = new Set(), materials = new Set();
+                record.group.traverse(object => { if (object.isMesh || object.isLine) { geometries.add(object.geometry); materials.add(object.material); } });
+                for (const geometry of geometries) geometry.dispose();
+                for (const material of materials) material.dispose();
             }
             records.clear(); topologyKey = key;
             for (const edge of edges) records.set(edge.id, createRecord(edge));
@@ -111,15 +126,25 @@ export function createVehicleNetwork() {
             const status = connectionStatus(edge, snapshot);
             record.active = status.active; record.color = status.color;
             record.line.material.color.set(status.color);
+            if (edge.kind === "can") {
+                const current = next.vehicle?.transmittedFrames?.[edge.system] ?? 0, previous = lastCounts[edge.system];
+                if (!status.active || previous === undefined || current < previous) record.events = [];
+                else if (current > previous) record.events = [...record.events, 0].slice(-8);
+            }
         }
+        lastCounts = { ...(next.vehicle?.transmittedFrames ?? {}) };
         updateVisibility();
     }
 
     return {
         root, records, pulses, applyState,
         setView(next) { view = { ...view, ...next }; updateVisibility(); },
-        hasActiveFlow() { return root.visible && [...records.values()].some(record => record.visible && record.active); },
-        advance(seconds) { phase += seconds; updatePulses(); },
+        hasActiveFlow() { return root.visible && [...records.values()].some(record => record.visible && record.active && (record.edge.kind !== "can" || record.events.length)); },
+        advance(seconds) {
+            phase += seconds;
+            for (const record of records.values()) record.events = record.events.map(t => t + seconds * 3 / Math.max(.5, record.length)).filter(t => t < 1);
+            updatePulses();
+        },
         summary() {
             const visible = [...records.values()].filter(record => record.visible);
             return { wired: visible.filter(record => record.edge.kind === "signal").length,

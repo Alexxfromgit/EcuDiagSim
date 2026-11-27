@@ -155,6 +155,46 @@ try {
         console.log("PASS: all 16 actual C++ equipment settings, fitted geometry/markers, CAN and radio paths, animated flow, pause, reduced motion, hidden panel and wiring/flow switches");
         await page.locator("#target-select").selectOption("ect");
     }
+    if (process.env.ECUSIM_VIEWER_CONTROL_FIXTURES) {
+        const cases = JSON.parse(await readFile(process.env.ECUSIM_VIEWER_CONTROL_FIXTURES, "utf8"));
+        await page.locator("#target-select").selectOption("");
+        await page.locator("#exterior").click();
+        for (const state of cases) {
+            await page.evaluate(snapshot => window.vehicleViewer.setState(snapshot), state);
+            await page.waitForTimeout(50);
+            const { controls } = await page.evaluate(() => window.vehicleViewer.getRenderState());
+            assert.deepEqual(Object.keys(controls.lights).filter(key => controls.lights[key]).sort(), [...state.expectedLights].sort(), state.name);
+            assert.deepEqual(controls.doors, state.vehicle.doors.map((open, i) => open ? (i % 2 === 0 ? -1 : 1) * 1.1 : 0), state.name);
+            assert.ok(Math.abs(controls.steering[0] - state.vehicle.roadWheelAngle * Math.PI / 180) < 1e-8, state.name);
+            assert.equal(controls.belt, state.vehicle.seatBelt);
+            assert.deepEqual(controls.bags, state.vehicle.airbagFired);
+            assert.ok(Math.abs(controls.fuel - Math.max(.02, state.vehicle.fuel / 55)) < 1e-8);
+            assert.ok(Math.abs(controls.throttle - state.vehicle.throttle * .8 * Math.PI / 180) < 1e-8);
+            assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(`${state.vehicle.fuel.toFixed(0)} L`));
+            assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(`Parking brake ${state.vehicle.parkBrake ? "on" : "off"}`));
+            assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(["Dry", "Wet", "Snow", "Ice"][state.vehicle.surface]));
+            if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR && ["low", "hazards-on", "brake-and-reverse", "door-0-open", "locked-belt-steering-fuel-snow"].includes(state.name)) {
+                await page.locator(`[data-view="${["hazards-on", "brake-and-reverse"].includes(state.name) ? "rear" : "perspective"}"]`).click();
+                await page.waitForTimeout(70);
+                await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, `control-${state.name}.png`) });
+            }
+        }
+        const driving = cases.find(state => state.name === "driving");
+        await page.evaluate(state => window.vehicleViewer.setState({ ...state, running: true, reducedMotion: false }), driving);
+        const before = await page.evaluate(() => window.vehicleViewer.getRenderState().controls.rolling);
+        await page.waitForTimeout(180);
+        assert.notDeepEqual(await page.evaluate(() => window.vehicleViewer.getRenderState().controls.rolling), before, "wheels must roll in exterior mode");
+        await page.evaluate(state => window.vehicleViewer.setState(state), cases[0]);
+        for (const view of ["side", "rear", "front", "perspective"]) {
+            await page.locator(`[data-view="${view}"]`).click();
+            await page.waitForTimeout(80);
+            if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR)
+                await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, `vehicle-${view}.png`) });
+        }
+        await page.locator("#diagnostic").click();
+        await page.locator("#target-select").selectOption("ect");
+        console.log(`PASS: ${cases.length} real C++ driver-control snapshots, all lamp banks, blink phases, power loss, bulb fault, four doors, steering, restraints, fuel and exterior wheel motion`);
+    }
     await page.setViewportSize({ width: 360, height: 740 });
     await page.waitForTimeout(100);
     assert.equal(await page.locator("#selected-name").isVisible(), true);

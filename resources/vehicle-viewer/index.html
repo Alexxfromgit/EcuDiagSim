@@ -23,12 +23,13 @@
     </header>
     <main>
         <section id="stage" aria-label="Interactive car. Hold the left mouse button and drag to rotate; scroll to zoom.">
-            <div class="scene-heading"><span class="eyebrow">EXECUTIVE SEDAN</span><span id="scene-caption">Connected systems · schematic routing</span><span id="connection-summary"></span></div>
+            <div class="scene-heading"><span class="eyebrow">EXECUTIVE SEDAN</span><span id="scene-caption">Sensor circuits · live CAN activity</span><span id="connection-summary"></span></div>
             <span id="flow-state" class="flow-state" role="status">Connecting</span>
             <div id="labels"></div>
             <div id="viewer-error" role="alert" hidden></div>
-            <div class="view-presets" aria-label="Camera presets"><button data-view="perspective">Perspective</button><button data-view="top">Top</button><button data-view="front">Front</button></div>
-            <div class="scene-footer"><span>Drag to rotate · Scroll to zoom</span><span>Solid: circuit / CAN · Dashed: TPMS radio · Flow is illustrative</span></div>
+            <div id="vehicle-telemetry" class="vehicle-telemetry" aria-label="Live vehicle state"></div>
+            <div class="view-presets" aria-label="Camera presets"><button data-view="perspective">Perspective</button><button data-view="side">Side</button><button data-view="rear">Rear</button><button data-view="top">Top</button><button data-view="front">Front</button></div>
+            <div class="scene-footer"><span>Drag to rotate · Scroll to zoom</span><span>Solid: circuit / CAN · Dashed: TPMS radio</span></div>
         </section>
         <aside aria-label="Component inspector">
             <label class="eyebrow" for="target-select">COMPONENTS <span id="target-count"></span></label>
@@ -45,6 +46,7 @@
                 <button id="diagnose" class="wide" hidden>Diagnose controller</button>
             </div>
             <div class="legend"><span><i class="healthy"></i> Healthy</span><span><i class="fault"></i> Fault</span><span><i class="sleep"></i> Asleep</span></div>
+            <small class="asset-credit" title="Gourami - Luxury Saloon by Fishboe/ministephen, modified by sevnworks and EcuDiagSim. CC BY 4.0. Full attribution in the application's licenses/sedan directory.">Sedan: Fishboe · adapted · CC BY 4.0</small>
         </aside>
     </main>
     <script type="module" src="viewer.js"></script>

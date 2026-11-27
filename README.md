@@ -112,10 +112,13 @@ The modern four-door sedan has curved body panels, wheel openings, separate glaz
 and slim lights. The fitted Engine OBD, TPMS, SRS and ESC packs add their physical components,
 markers and connections. Diagnostic mode shows solid sensor/CAN wiring and dashed TPMS radio
 paths with animated signal pulses. Flow respects pause, reduced motion and panel visibility;
-**Wiring** and **Data flow** can also be switched off. Routing and packet timing are illustrative.
+**Wiring** and **Data flow** can also be switched off. CAN pulses follow newly transmitted frames;
+routing, sensor sampling pulses and display timing are illustrative. Doors, steering, wheels,
+position/dipped/high lamps, indicators/hazards, brake and reverse lamps follow simulator state.
 
-The generic car is original procedural geometry with illustrative component locations; it is
-not an OEM engineering model or a photorealistic asset. The viewer uses bundled Three.js
+The exterior adapts **Gourami - Luxury Saloon** by **Fishboe/ministephen**, via sevnworks,
+under **CC BY 4.0**, with attribution shipped in the app. The viewer code remains MIT.
+Component locations and harness routes are approximate. The viewer uses bundled Three.js
 under MIT and LGPL Qt modules, without Qt Quick 3D. **Diagram** preserves the original view.
 Configure with `-DECUSIM_VEHICLE_3D=OFF` to omit WebEngine entirely. If its Qt modules are absent,
 the build falls back to the diagram with a CMake warning. Software-rendered Qt sessions default

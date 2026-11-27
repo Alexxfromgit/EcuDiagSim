@@ -54,6 +54,7 @@ if(ECUSIM_HAS_VEHICLE_3D)
             "${vehicle_web_dir}/vehicle-model.js"
             "${vehicle_web_dir}/vehicle-state.js"
             "${vehicle_web_dir}/vehicle-network.js"
+            "${vehicle_web_dir}/assets/sedan-mesh.js"
             "${vehicle_web_dir}/vendor/three.module.min.js"
             "${vehicle_web_dir}/vendor/three.core.min.js"
             "${vehicle_web_dir}/vendor/OrbitControls.js"
@@ -102,6 +103,8 @@ install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD-PARTY-NOT
 if(ECUSIM_HAS_VEHICLE_3D)
     install(FILES "${vehicle_web_dir}/vendor/LICENSE" DESTINATION "${ecusim_license_dir}"
         RENAME "three.js-LICENSE.txt")
+    install(FILES "${vehicle_web_dir}/assets/CC-BY-4.0.txt" "${vehicle_web_dir}/assets/ATTRIBUTION.md"
+        DESTINATION "${ecusim_license_dir}/sedan")
 endif()
 
 if(TARGET velopack)

@@ -104,9 +104,13 @@ AppController::~AppController() = default;
 
 void AppController::createSimulation(const VehicleConfig &config)
 {
+    m_vehicleFrameCounts.clear();
     m_sim = std::make_unique<Simulation>(config);
     m_trace->setDatabase(&m_sim->dbc());
-    m_sim->bus().addListener([this](const BusFrame &frame) { m_trace->append(frame); });
+    m_sim->bus().addListener([this](const BusFrame &frame) {
+        m_trace->append(frame);
+        ++m_vehicleFrameCounts[frame.sender];
+    });
     m_sim->tester().onResult = [this](const DiagResult &result) { m_scanner->onResult(result); };
     m_sim->scenario().onLog = [this](const ScenarioLogEntry &entry) {
         static const char *kLevels[] = {"info", "action", "pass", "fail"};
@@ -498,6 +502,9 @@ QVariantMap AppController::cluster() const
 QVariantMap AppController::vehicle() const
 {
     const VehicleModel &v = m_sim->vehicle();
+    QVariantMap transmittedFrames;
+    for (auto it = m_vehicleFrameCounts.cbegin(); it != m_vehicleFrameCounts.cend(); ++it)
+        transmittedFrames.insert(it.key(), QVariant::fromValue(it.value()));
     return {{QStringLiteral("speed"), v.speedKph()},
         {QStringLiteral("velocity"), v.velocityKph()},
         {QStringLiteral("rpm"), v.engineRpm()},
@@ -515,7 +522,7 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("oilPressure"), v.oilPressureBar()},
         {QStringLiteral("airbagFired"), QVariantList{v.airbagFired[0], v.airbagFired[1]}},
         {QStringLiteral("wheels"), QVariantList{v.wheelSpeedKph(0), v.wheelSpeedKph(1), v.wheelSpeedKph(2), v.wheelSpeedKph(3)}},
-        {QStringLiteral("locked"), QVariantList{v.wheelLocked(0), v.wheelLocked(1), v.wheelLocked(2), v.wheelLocked(3)}},
+        {QStringLiteral("wheelLocked"), QVariantList{v.wheelLocked(0), v.wheelLocked(1), v.wheelLocked(2), v.wheelLocked(3)}},
         {QStringLiteral("roadWheelAngle"), v.roadWheelAngle()},
         {QStringLiteral("yawRate"), v.yawRate()},
         {QStringLiteral("surface"), m_sim->driver().surface},
@@ -525,6 +532,11 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("ignition"), m_sim->driver().ignition != Ignition::Off},
         {QStringLiteral("selector"), static_cast<int>(m_sim->driver().selector)},
         {QStringLiteral("doors"), doors()},
+        {QStringLiteral("seatBelt"), m_sim->driver().seatBelt},
+        {QStringLiteral("steering"), m_sim->driver().steering},
+        {QStringLiteral("braking"), m_sim->driver().brakePedal > 0.02},
+        {QStringLiteral("reversing"), m_sim->driver().ignition != Ignition::Off && m_sim->driver().selector == Selector::R},
+        {QStringLiteral("transmittedFrames"), transmittedFrames},
         // exterior lamps as the BCM really drives them (dark when the BCM has no supply)
         {QStringLiteral("lowBeam"), m_sim->bcm().lowBeamOn()},
         {QStringLiteral("highBeam"), m_sim->bcm().highBeamOn()},
@@ -533,6 +545,7 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("turnRightLamp"), m_sim->bcm().turnRightLampOn()},
         {QStringLiteral("bulbLowLeftOpen"), v.bulbLowLeftOpen},
         {QStringLiteral("locked"), m_sim->bcm().doorsLocked()},
+        {QStringLiteral("doorsLocked"), m_sim->bcm().doorsLocked()},
         {QStringLiteral("busLoad"), m_sim->bus().busLoad()},
         {QStringLiteral("busFailure"), m_sim->bus().busFailure()}};
 }

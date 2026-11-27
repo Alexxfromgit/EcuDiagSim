@@ -37,8 +37,19 @@ The offline vehicle viewer bundles Three.js **0.180.0**, including OrbitControls
 `licenses/three.js-LICENSE.txt` (inside `Contents/Resources` on macOS).
 See `resources/vehicle-viewer/vendor/README.md` for the exact source and checksum.
 
-The car geometry and generated environment lighting are original project assets under the
-repository's MIT license. No purchased model, HDRI, font, texture, or Qt Quick 3D module is used.
+The sedan exterior is adapted from **Gourami - Luxury Saloon** by **Fishboe / ministephen**, via
+the modified model distributed in **Moonline** by **sevnworks**, under **CC BY 4.0**.
+Its source, modification history and attribution are in
+`resources/vehicle-viewer/assets/ATTRIBUTION.md`; the full license is in that directory's
+`CC-BY-4.0.txt`. Both are installed in `licenses/sedan` with 3D-enabled packages.
+The repository's MIT license does not relicense this geometry. The viewer code, additive
+diagnostic assemblies and generated environment lighting remain MIT. No purchased asset,
+HDRI, font, texture, or Qt Quick 3D module is used.
+
+The offline asset preparation tool uses **meshoptimizer 0.22**'s unmodified decoder,
+© 2016–2024 Arseny Kapoulkine, under the **MIT License**. Its full license is
+`resources/vehicle-viewer/vendor/meshoptimizer-LICENSE.md`. The decoder is not shipped in
+the application; it is included in the source repository for reproducible asset preparation.
 
 Qt WebEngine contains Chromium and other third-party software under additional licenses;
 see <https://doc.qt.io/qt-6.8/qtwebengine-licensing.html>. Its notices must be retained alongside
