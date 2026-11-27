@@ -28,7 +28,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
-          modules: qtserialbus qtserialport
+          modules: qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning
           cache: true
 
       - uses: ilammy/msvc-dev-cmd@v1
@@ -94,7 +94,7 @@ jobs:
         timeout-minutes: 10
         with:
           version: ${{ env.QT_VERSION }}
-          modules: qtserialbus qtserialport
+          modules: qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning
           cache: true
 
       - uses: actions/setup-dotnet@v6
@@ -152,7 +152,8 @@ jobs:
           apt_opts=(-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
           sudo apt-get "${apt_opts[@]}" update
           sudo apt-get "${apt_opts[@]}" install -y --no-install-recommends \
-            ninja-build libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3
+            ninja-build libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3 \
+            libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxkbfile1 libasound2t64
 
       - name: Ninja without apt
         if: steps.apt.outcome != 'success'
@@ -162,7 +163,7 @@ jobs:
         timeout-minutes: 10
         with:
           version: ${{ env.QT_VERSION }}
-          modules: qtserialbus qtserialport
+          modules: qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning
           cache: true
           # Its own dependency install pulls ~40 multimedia packages we do not need and is
           # what hung for 18 minutes when the apt mirror was down. Ours above is enough.

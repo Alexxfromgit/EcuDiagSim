@@ -21,6 +21,7 @@ option(ECUSIM_BUILD_TESTS "Build the unit and end-to-end tests" ON)
 option(ECUSIM_WERROR "Treat compiler warnings as errors" OFF)
 option(ECUSIM_SANITIZE "Enable ASan + UBSan (GCC/Clang)" OFF)
 option(ECUSIM_UPDATES "In-app updates with Velopack (downloads the Velopack C library)" ON)
+option(ECUSIM_VEHICLE_3D "Enable the offline Three.js vehicle view (Qt WebEngine and WebChannel)" ON)
 # Version shown in the app. Releases use the project version; override it to try an update locally
 # (see CONTRIBUTING.md).
 set(ECUSIM_VERSION "${PROJECT_VERSION}" CACHE STRING "Version the app reports")
@@ -57,6 +58,14 @@ endif()
 
 if(ECUSIM_BUILD_APP)
     find_package(Qt6 6.8 REQUIRED COMPONENTS Gui Qml Quick QuickControls2)
+    if(ECUSIM_VEHICLE_3D)
+        find_package(Qt6 6.8 QUIET COMPONENTS WebEngineQuick WebChannel)
+        if(TARGET Qt6::WebEngineQuick AND TARGET Qt6::WebChannel)
+            set(ECUSIM_HAS_VEHICLE_3D ON)
+        else()
+            message(WARNING "3D vehicle disabled: install Qt WebEngine and WebChannel, or configure with -DECUSIM_VEHICLE_3D=OFF")
+        endif()
+    endif()
     # Qt 6.8 links Apple's long-deprecated AGL framework, which current macOS SDKs no longer
     # contain ("framework 'AGL' not found"); later Qt versions dropped it. Nothing uses it.
     if(APPLE AND TARGET WrapOpenGL::WrapOpenGL)

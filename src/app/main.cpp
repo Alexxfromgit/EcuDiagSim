@@ -10,6 +10,10 @@
 #include <QScreen>
 #include <QTimer>
 
+#ifdef ECUSIM_HAS_VEHICLE_3D
+#include <QtWebEngineQuick/qtwebenginequickglobal.h>
+#endif
+
 #ifdef ECUSIM_HAS_VELOPACK
 #include "Velopack.hpp"
 #endif
@@ -20,6 +24,9 @@ int main(int argc, char *argv[])
     // First thing, before any window: Velopack's install / update / uninstall hooks run here and
     // may exit the process, and an update downloaded earlier is installed on this start.
     Velopack::VelopackApp::Build().Run();
+#endif
+#ifdef ECUSIM_HAS_VEHICLE_3D
+    QtWebEngineQuick::initialize();
 #endif
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("EcuDiagSim"));
@@ -52,10 +59,18 @@ int main(int argc, char *argv[])
     const QCommandLineOption sizeOpt(QStringLiteral("size"),
         QStringLiteral("Window size, e.g. 1366x768 (for screenshots and testing small screens)."),
         QStringLiteral("WxH"));
-    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt, settingsOpt, udsOpt});
+    const QCommandLineOption vehicle3DOpt(QStringLiteral("vehicle-3d"),
+        QStringLiteral("Open the expanded 3D vehicle workspace (requires the 3D build option)."));
+    parser.addOptions({scenarioOpt, tabOpt, speedOpt, shotOpt, afterOpt, sizeOpt, settingsOpt, udsOpt, vehicle3DOpt});
     parser.process(app);
 
     QQmlApplicationEngine engine;
+    bool hasVehicle3D = false;
+#ifdef ECUSIM_HAS_VEHICLE_3D
+    hasVehicle3D = true;
+#endif
+    engine.setInitialProperties({{QStringLiteral("vehicle3DAvailable"), hasVehicle3D},
+        {QStringLiteral("vehicle3DDefault"), hasVehicle3D && qEnvironmentVariable("QT_QUICK_BACKEND") != QStringLiteral("software")}});
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("EcuDiagSim", "Main");
@@ -84,6 +99,8 @@ int main(int argc, char *argv[])
         QMetaObject::invokeMethod(root, "openUds", Qt::QueuedConnection, Q_ARG(QVariant, parser.value(udsOpt).toInt()));
     if (parser.isSet(settingsOpt))
         QMetaObject::invokeMethod(root, "openSettings", Qt::QueuedConnection);
+    if (parser.isSet(vehicle3DOpt) && hasVehicle3D)
+        QMetaObject::invokeMethod(root, "openVehicle3D", Qt::QueuedConnection);
     if (parser.isSet(sizeOpt)) {
         const QStringList wh = parser.value(sizeOpt).split(QLatin1Char('x'));
         if (wh.size() == 2) {

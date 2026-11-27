@@ -17,6 +17,8 @@ ApplicationWindow {
 
     // 0 faults, 1 CAN trace, 2 scanner, 3 scenarios
     property int currentTab: 0
+    property bool vehicle3DAvailable: false
+    property bool vehicle3DDefault: false
     // Below this width the vehicle view is hidden by default to keep the tabs usable.
     readonly property bool narrow: width < 1200
     // The user's explicit choice (true / false) wins; undefined = follow the window width.
@@ -55,6 +57,10 @@ ApplicationWindow {
     // Tooltips must never cover the element they describe, or they swallow its clicks.
     ToolTipPlacement {}
     function openSettings() { settings.open() }
+    function openVehicle3D() {
+        carChoice = true
+        vehicleWorkspace.open3D()
+    }
     function openUds(index) {
         App.scanner.target = index
         scannerPanel.showUds()
@@ -131,7 +137,10 @@ ApplicationWindow {
             Layout.fillHeight: true
             spacing: 10
 
-            VehicleView {
+            VehicleWorkspace {
+                id: vehicleWorkspace
+                threeDAvailable: window.vehicle3DAvailable
+                show3D: window.vehicle3DDefault
                 visible: window.carVisible
                 Layout.preferredWidth: window.carWidth
                 Layout.maximumWidth: window.carWidth

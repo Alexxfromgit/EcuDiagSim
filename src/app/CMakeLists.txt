@@ -32,6 +32,7 @@ qt_add_qml_module(EcuDiagSim
         qml/Cluster.qml
         qml/DriverControls.qml
         qml/VehicleView.qml
+        qml/VehicleWorkspace.qml
         qml/FaultsPanel.qml
         qml/TracePanel.qml
         qml/ScannerPanel.qml
@@ -39,6 +40,24 @@ qt_add_qml_module(EcuDiagSim
         qml/SettingsPage.qml
         qml/ToolTipPlacement.qml
 )
+
+if(ECUSIM_HAS_VEHICLE_3D)
+    target_compile_definitions(EcuDiagSim PRIVATE ECUSIM_HAS_VEHICLE_3D)
+    target_link_libraries(EcuDiagSim PRIVATE Qt6::WebEngineQuick Qt6::WebChannel)
+    qt_target_qml_sources(EcuDiagSim QML_FILES qml/Vehicle3D.qml)
+    set(vehicle_web_dir "${CMAKE_SOURCE_DIR}/resources/vehicle-viewer")
+    qt_add_resources(EcuDiagSim "vehicle_viewer" PREFIX "/vehicle-viewer" BASE "${vehicle_web_dir}"
+        FILES
+            "${vehicle_web_dir}/index.html"
+            "${vehicle_web_dir}/viewer.css"
+            "${vehicle_web_dir}/viewer.js"
+            "${vehicle_web_dir}/vehicle-model.js"
+            "${vehicle_web_dir}/vehicle-state.js"
+            "${vehicle_web_dir}/vendor/three.module.min.js"
+            "${vehicle_web_dir}/vendor/three.core.min.js"
+            "${vehicle_web_dir}/vendor/OrbitControls.js"
+            "${vehicle_web_dir}/vendor/LICENSE")
+endif()
 
 target_include_directories(EcuDiagSim PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(EcuDiagSim PRIVATE ECUSIM_VERSION="${ECUSIM_VERSION}")
@@ -71,6 +90,18 @@ set_target_properties(EcuDiagSim PROPERTIES
 install(TARGETS EcuDiagSim
     BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(APPLE)
+    set(ecusim_license_dir "EcuDiagSim.app/Contents/Resources/licenses")
+else()
+    set(ecusim_license_dir "licenses")
+endif()
+install(FILES "${CMAKE_SOURCE_DIR}/LICENSE" "${CMAKE_SOURCE_DIR}/THIRD-PARTY-NOTICES.md"
+    DESTINATION "${ecusim_license_dir}")
+if(ECUSIM_HAS_VEHICLE_3D)
+    install(FILES "${vehicle_web_dir}/vendor/LICENSE" DESTINATION "${ecusim_license_dir}"
+        RENAME "three.js-LICENSE.txt")
+endif()
 
 if(TARGET velopack)
     if(WIN32)

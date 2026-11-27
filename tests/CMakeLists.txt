@@ -13,6 +13,13 @@ ecusim_add_test(tst_obd)
 ecusim_add_test(tst_vehicle)
 ecusim_add_test(tst_trace)
 ecusim_add_test(tst_scenarios)
+
+# Optional developer tooling only; the app and its builds never need Node/npm.
+find_program(ECUSIM_NODE_EXECUTABLE node)
+if(ECUSIM_NODE_EXECUTABLE)
+    add_test(NAME tst_vehicle_viewer_state
+        COMMAND "${ECUSIM_NODE_EXECUTABLE}" --test "${CMAKE_CURRENT_SOURCE_DIR}/vehicle-viewer.test.mjs")
+endif()
 # The bundled lessons point at their documentation; the test checks those files exist.
 target_compile_definitions(tst_scenarios PRIVATE ECUSIM_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
