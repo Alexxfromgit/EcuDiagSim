@@ -3,6 +3,7 @@
 #include "WindowGeometry.h"
 
 #include <QAbstractItemModelTester>
+#include <QCryptographicHash>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -54,6 +55,7 @@ private slots:
     void equipmentCatalogAndChoice();
     void vehicleViewerEquipmentSnapshots();
     void vehicleViewerControlSnapshots();
+    void legacyBehaviorSnapshots();
     void viewModelsDescribeTheVehicle();
     void codingReadFillsTheField();
     void pollingDoesNotLeakIntoDtcTable();
@@ -306,6 +308,22 @@ void tst_App::vehicleViewerControlSnapshots()
     QVERIFY(!app.vehicle().value(QStringLiteral("lowBeam")).toBool());
     capture(QStringLiteral("bcm-power-loss-hardwired-brake-reverse"), stopReverse);
     app.clearAllFaults(); app.setHeadlamps(0); app.setHighBeam(false); app.setHazard(false); app.setBrake(0); app.setSelector(0); app.step(40);
+    const QStringList components{QStringLiteral("airbag_driver"), QStringLiteral("airbag_passenger"),
+        QStringLiteral("belt_switch"), QStringLiteral("bulb_low_left")};
+    for (const QString &id : components) {
+        const QString fault = id == QLatin1String("bulb_low_left") ? QStringLiteral("failure") : QStringLiteral("open");
+        QVERIFY(app.injectFault(id, fault, {}, {})); app.step(60);
+        QCOMPARE(app.vehicle().value(QStringLiteral("componentCircuits")).toMap().value(id).toString(), QStringLiteral("open"));
+        capture(QStringLiteral("component-%1-open").arg(id), {});
+        if (id.startsWith(QLatin1String("airbag_"))) {
+            QVERIFY(app.injectFault(id, QStringLiteral("short_gnd"), {}, {})); app.step(60);
+            QCOMPARE(app.vehicle().value(QStringLiteral("componentCircuits")).toMap().value(id).toString(), QStringLiteral("short_gnd"));
+            capture(QStringLiteral("component-%1-short").arg(id), {});
+        }
+        app.clearAllFaults(); app.step(60);
+        QCOMPARE(app.vehicle().value(QStringLiteral("componentCircuits")).toMap().value(id).toString(), QStringLiteral("ok"));
+        capture(QStringLiteral("component-%1-repaired").arg(id), {});
+    }
     for (int i = 0; i < 4; ++i) {
         app.setDoor(i, true); app.step(40);
         QCOMPARE(app.vehicle().value(QStringLiteral("doors")).toList().at(i).toBool(), true);
@@ -343,6 +361,91 @@ void tst_App::vehicleViewerControlSnapshots()
         QFile file(exportPath);
         QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
         const QByteArray json = QJsonDocument(snapshots).toJson();
+        QCOMPARE(file.write(json), static_cast<qint64>(json.size()));
+    }
+    app.setEquipment({});
+}
+
+// This same test can be compiled against a pre-3D checkout and its export compared with
+// the current app. Repeated display reads must never advance or otherwise alter the vehicle.
+void tst_App::legacyBehaviorSnapshots()
+{
+    AppController app;
+    app.setRunning(false);
+    QJsonArray checkpoints;
+    auto display = [&] {
+        QVariantMap vehicle = app.vehicle();
+        for (const QString &key : {QStringLiteral("wheelLocked"), QStringLiteral("seatBelt"), QStringLiteral("steering"),
+                 QStringLiteral("braking"), QStringLiteral("reversing"), QStringLiteral("transmittedFrames"),
+                 QStringLiteral("doorsLocked"), QStringLiteral("componentCircuits")})
+            vehicle.remove(key); // additive 3D metadata; retain every original field, including locked
+        QJsonArray trace;
+        QList<int> roles = app.trace()->roleNames().keys(); std::sort(roles.begin(), roles.end());
+        for (int row = 0; row < app.trace()->rowCount(); ++row) {
+            QJsonArray values;
+            for (int role : roles) values.append(QJsonValue::fromVariant(app.trace()->data(app.trace()->index(row), role)));
+            trace.append(values);
+        }
+        const QByteArray digest = QCryptographicHash::hash(QJsonDocument(trace).toJson(QJsonDocument::Compact), QCryptographicHash::Sha256).toHex();
+        return QJsonObject{{QStringLiteral("time"), app.simTime()}, {QStringLiteral("vehicle"), QJsonObject::fromVariantMap(vehicle)},
+            {QStringLiteral("cluster"), QJsonObject::fromVariantMap(app.cluster())},
+            {QStringLiteral("sensors"), QJsonArray::fromVariantList(app.sensors())},
+            {QStringLiteral("ecus"), QJsonArray::fromVariantList(app.ecus())},
+            {QStringLiteral("faults"), QJsonArray::fromVariantList(app.activeFaults())},
+            {QStringLiteral("targets"), QJsonArray::fromVariantList(app.faultTargets())},
+            {QStringLiteral("fitted"), QJsonArray::fromStringList(app.fitted())},
+            {QStringLiteral("traceRows"), app.trace()->rowCount()}, {QStringLiteral("traceSha256"), QString::fromLatin1(digest)},
+            {QStringLiteral("scannerValues"), QJsonArray::fromVariantList(app.scanner()->values())},
+            {QStringLiteral("scannerDtcs"), QJsonArray::fromVariantList(app.scanner()->dtcs())},
+            {QStringLiteral("scannerLog"), QJsonArray::fromVariantList(app.scanner()->log())},
+            {QStringLiteral("session"), app.scanner()->sessionText()}};
+    };
+    auto capture = [&](const QString &name) {
+        const QVariantMap rawVehicle = app.vehicle();
+        const auto first = display();
+        for (int i = 0; i < 3; ++i) QCOMPARE(display(), first);
+        QCOMPARE(app.vehicle(), rawVehicle);
+        checkpoints.append(QJsonObject{{QStringLiteral("name"), name}, {QStringLiteral("state"), first}});
+    };
+    capture(QStringLiteral("fresh-paused"));
+    const QStringList packs{QStringLiteral("engine_obd"), QStringLiteral("tpms"), QStringLiteral("srs"), QStringLiteral("esc")};
+    for (int mask = 0; mask < 16; ++mask) {
+        QStringList fitted;
+        for (int bit = 0; bit < packs.size(); ++bit) if (mask & (1 << bit)) fitted.append(packs.at(bit));
+        app.setEquipment(fitted); app.setIgnition(1); app.step(1500);
+        capture(QStringLiteral("equipment-%1").arg(mask));
+    }
+    app.setHeadlamps(1); app.step(100); capture(QStringLiteral("park-lamps"));
+    app.setHeadlamps(2); app.setHighBeam(true); app.setHazard(true); app.step(100); capture(QStringLiteral("lights-and-hazards"));
+    for (int door = 0; door < 4; ++door) app.setDoor(door, true);
+    app.setSteering(360); app.setSeatBelt(true); app.setDoorLock(true); app.setSurface(2);
+    app.setBrake(25); app.setParkBrake(true); app.setSelector(1); app.refuel(20); app.step(100);
+    capture(QStringLiteral("doors-locks-restraints-reverse-brake-snow"));
+    for (int door = 0; door < 4; ++door) app.setDoor(door, false);
+    app.setSteering(-180); app.setSurface(1); app.setHeadlamps(0); app.setHighBeam(false); app.setHazard(false);
+    app.setBrake(0); app.setParkBrake(false); app.setSelector(0); app.startEngine(); app.step(2500);
+    QVERIFY(app.vehicle().value(QStringLiteral("engineRunning")).toBool());
+    capture(QStringLiteral("engine-running"));
+    app.setSelector(3); app.setThrottle(60); app.step(6000); capture(QStringLiteral("driving"));
+    QVERIFY(app.injectFault(QStringLiteral("wss_fl"), QStringLiteral("open"), {}, {}));
+    QVERIFY(app.injectFault(QStringLiteral("ect"), QStringLiteral("short_gnd"), {}, {}));
+    app.step(1500); capture(QStringLiteral("sensor-faults"));
+    app.scanner()->obdReadCodes(); app.step(1000);
+    app.scanner()->setTarget(2); app.scanner()->udsReadDtcs(0xFF); app.step(500);
+    capture(QStringLiteral("obd-and-uds-dtcs"));
+    app.scanner()->setTarget(3); app.scanner()->udsSession(3); app.step(200);
+    app.scanner()->udsIoControl(0x4010, 1); app.step(200); capture(QStringLiteral("lamp-actuator-test"));
+    app.scanner()->udsIoControl(0x4010, -1); app.step(200);
+    app.trace()->setFixedMode(true); app.trace()->setFilter(QStringLiteral("ABS")); app.step(200);
+    capture(QStringLiteral("filtered-fixed-trace"));
+    app.trace()->setPaused(true); app.step(200); capture(QStringLiteral("paused-trace"));
+    app.clearAllFaults(); app.step(100); capture(QStringLiteral("repaired"));
+    app.reset(); capture(QStringLiteral("reset"));
+    const QString exportPath = qEnvironmentVariable("ECUSIM_LEGACY_SNAPSHOTS");
+    if (!exportPath.isEmpty()) {
+        QFile file(exportPath);
+        QVERIFY2(file.open(QIODevice::WriteOnly), qPrintable(file.errorString()));
+        const QByteArray json = QJsonDocument(checkpoints).toJson();
         QCOMPARE(file.write(json), static_cast<qint64>(json.size()));
     }
     app.setEquipment({});

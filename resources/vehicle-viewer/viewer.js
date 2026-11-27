@@ -309,6 +309,8 @@ class VehicleViewer {
         const number = (value, unit) => Number.isFinite(value) ? `${value.toFixed(2)} ${unit ?? ""}`.trim() : "—";
         if (sensor) rows.push(["True value", number(sensor.trueValue, sensor.unit)], ["ECU measures", number(sensor.value, sensor.unit)],
             ["Signal", sensor.digital ? "Digital" : number(sensor.voltage, "V")], ["Circuit", sensor.circuit]);
+        const circuitLabel = { ok: "OK", open: "Open circuit", short_gnd: "Short to ground" }[target.componentCircuit];
+        if (circuitLabel) rows.push(["Circuit", circuitLabel]);
         if (target.controller) rows.push(["Stored DTCs", String(target.controller.dtcCount)], ["Confirmed DTCs", String(target.controller.confirmed)]);
         byId("selected-values").replaceChildren(...rows.map(([name, value]) => {
             const row = document.createElement("div"); row.className = "value-row";
@@ -317,7 +319,7 @@ class VehicleViewer {
             row.append(term, description); return row;
         }));
         const faults = (this.snapshot.faults ?? []).filter(fault => fault.targetId === target.id);
-        byId("selected-fault").textContent = sensor?.fault || faults.map(fault => fault.typeLabel || fault.type || "Fault active").join(" · ");
+        byId("selected-fault").textContent = sensor?.fault || faults.map(fault => fault.typeLabel || fault.type || "Fault active").join(" · ") || circuitLabel || "Fault active";
         byId("selected-fault").hidden = !target.faulted;
         byId("focus").disabled = !target.position;
         const ecu = target.controller ?? this.snapshot.ecus?.find(item => item.name === target.ecu);
@@ -421,6 +423,7 @@ try {
         setDisplayActive: active => viewer.setDisplayActive(active),
         getRenderState: () => ({ frames: viewer.renderer.info.render.frame, pulses: viewer.network.pulses.count,
             firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)),
+            connections: Object.fromEntries([...viewer.network.records].map(([id, record]) => [id, { active: record.active, visible: record.visible }])),
             controls: { doors: [...viewer.vehicle.doorPivots.values()].map(door => door.rotation.y),
                 steering: viewer.vehicle.wheels.map(wheel => wheel.rotation.y), rolling: viewer.vehicle.wheelSpinners.map(wheel => wheel.rotation.x),
                 belt: viewer.vehicle.belt.visible, bags: viewer.vehicle.bags.map(bag => bag.visible), fuel: viewer.vehicle.fuel.scale.y,

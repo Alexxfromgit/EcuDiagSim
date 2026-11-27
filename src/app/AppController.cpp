@@ -505,6 +505,16 @@ QVariantMap AppController::vehicle() const
     QVariantMap transmittedFrames;
     for (auto it = m_vehicleFrameCounts.cbegin(); it != m_vehicleFrameCounts.cend(); ++it)
         transmittedFrames.insert(it.key(), QVariant::fromValue(it.value()));
+    const auto squibCircuit = [&v](int index) {
+        const double resistance = v.squibResistance(index);
+        return resistance > 4.0 ? QStringLiteral("open")
+            : resistance < 1.0 ? QStringLiteral("short_gnd") : QStringLiteral("ok");
+    };
+    // Read the physical circuit, including a deployed squib, rather than a translated fault label.
+    const QVariantMap componentCircuits{{QStringLiteral("airbag_driver"), squibCircuit(0)},
+        {QStringLiteral("airbag_passenger"), squibCircuit(1)},
+        {QStringLiteral("belt_switch"), v.beltSwitchOpen ? QStringLiteral("open") : QStringLiteral("ok")},
+        {QStringLiteral("bulb_low_left"), v.bulbLowLeftOpen ? QStringLiteral("open") : QStringLiteral("ok")}};
     return {{QStringLiteral("speed"), v.speedKph()},
         {QStringLiteral("velocity"), v.velocityKph()},
         {QStringLiteral("rpm"), v.engineRpm()},
@@ -537,6 +547,7 @@ QVariantMap AppController::vehicle() const
         {QStringLiteral("braking"), m_sim->driver().brakePedal > 0.02},
         {QStringLiteral("reversing"), m_sim->driver().ignition != Ignition::Off && m_sim->driver().selector == Selector::R},
         {QStringLiteral("transmittedFrames"), transmittedFrames},
+        {QStringLiteral("componentCircuits"), componentCircuits},
         // exterior lamps as the BCM really drives them (dark when the BCM has no supply)
         {QStringLiteral("lowBeam"), m_sim->bcm().lowBeamOn()},
         {QStringLiteral("highBeam"), m_sim->bcm().highBeamOn()},

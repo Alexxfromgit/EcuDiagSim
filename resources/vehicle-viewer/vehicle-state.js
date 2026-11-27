@@ -56,11 +56,11 @@ export function connectionStatus(connection, snapshot) {
     const faults = snapshot.faults ?? [];
     const busShort = faults.some(fault => fault.targetId === "can_bus");
     const ecuPowered = ecu && !["sleep", "nopower"].includes(ecu.state);
-    const missing = connection.target?.faulted && (connection.kind === "radio" ||
-        /open|short|missing/i.test(connection.target.sensor?.circuit ?? ""));
+    const circuit = snapshot.vehicle?.componentCircuits?.[connection.targetId] ?? connection.target?.sensor?.circuit ?? "";
+    const missing = /open|short|missing/i.test(circuit) || (connection.kind === "radio" && connection.target?.faulted);
     const blocked = !ecuPowered || (connection.kind === "can" && (busShort || ecu.state === "busoff")) || missing;
     return { active: Boolean(ecuPowered && !blocked),
-        faulted: Boolean(connection.target?.faulted || ecu?.state === "nopower" ||
+        faulted: Boolean(missing || connection.target?.faulted || ecu?.state === "nopower" ||
             (connection.kind === "can" && (busShort || ecu?.state === "busoff"))),
         color: !ecuPowered ? 0x536475 : blocked || connection.target?.faulted ? 0xffae49 :
             connection.kind === "can" ? 0x46d4ec : connection.kind === "radio" ? 0xc393ff : systemColors[connection.system] ?? 0x53ddd0 };
@@ -77,12 +77,14 @@ export function targetsFromSnapshot(snapshot) {
     return (snapshot.targets ?? []).map(target => {
         const controller = controllers.get(target.id);
         const sensor = sensors.get(target.id);
+        const componentCircuit = snapshot.vehicle?.componentCircuits?.[target.id];
+        const circuitFault = componentCircuit && componentCircuit !== "ok";
         return {
-            ...target, controller, sensor, position: locations[target.id],
+            ...target, controller, sensor, componentCircuit, position: locations[target.id],
             label: controller?.name ?? sensor?.shortName ?? target.label ?? target.id.toUpperCase(),
-            faulted: faults.has(target.id) || sensor?.faulted === true ||
+            faulted: faults.has(target.id) || sensor?.faulted === true || Boolean(circuitFault) ||
                 ["fault", "busoff", "nopower"].includes(controller?.state),
-            state: controller?.state ?? (faults.has(target.id) || sensor?.faulted ? "fault" : "ok")
+            state: controller?.state ?? (faults.has(target.id) || sensor?.faulted || circuitFault ? "fault" : "ok")
         };
     });
 }

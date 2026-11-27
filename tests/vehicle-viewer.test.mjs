@@ -170,6 +170,31 @@ test("CAN pulses require newly transmitted frames and clear on reset or power lo
     assert.equal(ecm.events.length, 0, "a reset must not replay old activity");
 });
 
+test("physical component circuits stop flow on opens/shorts, including deployed squibs, and resume after repair", () => {
+    const state = equippedSnapshot();
+    // Native Component targets have no sensor object and fault.type is a human-readable label.
+    state.faults = [{ targetId: "airbag_driver", type: "Open circuit" }];
+    state.vehicle = { componentCircuits: { airbag_driver: "open", airbag_passenger: "short_gnd", belt_switch: "open", bulb_low_left: "open" } };
+    const network = createVehicleNetwork();
+    network.setView({ visibleIds: new Set(state.targets.map(target => target.id)) });
+    network.applyState(state);
+    for (const id of Object.keys(state.vehicle.componentCircuits)) {
+        const record = network.records.get("signal:" + id);
+        assert.equal(record.active, false, id);
+        assert.equal(connectionStatus(record.edge, state).faulted, true, id);
+        assert.equal(targetsFromSnapshot(state).find(target => target.id === id).faulted, true, id);
+    }
+    state.faults = []; // a deployed squib is open without an injected fault
+    network.applyState(state);
+    assert.equal(network.records.get("signal:airbag_driver").active, false);
+    state.vehicle.componentCircuits = Object.fromEntries(Object.keys(state.vehicle.componentCircuits).map(id => [id, "ok"]));
+    network.applyState(state);
+    for (const id of Object.keys(state.vehicle.componentCircuits)) assert.equal(network.records.get("signal:" + id).active, true, id);
+    state.faults = [{ targetId: "throttle_body", type: "Not configured" }];
+    network.applyState(state);
+    assert.equal(network.records.get("signal:throttle_body").active, true, "a missing adaptation must not invent a broken wire");
+});
+
 test("sedan actuators reflect the outputs, without coupling high beam to a failed dipped bulb", () => {
     const car = createVehicle();
     const state = equippedSnapshot();

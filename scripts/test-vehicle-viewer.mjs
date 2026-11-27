@@ -162,7 +162,13 @@ try {
         for (const state of cases) {
             await page.evaluate(snapshot => window.vehicleViewer.setState(snapshot), state);
             await page.waitForTimeout(50);
-            const { controls } = await page.evaluate(() => window.vehicleViewer.getRenderState());
+            const { controls, connections } = await page.evaluate(() => window.vehicleViewer.getRenderState());
+            for (const [id, circuit] of Object.entries(state.vehicle.componentCircuits ?? {})) {
+                const target = state.targets.find(target => target.id === id);
+                if (!target) continue;
+                const ecu = state.ecus.find(ecu => ecu.name === target.ecu);
+                assert.equal(connections["signal:" + id].active, circuit === "ok" && !["sleep", "nopower"].includes(ecu.state), `${state.name}: ${id} circuit flow`);
+            }
             assert.deepEqual(Object.keys(controls.lights).filter(key => controls.lights[key]).sort(), [...state.expectedLights].sort(), state.name);
             assert.deepEqual(controls.doors, state.vehicle.doors.map((open, i) => open ? (i % 2 === 0 ? -1 : 1) * 1.1 : 0), state.name);
             assert.ok(Math.abs(controls.steering[0] - state.vehicle.roadWheelAngle * Math.PI / 180) < 1e-8, state.name);
@@ -173,6 +179,16 @@ try {
             assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(`${state.vehicle.fuel.toFixed(0)} L`));
             assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(`Parking brake ${state.vehicle.parkBrake ? "on" : "off"}`));
             assert.match(await page.locator("#vehicle-telemetry").textContent(), new RegExp(["Dry", "Wet", "Snow", "Ice"][state.vehicle.surface]));
+            if (state.name === "component-airbag_driver-open") {
+                await page.locator("#diagnostic").click();
+                await page.locator("#target-select").selectOption("airbag_driver");
+                assert.match(await page.locator("#selected-values").textContent(), /Open circuit/);
+                assert.equal(await page.locator("#selected-status").textContent(), "Fault active");
+                if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR)
+                    await page.screenshot({ path: path.join(process.env.ECUSIM_VIEWER_SCREENSHOT_DIR, "control-airbag-open.png") });
+                await page.locator("#target-select").selectOption("");
+                await page.locator("#exterior").click();
+            }
             if (process.env.ECUSIM_VIEWER_SCREENSHOT_DIR && ["low", "hazards-on", "brake-and-reverse", "door-0-open", "locked-belt-steering-fuel-snow"].includes(state.name)) {
                 await page.locator(`[data-view="${["hazards-on", "brake-and-reverse"].includes(state.name) ? "rear" : "perspective"}"]`).click();
                 await page.waitForTimeout(70);

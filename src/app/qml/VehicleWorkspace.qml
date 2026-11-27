@@ -24,6 +24,7 @@ Item {
             Layout.fillWidth: true
             spacing: 4
             Button {
+                objectName: "vehicle3DButton"
                 text: "3D"
                 checkable: true
                 checked: root.show3D
@@ -33,6 +34,7 @@ Item {
                 ToolTip.text: enabled ? "Explore the vehicle in 3D" : "This build includes the vehicle diagram only"
             }
             Button {
+                objectName: "vehicleDiagramButton"
                 text: "Diagram"
                 checkable: true
                 checked: !root.show3D
@@ -40,6 +42,7 @@ Item {
             }
             Item { Layout.fillWidth: true }
             Button {
+                objectName: "vehicleExpandButton"
                 text: "Expand"
                 enabled: root.threeDAvailable && root.show3D
                 onClicked: expanded.open()
@@ -62,6 +65,7 @@ Item {
     // Reparent the same view when expanded, preserving its camera and selection.
     Loader {
         id: view
+        objectName: "vehicleViewLoader"
         parent: expanded.visible ? expanded.contentItem : viewport
         anchors.fill: parent
         source: root.threeDAvailable && root.show3D ? "Vehicle3D.qml" : "VehicleView.qml"
@@ -88,6 +92,7 @@ Item {
 
     Dialog {
         id: expanded
+        objectName: "vehicleExpandedDialog"
         parent: Overlay.overlay
         anchors.centerIn: parent
         width: Math.min(1380, parent ? parent.width - 32 : 1100)

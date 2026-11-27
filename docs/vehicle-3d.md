@@ -51,6 +51,9 @@ a reload or a return to the diagram.
   pump failure do not acquire a fictitious electrical lead. Broken circuits, sleeping/unpowered
   receivers, failed radio reception and CAN bus-off/shorted branches suppress their affected flow.
   A controller's local sensor sampling can continue while it is bus-off.
+  Component circuits use physical `vehicle.componentCircuits` state, including deployed airbag
+  squibs, rather than localized fault descriptions. Open/shorted airbag, belt-switch and failed
+  headlamp paths stop their flow and show their circuit state; repair restores the path.
 
 ## Boundaries and files
 
@@ -91,6 +94,18 @@ the dependency-free viewer state/gesture tests. They can be run separately with:
 ```sh
 node --test tests/vehicle-viewer.test.mjs
 ```
+
+App builds also run `tst_vehicle_workspace` with Qt's offscreen/software backend. It loads the
+real 2D diagram and checks its paused prompt, hotspot/controller clicks, lamp outputs, equipment
+changes, and switching/expansion/navigation/fallback. Only the 3D QML component is a test double
+in this test, so it needs neither WebEngine nor a GPU. View operations must leave the simulation
+clock and complete vehicle state unchanged. Real WebGL and native WebChannel checks are separate.
+
+`tst_app legacyBehaviorSnapshots` verifies that display reads leave the app unchanged, and can
+export deterministic original vehicle, cluster, sensor, ECU, fault, scanner and CAN trace state
+with `ECUSIM_LEGACY_SNAPSHOTS=/absolute/path/snapshots.json`. The same test compiles against the
+pre-3D app for comparison; only additive 3D snapshot fields are excluded from its export.
+See [independent review and regression results](vehicle-3d-review.md).
 
 An optional real-browser test serves the bundled assets on an ephemeral loopback port, launches
 isolated headless Chrome and verifies WebGL startup, marker selection, live values, drag rotation,

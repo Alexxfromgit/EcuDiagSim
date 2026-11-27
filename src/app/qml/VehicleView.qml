@@ -187,6 +187,7 @@ Panel {
     }
 
     component EcuBox: Rectangle {
+        objectName: "vehicleEcu:" + name
         id: box
         property string name: ""
         readonly property var info: root.ecuMap[name] ?? ({ state: "sleep", dtcCount: 0, description: "", diagIndex: -1 })
@@ -271,6 +272,7 @@ Panel {
     }
 
     component Hotspot: Item {
+        objectName: "vehicleTarget:" + targetId
         id: spot
         property string targetId: ""
         property string label: ""
@@ -798,6 +800,7 @@ Panel {
             // Start prompt: a new vehicle waits, parked with the ignition off, until the user runs it.
             Rectangle {
                 id: prompt
+                objectName: "vehiclePausedPrompt"
                 anchors.centerIn: parent
                 width: Math.min(parent.width - 24, 300)
                 implicitHeight: promptColumn.implicitHeight + 28
@@ -824,6 +827,7 @@ Panel {
                     enabled: prompt.shown
                 }
                 ToolButton {
+                    objectName: "vehiclePausedPromptDismiss"
                     anchors { top: parent.top; right: parent.right; margins: 2 }
                     z: 1
                     text: "✕"
