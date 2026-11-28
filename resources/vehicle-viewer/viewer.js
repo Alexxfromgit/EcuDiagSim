@@ -1,0 +1,516 @@
+import * as THREE from "./vendor/three.module.min.js";
+import { OrbitControls } from "./vendor/OrbitControls.js";
+import { createVehicle } from "./vehicle-model.js";
+import { createVehicleNetwork } from "./vehicle-network.js";
+import { targetsFromSnapshot, visibleTargets, shouldAnimateFlow, systemColors, SelectionGesture } from "./vehicle-state.js";
+
+const byId = id => document.getElementById(id);
+let bridge;
+let viewer;
+
+function fail(message) {
+    viewer?.setDisplayActive(false);
+    byId("viewer-error").textContent = message;
+    byId("viewer-error").hidden = false;
+    bridge?.viewerFailed(message);
+}
+
+class VehicleViewer {
+    constructor() {
+        this.stage = byId("stage");
+        this.scene = new THREE.Scene();
+        // The stage's CSS gradient shows through; the floor fades into it rather than ending.
+        this.scene.fog = new THREE.FogExp2(0x0b1520, .035);
+        this.camera = new THREE.PerspectiveCamera(34, 1, .05, 80);
+        this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
+        this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+        this.renderer.setClearColor(0x000000, 0);
+        // Neutral tone mapping keeps the paint's hue and the studio highlights true to colour.
+        this.renderer.toneMapping = THREE.NeutralToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
+        this.renderer.shadowMap.enabled = true;
+        this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        this.stage.prepend(this.renderer.domElement);
+        this.renderer.domElement.addEventListener("webglcontextlost", event => {
+            event.preventDefault();
+            fail("3D graphics became unavailable. Reload the view or use the diagram.");
+        });
+        this.controls = new OrbitControls(this.camera, this.stage);
+        this.controls.enableDamping = false;
+        this.controls.enablePan = false;
+        this.controls.minDistance = 1.1;
+        this.controls.maxDistance = 16;
+        this.controls.maxPolarAngle = Math.PI * .49;
+        this.controls.addEventListener("change", () => this.invalidate());
+        this.controls.addEventListener("start", () => { this.interacting = true; this.framed = null; });
+        this.controls.addEventListener("end", () => { this.interacting = false; this.invalidate(); });
+        // Most light comes from the studio environment; the overhead key adds shape and a soft shadow.
+        this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x1b2733, .45));
+        const key = new THREE.DirectionalLight(0xf2f7ff, 2.2);
+        key.position.set(-1.6, 9, -2.4); key.castShadow = true;
+        key.shadow.mapSize.set(2048, 2048);
+        Object.assign(key.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 3, far: 16 });
+        // Normal offset removes self-shadowing stripes ("acne") on the curved, glossy panels.
+        key.shadow.bias = -.0004;
+        key.shadow.normalBias = .025;
+        this.scene.add(key);
+        const rim = new THREE.DirectionalLight(0xa9d2e6, .7);
+        rim.position.set(4, 2.5, 4); this.scene.add(rim);
+        this.addEnvironment();
+        this.vehicle = createVehicle();
+        this.scene.add(this.vehicle.root);
+        this.network = createVehicleNetwork();
+        this.scene.add(this.network.root);
+        const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 96), new THREE.MeshStandardMaterial({ color: 0x131a21, roughness: .85,
+            metalness: 0, envMapIntensity: .55, transparent: true, depthWrite: false, alphaMap: this.radialTexture(256, [[0, 1], [.55, .9], [1, 0]]) }));
+        floor.rotation.x = -Math.PI / 2; floor.position.y = .002; floor.receiveShadow = true; floor.renderOrder = -2;
+        this.scene.add(floor);
+        this.floor = floor;
+        // Soft contact shadow: grounds the tyres and sills independently of the shadow map's resolution.
+        const contact = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 5.9), new THREE.MeshBasicMaterial({ map: this.contactShadowTexture(),
+            transparent: true, depthWrite: false, toneMapped: false, fog: false }));
+        contact.rotation.x = -Math.PI / 2; contact.position.y = .004; contact.renderOrder = -1;
+        this.scene.add(contact);
+        const grid = new THREE.GridHelper(12, 24, 0x234e61, 0x163143);
+        grid.material.transparent = true; grid.material.opacity = .28;
+        this.scene.add(grid);
+        this.grid = grid;
+        this.raycaster = new THREE.Raycaster();
+        this.markers = new Map();
+        this.targets = [];
+        this.snapshot = {};
+        this.selectedId = "";
+        this.system = "";
+        this.faultsOnly = false;
+        this.diagnosticMode = true;
+        this.displayActive = true;
+        this.wiresEnabled = true;
+        this.flowEnabled = true;
+        this.gesture = new SelectionGesture();
+        this.listen();
+        this.resizeObserver = new ResizeObserver(() => this.resize());
+        this.resizeObserver.observe(this.stage);
+        this.cameraPreset("perspective");
+    }
+
+    // A procedural photo studio: a dark room with large soft boxes. Its prefiltered reflections give
+    // the clear coat, glass and chrome their highlight lines without shipping an HDR image.
+    addEnvironment() {
+        const room = new THREE.Scene();
+        const shell = new THREE.Mesh(new THREE.BoxGeometry(32, 14, 32), new THREE.MeshBasicMaterial({ color: 0x262d35, side: THREE.BackSide }));
+        shell.position.y = 6.5; room.add(shell);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), new THREE.MeshBasicMaterial({ color: 0x14181c }));
+        ground.rotation.x = -Math.PI / 2; ground.position.y = -.4; room.add(ground);
+        const softbox = (width, height, position, rotation, intensity, color = 0xffffff) => {
+            const panel = new THREE.Mesh(new THREE.PlaneGeometry(width, height),
+                new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+            panel.position.set(...position); panel.rotation.set(...rotation); room.add(panel);
+        };
+        softbox(12, 5, [0, 13.4, 0], [Math.PI / 2, 0, 0], 4.5);
+        softbox(18, 2.2, [-15.8, 4.5, 0], [0, Math.PI / 2, 0], 3.2, 0xe6f2ff);
+        softbox(18, 2.2, [15.8, 4.5, 0], [0, -Math.PI / 2, 0], 3.2, 0xe6f2ff);
+        // Front and rear: pairs of tall strips rather than one broad panel, so flat panels such as
+        // the boot lid show crisp highlight lines instead of a large grey patch.
+        for (const x of [-5, 5]) {
+            softbox(2.4, 6, [x, 4, -15.8], [0, 0, 0], 2.4, 0xdcecff);
+            softbox(2.4, 6, [x, 4, 15.8], [0, Math.PI, 0], 2.0, 0xfff0e2);
+        }
+        softbox(32, .6, [0, 1.6, -15.9], [0, 0, 0], 1.6);
+        softbox(32, .6, [0, 1.6, 15.9], [0, Math.PI, 0], 1.6);
+        softbox(.6, 32, [-15.9, 1.6, 0], [0, Math.PI / 2, Math.PI / 2], 1.2);
+        softbox(.6, 32, [15.9, 1.6, 0], [0, -Math.PI / 2, Math.PI / 2], 1.2);
+        const generator = new THREE.PMREMGenerator(this.renderer);
+        this.environment = generator.fromScene(room, .03);
+        this.scene.environment = this.environment.texture;
+        generator.dispose();
+        room.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+    }
+
+    radialTexture(size, stops) {
+        const canvas = document.createElement("canvas"); canvas.width = canvas.height = size;
+        const context = canvas.getContext("2d");
+        const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        for (const [offset, value] of stops) gradient.addColorStop(offset, `rgb(${value * 255},${value * 255},${value * 255})`);
+        context.fillStyle = gradient; context.fillRect(0, 0, size, size);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    contactShadowTexture() {
+        const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 512;
+        const context = canvas.getContext("2d");
+        context.filter = "blur(22px)";
+        context.fillStyle = "rgba(0, 0, 0, .78)";
+        context.beginPath(); context.roundRect(48, 52, 160, 408, 60); context.fill();
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
+    }
+
+    listen() {
+        this.stage.addEventListener("pointerdown", event => {
+            if (event.target.closest(".view-presets")) return;
+            this.pointerTarget = event.target.closest("[data-target]")?.dataset.target;
+            this.gesture.start(event);
+        });
+        this.stage.addEventListener("pointermove", event => this.gesture.move(event));
+        this.stage.addEventListener("pointercancel", () => this.gesture.cancel());
+        this.stage.addEventListener("lostpointercapture", () => this.gesture.cancel());
+        this.stage.addEventListener("pointerup", event => {
+            if (!this.gesture.finish(event)) return;
+            if (this.pointerTarget) return this.select(this.pointerTarget);
+            const label = event.target.closest("[data-target]");
+            if (label) return this.select(label.dataset.target);
+            const bounds = this.stage.getBoundingClientRect();
+            const pointer = new THREE.Vector2((event.clientX - bounds.left) / bounds.width * 2 - 1,
+                -(event.clientY - bounds.top) / bounds.height * 2 + 1);
+            this.raycaster.setFromCamera(pointer, this.camera);
+            const hits = this.raycaster.intersectObjects([...this.markers.values()]
+                .filter(marker => marker.visible).map(marker => marker.proxy));
+            if (hits.length) this.select(hits[0].object.userData.targetId);
+        }, true);
+        for (const element of this.stage.querySelectorAll(".view-presets")) {
+            element.addEventListener("pointerdown", event => event.stopPropagation());
+            element.addEventListener("pointerup", event => event.stopPropagation());
+        }
+        document.querySelectorAll("[data-view]").forEach(button =>
+            button.addEventListener("click", () => this.cameraPreset(button.dataset.view)));
+        byId("reset").addEventListener("click", () => this.cameraPreset("perspective"));
+        byId("focus").addEventListener("click", () => {
+            const target = this.targets.find(item => item.id === this.selectedId);
+            if (!target?.position) return;
+            const position = new THREE.Vector3(...target.position);
+            const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+            this.framed = null;
+            this.controls.target.copy(position);
+            this.camera.position.copy(position).addScaledVector(direction, 2.8);
+            this.controls.update(); this.invalidate();
+        });
+        for (const mode of ["diagnostic", "exterior"]) byId(mode).addEventListener("click", () => {
+            this.diagnosticMode = mode === "diagnostic";
+            this.vehicle.diagnostic(this.diagnosticMode);
+            this.grid.visible = this.diagnosticMode;
+            byId("diagnostic").setAttribute("aria-pressed", String(this.diagnosticMode));
+            byId("exterior").setAttribute("aria-pressed", String(!this.diagnosticMode));
+            byId("scene-caption").textContent = this.diagnosticMode ? "Sensor circuits · live CAN activity" : "Modern executive sedan";
+            this.filter();
+            this.syncNetwork();
+            this.invalidate();
+        });
+        byId("wiring").addEventListener("change", event => { this.wiresEnabled = event.target.checked; this.syncNetwork(); this.invalidate(); });
+        byId("data-flow").addEventListener("change", event => { this.flowEnabled = event.target.checked; this.syncNetwork(); this.invalidate(); });
+        byId("system").addEventListener("change", event => { this.system = event.target.value; this.filter(); });
+        byId("faults-only").addEventListener("change", event => { this.faultsOnly = event.target.checked; this.filter(); });
+        byId("target-select").addEventListener("change", event => this.select(event.target.value));
+        byId("open-controls").addEventListener("click", () => bridge?.openTarget(this.selectedId));
+        byId("diagnose").addEventListener("click", () => {
+            const target = this.targets.find(item => item.id === this.selectedId);
+            const ecu = target?.controller ?? this.snapshot.ecus?.find(item => item.name === target?.ecu);
+            if (ecu?.diagIndex >= 0) bridge?.openEcu(ecu.diagIndex);
+        });
+        document.addEventListener("visibilitychange", () => this.setDisplayActive(this.displayActive));
+    }
+
+    cameraPreset(preset) {
+        this.framed = preset;
+        this.controls.target.set(0, .62, 0);
+        const directions = { perspective: [-5.4, 2.9, -5.8], top: [0, 9, .001], front: [0, 1.7, -7.6], rear: [4.9, 2.4, 6.3], side: [-8, 1.8, 0] };
+        const direction = new THREE.Vector3(...(directions[preset] ?? directions.perspective)).normalize();
+        this.camera.position.copy(this.controls.target).addScaledVector(direction, this.fitDistance(direction));
+        this.controls.update(); this.invalidate();
+    }
+
+    // Distance at which the whole car fills the panel with a margin, for any aspect ratio.
+    fitDistance(direction) {
+        const corners = [];
+        for (const x of [-.96, .96]) for (const y of [0, 1.42]) for (const z of [-2.5, 2.5]) corners.push(new THREE.Vector3(x, y, z));
+        const camera = this.camera.clone(), target = this.controls.target, point = new THREE.Vector3();
+        let distance = 7;
+        for (let i = 0; i < 5; i++) {
+            camera.position.copy(target).addScaledVector(direction, distance);
+            camera.lookAt(target); camera.updateMatrixWorld();
+            let extent = 0;
+            for (const corner of corners) {
+                point.copy(corner).project(camera);
+                extent = Math.max(extent, Math.abs(point.x), Math.abs(point.y));
+            }
+            distance *= Math.max(.5, Math.min(2, extent / .9));
+        }
+        return THREE.MathUtils.clamp(distance, this.controls.minDistance, this.controls.maxDistance);
+    }
+
+    resize() {
+        const { width, height } = this.stage.getBoundingClientRect();
+        if (width < 1 || height < 1) return;
+        this.renderer.setSize(width, height, false);
+        this.camera.aspect = width / height;
+        this.camera.fov = width < 550 ? 40 : 34;
+        // Lift the car above the camera presets and telemetry that overlay the bottom of the stage.
+        this.camera.setViewOffset(width, height, 0, height * .045, width, height);
+        this.camera.updateProjectionMatrix();
+        this.stage.classList.toggle("compact", width < 600 || height < 420);
+        // Until the user moves the camera, keep the preset framed as the panel changes size.
+        if (this.framed) this.cameraPreset(this.framed);
+        this.invalidate();
+    }
+
+    setState(snapshot) {
+        this.snapshot = snapshot;
+        this.targets = targetsFromSnapshot(snapshot);
+        this.vehicle.applyState(snapshot);
+        // Dry, wet, snow and ice read from the floor's colour and sheen.
+        const surface = [[0x131a21, .85], [0x0b1117, .16], [0x5d6a76, .95], [0x1d3444, .07]][snapshot.vehicle?.surface ?? 0] ?? [0x131a21, .85];
+        this.floor.material.color.set(surface[0]);
+        this.floor.material.roughness = surface[1];
+        const v = snapshot.vehicle ?? {};
+        byId("vehicle-telemetry").textContent = `${Number(v.speed ?? 0).toFixed(0)} km/h · ${Number(v.rpm ?? 0).toFixed(0)} rpm · ${["P", "R", "N", "D"][v.selector ?? 0]} · Fuel ${Number(v.fuel ?? 0).toFixed(0)} L · ${v.parkBrake ? "Parking brake on" : "Parking brake off"} · ${["Dry", "Wet", "Snow", "Ice"][v.surface ?? 0]}`;
+        this.network.applyState(snapshot);
+        const equipmentNames = { engine_obd: "Engine OBD", tpms: "TPMS", srs: "SRS", esc: "ESC" };
+        const fitted = snapshot.fitted ?? [];
+        const equipmentKey = fitted.join("|");
+        if (equipmentKey !== this.equipmentKey) {
+            this.equipmentKey = equipmentKey;
+            byId("equipment-strip").replaceChildren(...["Base vehicle", ...fitted.map(id => equipmentNames[id] ?? id)].map(name => {
+                const chip = document.createElement("span"); chip.textContent = name; return chip;
+            }));
+        }
+        const systems = (snapshot.ecus ?? []).map(ecu => ecu.name);
+        const systemKey = systems.join("|");
+        if (this.systemKey !== systemKey) {
+            this.systemKey = systemKey;
+            if (!systems.includes(this.system)) this.system = "";
+            byId("system").replaceChildren(new Option("All systems", ""), ...systems.map(name => new Option(name, name)));
+            byId("system").value = this.system;
+        }
+        byId("live-state").textContent = snapshot.running ? "LIVE" : "PAUSED";
+        for (const target of this.targets) {
+            if (!target.position) continue;
+            if (!this.markers.has(target.id)) this.addMarker(target);
+            const marker = this.markers.get(target.id);
+            const color = target.faulted ? 0xffb347 : target.state === "sleep" ? 0x6d7f92 : systemColors[target.ecu] ?? 0x61d5c7;
+            marker.mesh.material.color.set(color);
+            marker.mesh.material.emissive.set(color).multiplyScalar(.4);
+            marker.button.className = ["marker", target.controller ? "ecu" : "", target.faulted ? "faulted" : "",
+                target.state === "sleep" ? "asleep" : "", target.state === "stored" ? "stored" : "",
+                target.id === this.selectedId ? "selected" : ""].join(" ");
+        }
+        const currentIds = new Set(this.targets.map(target => target.id));
+        for (const [id, marker] of this.markers) {
+            if (currentIds.has(id)) continue;
+            this.scene.remove(marker.mesh, marker.proxy);
+            marker.mesh.geometry.dispose(); marker.mesh.material.dispose();
+            marker.proxy.geometry.dispose(); marker.proxy.material.dispose();
+            marker.button.remove(); this.markers.delete(id);
+        }
+        if (!currentIds.has(this.selectedId)) this.selectedId = "";
+        this.filter(); this.renderInspector(); this.invalidate();
+    }
+
+    addMarker(target) {
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(.018, 12, 8),
+            new THREE.MeshStandardMaterial({ color: 0x61d5c7, emissive: 0x24584d, roughness: .3 }));
+        mesh.position.set(...target.position); this.scene.add(mesh);
+        const proxy = new THREE.Mesh(new THREE.SphereGeometry(.14, 8, 6),
+            new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }));
+        proxy.position.copy(mesh.position); proxy.userData.targetId = target.id; this.scene.add(proxy);
+        const button = document.createElement("button");
+        button.className = "marker"; button.dataset.target = target.id;
+        button.title = target.name; button.setAttribute("aria-label", target.name);
+        const dot = document.createElement("span"); dot.className = "marker-dot";
+        const label = document.createElement("span"); label.className = "marker-label"; label.textContent = target.label;
+        button.append(dot, label);
+        button.addEventListener("click", event => { if (event.detail === 0) this.select(target.id); });
+        byId("labels").append(button);
+        this.markers.set(target.id, { mesh, proxy, button, visible: true, labelWidth: label.textContent.length * 6 + 26 });
+    }
+
+    filter() {
+        const filtered = visibleTargets(this.targets, this.system, this.faultsOnly);
+        const ids = new Set(filtered.map(target => target.id));
+        for (const [id, marker] of this.markers) {
+            marker.visible = ids.has(id) && (this.diagnosticMode || id === this.selectedId);
+            marker.mesh.visible = marker.visible; marker.proxy.visible = marker.visible;
+            marker.button.hidden = !marker.visible;
+        }
+        // A selected component that disappears from the current filter must not remain actionable.
+        if (this.selectedId && !ids.has(this.selectedId)) this.selectedId = "";
+        for (const [id, marker] of this.markers) marker.button.classList.toggle("selected", id === this.selectedId);
+        const listKey = filtered.map(target => target.id + ":" + target.faulted).join("|");
+        if (listKey !== this.listKey) {
+            this.listKey = listKey;
+            const groups = new Map();
+            for (const target of filtered) {
+                if (!groups.has(target.kind)) {
+                    const group = document.createElement("optgroup"); group.label = target.kind;
+                    groups.set(target.kind, group);
+                }
+                groups.get(target.kind).append(new Option((target.faulted ? "● " : "") + target.name, target.id));
+            }
+            byId("target-select").replaceChildren(new Option(filtered.length ? "Choose a component…" : "No matching components", ""), ...groups.values());
+        }
+        byId("target-select").value = this.selectedId;
+        byId("target-count").textContent = String(filtered.length);
+        this.renderInspector(); this.invalidate();
+        this.syncNetwork();
+    }
+
+    select(id) {
+        if (id && !visibleTargets(this.targets, this.system, this.faultsOnly).some(target => target.id === id)) return;
+        this.selectedId = id;
+        byId("target-select").value = id;
+        for (const [markerId, marker] of this.markers) marker.button.classList.toggle("selected", markerId === id);
+        if (!this.diagnosticMode) this.filter();
+        this.renderInspector(); this.invalidate();
+        this.syncNetwork();
+    }
+
+    renderInspector() {
+        const target = this.targets.find(item => item.id === this.selectedId);
+        byId("empty-selection").hidden = !!target;
+        byId("selection").hidden = !target;
+        if (!target) return;
+        byId("selected-kind").textContent = target.kind;
+        byId("selected-name").textContent = target.name;
+        byId("selected-description").textContent = target.controller?.description ??
+            (target.kind === "Network" ? "Logical network target" : target.position ? "Illustrative position on the concept vehicle" : "Available through the component list");
+        byId("selected-status").textContent = target.faulted ? "Fault active" : target.controller?.state ?? "Healthy";
+        byId("selected-status").classList.toggle("faulted", target.faulted);
+        const rows = [["Controller", target.ecu || "Vehicle network"]];
+        const connection = [...this.network.records.values()].find(record => record.edge.targetId === target.id);
+        if (connection) rows.push(["Connection", connection.edge.kind === "radio" ? "TPMS radio" :
+            connection.edge.kind === "can" ? "CAN bus" : "Wired circuit"]);
+        const sensor = target.sensor;
+        const number = (value, unit) => Number.isFinite(value) ? `${value.toFixed(2)} ${unit ?? ""}`.trim() : "—";
+        if (sensor) rows.push(["True value", number(sensor.trueValue, sensor.unit)], ["ECU measures", number(sensor.value, sensor.unit)],
+            ["Signal", sensor.digital ? "Digital" : number(sensor.voltage, "V")], ["Circuit", sensor.circuit]);
+        const circuitLabel = { ok: "OK", open: "Open circuit", short_gnd: "Short to ground" }[target.componentCircuit];
+        if (circuitLabel) rows.push(["Circuit", circuitLabel]);
+        if (target.controller) rows.push(["Stored DTCs", String(target.controller.dtcCount)], ["Confirmed DTCs", String(target.controller.confirmed)]);
+        byId("selected-values").replaceChildren(...rows.map(([name, value]) => {
+            const row = document.createElement("div"); row.className = "value-row";
+            const term = document.createElement("dt"); term.textContent = name;
+            const description = document.createElement("dd"); description.textContent = value;
+            row.append(term, description); return row;
+        }));
+        const faults = (this.snapshot.faults ?? []).filter(fault => fault.targetId === target.id);
+        byId("selected-fault").textContent = sensor?.fault || faults.map(fault => fault.typeLabel || fault.type || "Fault active").join(" · ") || circuitLabel || "Fault active";
+        byId("selected-fault").hidden = !target.faulted;
+        byId("focus").disabled = !target.position;
+        const ecu = target.controller ?? this.snapshot.ecus?.find(item => item.name === target.ecu);
+        byId("diagnose").hidden = !(ecu?.diagIndex >= 0);
+        byId("diagnose").disabled = !bridge;
+        byId("open-controls").disabled = !bridge;
+    }
+
+    syncNetwork() {
+        const visibleIds = new Set(visibleTargets(this.targets, this.system, this.faultsOnly).map(target => target.id));
+        // A network target refers to controller branches rather than owning a physical cable.
+        if (visibleIds.has("can_bus")) for (const target of this.targets) if (target.controller) visibleIds.add(target.id);
+        if (visibleIds.has("abs_e2e")) visibleIds.add("abs");
+        this.network.setView({ visibleIds, system: this.system, selectedId: this.selectedId,
+            diagnostic: this.diagnosticMode, wires: this.wiresEnabled });
+        this.network.pulses.visible = this.flowEnabled;
+        const summary = this.network.summary();
+        byId("connection-summary").textContent = `${summary.wired} wired · ${summary.can} CAN · ${summary.radio} radio`;
+        byId("flow-state").textContent = !this.diagnosticMode || !this.wiresEnabled ? "Wiring hidden" :
+            !this.flowEnabled ? "Flow off" : this.snapshot.reducedMotion ? "Reduced motion" :
+                !this.snapshot.running ? "Flow paused" : this.network.hasActiveFlow() ? "Signal flow" : "No active links";
+    }
+
+    setDisplayActive(active) {
+        this.displayActive = active;
+        this.lastFrameTime = null;
+        if ((!active || document.hidden) && this.frame) {
+            cancelAnimationFrame(this.frame); this.frame = null;
+        }
+        if (active) this.invalidate();
+    }
+
+    invalidate() {
+        if (this.frame || !this.displayActive || document.hidden) return;
+        this.frame = requestAnimationFrame(time => {
+            this.frame = null;
+            if (!this.displayActive || document.hidden) return;
+            const flowMotion = shouldAnimateFlow(this.snapshot, this.displayActive, this.flowEnabled) && this.network.hasActiveFlow();
+            const wheelMotion = this.vehicle.hasMotion(this.snapshot);
+            const animate = flowMotion || wheelMotion;
+            // Cap decorative signal flow at 30 fps; rolling wheels get 60 fps so their spokes strobe
+            // less before the rim blur takes over. Camera movement still renders on demand.
+            const interval = wheelMotion ? 15 : 32;
+            if (!animate || this.interacting || !this.lastFrameTime || time - this.lastFrameTime >= interval) {
+                if (animate) {
+                    const elapsed = this.lastFrameTime ? Math.min(.08, (time - this.lastFrameTime) / 1000) : 0;
+                    const simulationStep = elapsed * Math.max(.1, Math.min(3, this.snapshot.speedFactor ?? 1));
+                    if (flowMotion) this.network.advance(simulationStep);
+                    if (wheelMotion) this.vehicle.advance(simulationStep);
+                }
+                this.lastFrameTime = animate ? time : null;
+                this.renderer.render(this.scene, this.camera);
+                const bounds = this.stage.getBoundingClientRect();
+                const occupied = [];
+                const position = this.projected ??= new THREE.Vector3();
+                const markers = [...this.markers.values()].sort((a, b) => {
+                    const priority = marker => marker.button.classList.contains("selected") ? 3 :
+                        marker.button.classList.contains("faulted") ? 2 : marker.button.classList.contains("ecu") ? 1 : 0;
+                    return priority(b) - priority(a);
+                });
+                for (const marker of markers) {
+                    if (!marker.visible) continue;
+                    position.copy(marker.mesh.position).project(this.camera);
+                    marker.button.hidden = position.z < -1 || position.z > 1 || Math.abs(position.x) > 1 || Math.abs(position.y) > 1;
+                    marker.button.style.left = `${(position.x + 1) * bounds.width / 2}px`;
+                    marker.button.style.top = `${(1 - position.y) * bounds.height / 2}px`;
+                    const x = (position.x + 1) * bounds.width / 2, y = (1 - position.y) * bounds.height / 2;
+                    const labelWidth = marker.labelWidth;
+                    const collides = occupied.some(box => x < box.x + box.width && x + labelWidth > box.x && Math.abs(y - box.y) < 24);
+                    const label = marker.button.classList.contains("selected") || marker.button.classList.contains("faulted") || marker.button.classList.contains("ecu");
+                    marker.button.classList.toggle("label-hidden", collides && !marker.button.classList.contains("selected"));
+                    if (label && !collides && !marker.button.hidden) occupied.push({ x, y, width: labelWidth });
+                }
+            }
+            if (animate) this.invalidate();
+        });
+    }
+}
+
+function connectHost() {
+    if (!window.qt?.webChannelTransport) return;
+    const script = document.createElement("script");
+    script.src = "qrc:///qtwebchannel/qwebchannel.js";
+    script.onerror = () => fail("The vehicle connection could not be established.");
+    script.onload = () => new window.QWebChannel(window.qt.webChannelTransport, channel => {
+        bridge = channel.objects.vehicleBridge;
+        const apply = () => {
+            try { viewer.setState(JSON.parse(bridge.stateJson)); }
+            catch (error) { fail(`The vehicle state could not be displayed: ${error.message}`); }
+        };
+        bridge.stateJsonChanged.connect(apply);
+        bridge.displayActiveChanged.connect(() => viewer.setDisplayActive(bridge.displayActive));
+        viewer.setDisplayActive(bridge.displayActive);
+        apply(); bridge.viewerReady();
+    });
+    document.head.append(script);
+}
+
+try {
+    viewer = new VehicleViewer();
+    // Also allows the offline viewer to be exercised in a normal browser using recorded snapshots.
+    window.vehicleViewer = {
+        setState: snapshot => viewer.setState(snapshot),
+        setDisplayActive: active => viewer.setDisplayActive(active),
+        getRenderState: () => ({ frames: viewer.renderer.info.render.frame, pulses: viewer.network.pulses.count,
+            drawCalls: viewer.renderer.info.render.calls, geometries: viewer.renderer.info.memory.geometries,
+            textures: viewer.renderer.info.memory.textures,
+            firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)),
+            connections: Object.fromEntries([...viewer.network.records].map(([id, record]) => [id, { active: record.active, visible: record.visible }])),
+            controls: { doors: [...viewer.vehicle.doorPivots.values()].map(door => door.rotation.y),
+                steering: viewer.vehicle.wheels.map(wheel => wheel.rotation.y), rolling: viewer.vehicle.wheelSpinners.map(wheel => wheel.rotation.x),
+                rimBlur: viewer.vehicle.blurs.map(disc => disc.visible ? disc.material.opacity : 0),
+                belt: viewer.vehicle.belt.visible, bags: viewer.vehicle.bags.map(bag => bag.visible), fuel: viewer.vehicle.fuel.scale.y,
+                throttle: viewer.vehicle.throttle.rotation.z,
+                lights: Object.fromEntries([...viewer.vehicle.lights].map(([key, meshes]) => [key, meshes.some(mesh => mesh.userData.on)])) } })
+    };
+    connectHost();
+    document.body.dataset.viewerReady = "true";
+} catch (error) {
+    fail(`The 3D view could not start: ${error.message}`);
+}

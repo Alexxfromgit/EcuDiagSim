@@ -6,6 +6,7 @@
 #include "sim/Simulation.h"
 
 #include <QElapsedTimer>
+#include <QHash>
 #include <QObject>
 #include <QTimer>
 #include <QUrl>
@@ -216,6 +217,7 @@ private:
     void setMessage(const QString &text);
 
     std::unique_ptr<ecusim::Simulation> m_sim;
+    QHash<QString, quint64> m_vehicleFrameCounts;
     TraceModel *m_trace;
     ScannerViewModel *m_scanner;
     UpdateService *m_updates;

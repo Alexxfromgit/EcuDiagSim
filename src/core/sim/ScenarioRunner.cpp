@@ -3,6 +3,7 @@
 #include "sim/Simulation.h"
 
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QStringList>
 
@@ -458,26 +459,43 @@ void ScenarioRunner::checkUds(const QJsonObject &step, const DiagResult &result)
     const QString received = all.join(QStringLiteral(" | "));
 
     // A typo in an expectation must not turn into "matches anything".
-    QString prefix, contains, notContains;
-    const std::pair<const char *, QString *> fields[] = {
-        {"expect", &prefix}, {"expectContains", &contains}, {"expectNotContains", &notContains}};
-    for (const auto &[key, target] : fields) {
-        const QString text = step.value(QLatin1String(key)).toString();
-        if (text.trimmed().isEmpty())
-            continue;
+    const auto parse = [this](const char *key, const QString &text, QString *target) {
         const QByteArray bytes = fromHex(text);
         if (bytes.isEmpty()) {
             fail(QStringLiteral("Invalid hex in \"%1\": '%2'").arg(QLatin1String(key), text));
-            return;
+            return false;
         }
         *target = toHex(bytes);
+        return true;
+    };
+    // "expect" is one response prefix, or a list of alternatives (e.g. a value that depends on
+    // the fitted equipment); any one of them may match.
+    QStringList prefixes;
+    const QJsonValue expectValue = step.value(QLatin1String("expect"));
+    const QJsonArray expectList = expectValue.isArray() ? expectValue.toArray() : QJsonArray{expectValue};
+    for (const QJsonValue &item : expectList) {
+        const QString text = item.toString();
+        if (text.trimmed().isEmpty())
+            continue;
+        QString prefix;
+        if (!parse("expect", text, &prefix))
+            return;
+        prefixes << prefix;
+    }
+    QString contains, notContains;
+    const std::pair<const char *, QString *> fields[] = {{"expectContains", &contains}, {"expectNotContains", &notContains}};
+    for (const auto &[key, target] : fields) {
+        const QString text = step.value(QLatin1String(key)).toString();
+        if (!text.trimmed().isEmpty() && !parse(key, text, target))
+            return;
     }
     bool ok = true;
-    bool anyPrefix = prefix.isEmpty();
+    bool anyPrefix = prefixes.isEmpty();
     bool anyContains = contains.isEmpty();
     for (const DiagResponse &r : result.responses) {
         const QString hex = toHex(r.data);
-        anyPrefix = anyPrefix || hex.startsWith(prefix);
+        for (const QString &prefix : prefixes)
+            anyPrefix = anyPrefix || hex.startsWith(prefix);
         anyContains = anyContains || hex.contains(contains);
         if (!notContains.isEmpty() && hex.contains(notContains))
             ok = false;

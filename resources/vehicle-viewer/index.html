@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' qrc: 'unsafe-inline'; style-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>Vehicle explorer</title>
+    <link rel="stylesheet" href="viewer.css">
+    <script type="importmap">{"imports":{"three":"./vendor/three.module.min.js"}}</script>
+</head>
+<body>
+    <header>
+        <div class="heading"><span class="eyebrow">VEHICLE EXPLORER</span><span id="live-state" class="live">CONNECTING</span></div>
+        <div class="toolbar" aria-label="Vehicle view controls">
+            <div class="segmented"><button id="diagnostic" aria-pressed="true">Diagnostic</button><button id="exterior" aria-pressed="false">Exterior</button></div>
+            <select id="system" aria-label="Filter by system"><option value="">All systems</option></select>
+            <label class="check"><input type="checkbox" id="faults-only"> Faults only</label>
+            <label class="check"><input type="checkbox" id="wiring" checked> Wiring</label>
+            <label class="check"><input type="checkbox" id="data-flow" checked> Data flow</label>
+            <button id="reset" title="Reset the camera">Reset view</button>
+        </div>
+        <div class="equipment-strip" id="equipment-strip" aria-label="Fitted vehicle equipment"></div>
+    </header>
+    <main>
+        <section id="stage" aria-label="Interactive car. Hold the left mouse button and drag to rotate; scroll to zoom.">
+            <div class="scene-heading"><span class="eyebrow">EXECUTIVE SEDAN</span><span id="scene-caption">Sensor circuits · live CAN activity</span><span id="connection-summary"></span></div>
+            <span id="flow-state" class="flow-state" role="status">Connecting</span>
+            <div id="labels"></div>
+            <div id="viewer-error" role="alert" hidden></div>
+            <div id="vehicle-telemetry" class="vehicle-telemetry" aria-label="Live vehicle state"></div>
+            <div class="view-presets" aria-label="Camera presets"><button data-view="perspective">Perspective</button><button data-view="side">Side</button><button data-view="rear">Rear</button><button data-view="top">Top</button><button data-view="front">Front</button></div>
+            <div class="scene-footer"><span>Drag to rotate · Scroll to zoom</span><span>Solid: circuit / CAN · Dashed: TPMS radio</span></div>
+        </section>
+        <aside aria-label="Component inspector">
+            <label class="eyebrow" for="target-select">COMPONENTS <span id="target-count"></span></label>
+            <select id="target-select" aria-label="Select a sensor, component, or controller"><option value="">Choose a component…</option></select>
+            <div id="empty-selection"><div class="selection-icon">◎</div><h1>Explore the vehicle</h1><p>Select a marker on the car or choose a component above to inspect its state.</p><p class="muted">Use the system filter to focus on a controller and its components.</p></div>
+            <div id="selection" hidden>
+                <div class="selection-heading"><span class="eyebrow" id="selected-kind"></span><span class="status" id="selected-status"></span></div>
+                <h1 id="selected-name"></h1>
+                <p id="selected-description" class="muted"></p>
+                <dl id="selected-values"></dl>
+                <p id="selected-fault" class="fault-description" hidden></p>
+                <button id="focus" class="wide">Focus component</button>
+                <button id="open-controls" class="primary wide">Open fault controls</button>
+                <button id="diagnose" class="wide" hidden>Diagnose controller</button>
+            </div>
+            <div class="legend"><span><i class="healthy"></i> Healthy</span><span><i class="fault"></i> Fault</span><span><i class="sleep"></i> Asleep</span></div>
+            <small class="asset-credit" title="Gourami - Luxury Saloon by Fishboe/ministephen, modified by sevnworks and EcuDiagSim. CC BY 4.0. Full attribution in the application's licenses/sedan directory.">Sedan: Fishboe · adapted · CC BY 4.0</small>
+        </aside>
+    </main>
+    <script type="module" src="viewer.js"></script>
+</body>
+</html>

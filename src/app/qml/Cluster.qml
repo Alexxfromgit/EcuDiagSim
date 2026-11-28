@@ -20,7 +20,7 @@ Panel {
     }
     // Height at which the two gauges fill their width exactly (no empty bands above and below).
     readonly property real gaugeSize: Math.max(120, (width - 20 - 92 - 8) / 2)
-    readonly property real idealHeight: 36 + gaugeSize + 6 + 26 + 14
+    readonly property real idealHeight: 36 + gaugeSize + 6 + lamps.Layout.preferredHeight + 2 + 14
 
     ColumnLayout {
         anchors.fill: parent
@@ -157,47 +157,78 @@ Panel {
             }
         }
 
-        RowLayout {
+        // Tell-tales between the turn arrows. They wrap into balanced rows as systems are fitted, so
+        // labels never shrink below legibility; a new system only needs an entry in `telltales`.
+        Item {
             id: lamps
             Layout.fillWidth: true
-            spacing: 3
-            Lamp { on: root.c.turnLeft; label: "◀"; tone: Theme.ok; tip: "Left turn signal (BCM_Status.TurnLeft)" }
-            Item { Layout.fillWidth: true }
+            Layout.preferredHeight: rows * lampHeight + (rows - 1) * gap
+            readonly property real gap: rows > 1 ? 3 : 4
+            // Wrapped rows are a little shorter so the cluster grows as little as possible.
+            readonly property real lampHeight: rows > 1 ? 21 : 24
+            readonly property real minCell: 40
+            readonly property var telltales: [
+                { key: "airbag", label: "AIRBAG", tone: Theme.error, fitted: "srs",
+                  tip: "Airbag system (SRS_Status.AirbagLampReq, own 6 s lamp check, or the module silent)" },
+                { key: "seatBelt", label: "BELT", tone: Theme.error, fitted: "srs",
+                  tip: "Seat belt reminder (SRS_Status.BeltWarn; flashes above 20 km/h)" },
+                { key: "parkBrake", label: "BRAKE", tone: Theme.error,
+                  tip: "Park brake applied (BCM_Status.ParkBrake); flashes when driving with it (ParkBrakeWarn)" },
+                { key: "battery", label: "BATT", tone: Theme.error, tip: "Charge warning: engine not running or battery below 12 V" },
+                { key: "coolantWarn", label: "TEMP", tone: Theme.error, tip: "Coolant temperature (ECM_Status.CoolantWarnReq)" },
+                { key: "oilWarn", label: "OIL", tone: Theme.error, tip: "Oil pressure (ECM_Fuel.OilPressureWarn, or ECM silent)" },
+                { key: "doorAjar", label: "DOOR", tone: Theme.error, tip: "Door ajar (BCM_Status.DoorAjar_xx)" },
+                { key: "mil", label: "CHECK", tip: "Malfunction indicator lamp (ECM_Status.MilReq, or ECM silent)" },
+                { key: "abs", label: "ABS", tip: "ABS warning (ABS_Status.AbsLampReq, or ABS silent)" },
+                { key: "esc", label: "ESC", fitted: "esc",
+                  tip: "Stability control: flashing while it intervenes (ABS_Chassis.EscActive), steady when it is off (EscOff)" },
+                { key: "tcs", label: "TCS", tip: "Traction control off (ABS_Status.TcsLampReq)" },
+                { key: "tpms", label: "TPMS", fitted: "tpms",
+                  tip: "Tyre pressure: steady = a tyre 25 % below the placard; flashing for a minute, then steady = system fault (BCM_Tpms.TpmsLampReq)" },
+                { key: "transFault", label: "TRANS", tip: "Transmission limp mode (TCM_Status.LimpMode, or TCM silent)" },
+                { key: "lowFuel", label: "FUEL", tip: "Low fuel: below 7 l, or no valid level from the fuel sender (ECM_Fuel)" },
+                { key: "lampFault", label: "BULB", tip: "Exterior lamp failure (BCM_Status.LampFault)" },
+                { key: "lowBeam", label: "LOW", tone: Theme.ok, tip: "Low beam (BCM_Status.Headlamps)" },
+                { key: "highBeam", label: "HIGH", tone: Theme.accent, tip: "High beam (BCM_Status.HighBeam)" }
+            ]
+            readonly property var shown: telltales.filter(lamp => !lamp.fitted || App.fitted.indexOf(lamp.fitted) >= 0)
+            readonly property real area: Math.max(minCell, width - 2 * (turnLeft.width + 8))
+            readonly property int maxColumns: Math.max(1, Math.floor((area + gap) / (minCell + gap)))
+            readonly property int rows: Math.max(1, Math.ceil(shown.length / maxColumns))
+            readonly property int columns: Math.max(1, Math.ceil(shown.length / rows))
+            readonly property real cell: Math.min(58, Math.floor((area - (columns - 1) * gap) / columns))
+
             Lamp {
-                visible: App.fitted.indexOf("srs") >= 0
-                on: root.c.airbag; label: "AIRBAG"; tone: Theme.error
-                tip: "Airbag system (SRS_Status.AirbagLampReq, own 6 s lamp check, or the module silent)"
+                id: turnLeft
+                objectName: "telltale:turnLeft"
+                anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+                width: 24; height: 24
+                on: root.c.turnLeft; label: "◀"; tone: Theme.ok; tip: "Left turn signal (BCM_Status.TurnLeft)"
+            }
+            Grid {
+                anchors.centerIn: parent
+                columns: lamps.columns
+                spacing: lamps.gap
+                Repeater {
+                    model: lamps.shown
+                    Lamp {
+                        required property var modelData
+                        objectName: "telltale:" + modelData.key
+                        width: lamps.cell; height: lamps.lampHeight
+                        haloSpread: Math.floor(lamps.gap / 2)
+                        on: root.c[modelData.key] === true
+                        label: modelData.label
+                        tone: modelData.tone ?? Theme.warn
+                        tip: modelData.tip
+                    }
+                }
             }
             Lamp {
-                visible: App.fitted.indexOf("srs") >= 0
-                on: root.c.seatBelt; label: "BELT"; tone: Theme.error
-                tip: "Seat belt reminder (SRS_Status.BeltWarn; flashes above 20 km/h)"
+                objectName: "telltale:turnRight"
+                anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                width: 24; height: 24
+                on: root.c.turnRight; label: "▶"; tone: Theme.ok; tip: "Right turn signal (BCM_Status.TurnRight)"
             }
-            Lamp { on: root.c.mil; label: "CHECK"; tip: "Malfunction indicator lamp (ECM_Status.MilReq, or ECM silent)" }
-            Lamp {
-                visible: App.fitted.indexOf("esc") >= 0
-                on: root.c.esc; label: "ESC"
-                tip: "Stability control: flashing while it intervenes (ABS_Chassis.EscActive), steady when it is off (EscOff)"
-            }
-            Lamp { on: root.c.abs; label: "ABS"; tip: "ABS warning (ABS_Status.AbsLampReq, or ABS silent)" }
-            Lamp { on: root.c.tcs; label: "TCS"; tip: "Traction control off (ABS_Status.TcsLampReq)" }
-            Lamp { on: root.c.battery; label: "BATT"; tone: Theme.error; tip: "Charge warning: engine not running or battery below 12 V" }
-            Lamp { on: root.c.coolantWarn; label: "TEMP"; tone: Theme.error; tip: "Coolant temperature (ECM_Status.CoolantWarnReq)" }
-            Lamp { on: root.c.oilWarn; label: "OIL"; tone: Theme.error; tip: "Oil pressure (ECM_Fuel.OilPressureWarn, or ECM silent)" }
-            Lamp { on: root.c.parkBrake; label: "BRAKE"; tone: Theme.error; tip: "Park brake applied (BCM_Status.ParkBrake); flashes when driving with it (ParkBrakeWarn)" }
-            Lamp {
-                visible: App.fitted.indexOf("tpms") >= 0
-                on: root.c.tpms; label: "TPMS"
-                tip: "Tyre pressure: steady = a tyre 25 % below the placard; flashing for a minute, then steady = system fault (BCM_Tpms.TpmsLampReq)"
-            }
-            Lamp { on: root.c.lowFuel; label: "FUEL"; tip: "Low fuel: below 7 l, or no valid level from the fuel sender (ECM_Fuel)" }
-            Lamp { on: root.c.transFault; label: "TRANS"; tip: "Transmission limp mode (TCM_Status.LimpMode, or TCM silent)" }
-            Lamp { on: root.c.lampFault; label: "BULB"; tip: "Exterior lamp failure (BCM_Status.LampFault)" }
-            Lamp { on: root.c.doorAjar; label: "DOOR"; tone: Theme.error; tip: "Door ajar (BCM_Status.DoorAjar_xx)" }
-            Lamp { on: root.c.lowBeam; label: "LOW"; tone: Theme.ok; tip: "Low beam (BCM_Status.Headlamps)" }
-            Lamp { on: root.c.highBeam; label: "HIGH"; tone: Theme.accent; tip: "High beam (BCM_Status.HighBeam)" }
-            Item { Layout.fillWidth: true }
-            Lamp { on: root.c.turnRight; label: "▶"; tone: Theme.ok; tip: "Right turn signal (BCM_Status.TurnRight)" }
         }
     }
 }

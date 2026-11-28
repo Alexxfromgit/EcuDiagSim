@@ -56,11 +56,12 @@ anyway"), and macOS needs right-click → Open the first time.
 ### Windows
 
 Requirements: Visual Studio 2022 or newer with the C++ workload, CMake ≥ 3.24, Ninja, Qt ≥ 6.8 for
-MSVC x64 with the *Qt SerialBus* add-on. Qt can be installed without an account:
+MSVC x64 with *Qt SerialBus*. The 3D viewer also uses *Qt WebEngine*, *Qt WebChannel* and
+*Qt Positioning* (a WebEngine dependency). Qt can be installed without an account:
 
 ```powershell
 pip install aqtinstall
-python -m aqt install-qt windows desktop 6.10.3 win64_msvc2022_64 -m qtserialbus qtserialport -O C:\Qt
+python -m aqt install-qt windows desktop 6.10.3 win64_msvc2022_64 -m qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning -O C:\Qt
 ```
 
 Then:
@@ -91,14 +92,39 @@ configure; `-DECUSIM_UPDATES=OFF` builds without it.
 Tested on Ubuntu 24.04 with GCC 13 and Qt 6.8:
 
 ```bash
-sudo apt-get install -y build-essential cmake ninja-build python3-venv libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3
+sudo apt-get install -y build-essential cmake ninja-build python3-venv libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 libdbus-1-3 libnss3 libxcomposite1 libxdamage1 libxrandr2 libxtst6 libxkbfile1 libasound2t64
 python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
-~/.venv/aqt/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtserialbus qtserialport -O ~/Qt
+~/.venv/aqt/bin/python -m aqt install-qt linux desktop 6.8.3 linux_gcc_64 -m qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning -O ~/Qt
 ./scripts/build.sh --test        # configure, build, run the tests
 ./scripts/build.sh --run         # build and start the application
 ```
 
 `build.sh` finds Qt under `~/Qt` or `/opt/Qt` (or `CMAKE_PREFIX_PATH` / `QT_ROOT_DIR`).
+
+### 3D vehicle MVP
+
+Use **3D** in the vehicle column, then **Expand** for a larger workspace. Hold the left mouse
+button and drag to orbit, scroll to zoom, and click markers to inspect sensors or controllers.
+The inspector opens the existing fault controls and UDS scanner. Diagnostic/exterior modes,
+system and fault filters, camera presets, live values and equipment changes work offline.
+
+The modern four-door sedan has curved body panels, wheel openings, separate glazing, alloy wheels,
+and slim lights. The fitted Engine OBD, TPMS, SRS and ESC packs add their physical components,
+markers and connections. Diagnostic mode shows solid sensor/CAN wiring and dashed TPMS radio
+paths with animated signal pulses. Flow respects pause, reduced motion and panel visibility;
+**Wiring** and **Data flow** can also be switched off. CAN pulses follow newly transmitted frames;
+routing, sensor sampling pulses and display timing are illustrative. Doors, steering, wheels,
+position/dipped/high lamps, indicators/hazards, brake and reverse lamps follow simulator state.
+
+The exterior adapts **Gourami - Luxury Saloon** by **Fishboe/ministephen**, via sevnworks,
+under **CC BY 4.0**, with attribution shipped in the app. The viewer code remains MIT.
+Component locations and harness routes are approximate. The viewer uses bundled Three.js
+under MIT and LGPL Qt modules, without Qt Quick 3D. **Diagram** preserves the original view.
+Configure with `-DECUSIM_VEHICLE_3D=OFF` to omit WebEngine entirely. If its Qt modules are absent,
+the build falls back to the diagram with a CMake warning. Software-rendered Qt sessions default
+to the diagram. Launch with `--vehicle-3d` to open the expanded viewer directly.
+
+See [3D viewer development](docs/vehicle-3d.md) for architecture, tests, dependencies and limitations.
 
 ### Presets
 

@@ -11,12 +11,15 @@ byte) has a bit per function:
 | 0 (`01`) | lamp monitoring — current check of the low beams, **B1601** and the **BULB** tell-tale |
 | 1 (`02`) | auto-lock — locks the doors once per trip above 15 km/h; an opened door or the central locking switch ends it |
 | 2 (`04`) | daytime running lights — the position lamps light while the engine runs |
+| 3 (`08`) | tyre-pressure monitoring — only on a car with TPMS fitted |
 
 ## Steps
 
 1. Ignition on, start the engine.
-2. Scan tool → UDS → **BCM** → *Coding* **Read**: `62 01 00 01`, lamp monitoring only.
-3. **Extended session**, **Unlock**, enter `07` and **Write**: `6E 01 00`.
+2. Scan tool → UDS → **BCM** → *Coding* **Read**: `62 01 00 01`, lamp monitoring only
+   (`62 01 00 09` if TPMS is fitted in Settings: bit 3 is set as well).
+3. **Extended session**, **Unlock**, enter `07` and **Write**: `6E 01 00`. With TPMS fitted,
+   write `0F` instead to keep tyre-pressure monitoring.
 
 ## What to observe
 
@@ -29,7 +32,8 @@ byte) has a bit per function:
 
 ## Try next
 
-- Write `08`: `7F 2E 31` — the BCM checks that only known bits are set.
+- Write `10`: `7F 2E 31` — the BCM checks that only known bits are set. Without TPMS, `08` is
+  refused too: the BCM only accepts the functions the car has.
 - Write `00` (no lamp monitoring), break the left low beam bulb: no B1601, no **BULB** lamp. The
   coding decides which monitors run.
 - Inject *Replaced, not configured* on the BCM: the coding reads `FF`, **U3000-55** is set and

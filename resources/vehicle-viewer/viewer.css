@@ -1,0 +1,103 @@
+:root { color-scheme: dark; font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #e4e8ee; background: #0e141b; }
+* { box-sizing: border-box; }
+body { margin: 0; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+button, select { font: inherit; color: #becbd8; border: 1px solid #293b4b; background: #14212c; border-radius: 5px; min-height: 30px; padding: 5px 10px; }
+button { cursor: pointer; }
+button:hover, select:hover { border-color: #598499; background: #1b2d3b; }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid #54e0df; outline-offset: 2px; }
+button:disabled { opacity: .45; cursor: default; }
+header { padding: 16px 18px 12px; border-bottom: 1px solid #23323e; background: #111b25; z-index: 3; }
+.heading, .toolbar, .selection-heading { display: flex; align-items: center; gap: 10px; }
+.heading { justify-content: space-between; margin-bottom: 14px; }
+.eyebrow { font-size: 10px; font-weight: 650; letter-spacing: 1.7px; color: #8ca3b6; }
+.live { font-size: 9px; letter-spacing: 1px; color: #52d8b0; background: #17382f; border-radius: 3px; padding: 4px 7px; }
+.toolbar { flex-wrap: wrap; gap: 8px; }
+.equipment-strip { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 10px; }
+.equipment-strip span { border: 1px solid #2b4050; border-radius: 3px; padding: 3px 6px; color: #8da9ba; font-size: 9px; letter-spacing: .4px; }
+.flow-state { position: absolute; right: 18px; top: 20px; color: #77c8cb; border: 1px solid #294d58; border-radius: 4px; background: #10222bbf; padding: 5px 8px; font-size: 10px; pointer-events: none; z-index: 2; }
+#connection-summary { color: #6e91a6; font-size: 10px; }
+.segmented { display: flex; }
+.segmented button { border-radius: 0; }
+.segmented button:first-child { border-radius: 5px 0 0 5px; }
+.segmented button:last-child { border-radius: 0 5px 5px 0; margin-left: -1px; }
+.segmented button[aria-pressed="true"] { background: #123c46; border-color: #2d9aa4; color: #74eeec; position: relative; }
+.check { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #a1b3c2; }
+input { accent-color: #48cece; }
+#reset { margin-left: auto; }
+main { flex: 1; min-height: 0; display: flex; }
+#stage { flex: 1; min-width: 0; position: relative; overflow: hidden; touch-action: none; background: radial-gradient(ellipse at 50% 45%, #172e3e 0, #0c1823 60%, #0a121b 100%); }
+canvas { display: block; width: 100%; height: 100%; }
+.scene-heading { position: absolute; top: 20px; left: 20px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; z-index: 1; }
+#scene-caption { color: #6e91a6; font-size: 11px; }
+#labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+.marker { position: absolute; left: 0; top: 0; transform: translate(-9px, -50%); display: flex; align-items: center; gap: 5px; min-height: 26px; min-width: 26px; padding: 5px; border: 0; background: transparent; color: #66e1d5; pointer-events: auto; white-space: nowrap; }
+.marker:hover { border: 0; background: transparent; }
+.marker-dot { flex: 0 0 auto; width: 9px; height: 9px; border-radius: 50%; background: currentColor; border: 2px solid #0c1923; box-shadow: 0 0 0 1px currentColor; }
+.marker-label { display: none; background: #10212eed; border: 1px solid #315263; border-radius: 4px; padding: 4px 6px; font-size: 10px; color: #c5d9e3; letter-spacing: .3px; }
+.marker.ecu .marker-label, .marker.faulted .marker-label, .marker.selected .marker-label, .marker:hover .marker-label, .marker:focus-visible .marker-label { display: inline; }
+.marker.faulted { color: #ffb347; }
+.marker.selected { color: #f5fdff; z-index: 5; }
+.marker.selected .marker-label { border-color: #65e0e0; color: #f5fdff; }
+.marker.label-hidden:not(.selected):not(:hover):not(:focus-visible) .marker-label { display: none; }
+.marker.asleep { color: #6d7f92; }
+.marker.stored { color: #e8c46c; }
+.view-presets { display: flex; gap: 4px; position: absolute; bottom: 51px; left: 50%; transform: translateX(-50%); z-index: 3; }
+.view-presets button { background: #101f2bde; min-height: 26px; font-size: 10px; padding: 4px 8px; }
+.vehicle-telemetry { position: absolute; bottom: 91px; left: 18px; right: 18px; text-align: center; color: #9bb4c6; font-size: 10px; pointer-events: none; }
+.scene-footer { position: absolute; bottom: 17px; left: 18px; right: 18px; display: flex; justify-content: space-between; gap: 8px; color: #6d8597; font-size: 10px; pointer-events: none; }
+aside { flex: 0 0 258px; width: 258px; padding: 20px 18px; border-left: 1px solid #23323e; background: #111c26; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+aside select { width: 100%; font-size: 11px; min-height: 35px; }
+#target-count { color: #4ecdc6; letter-spacing: 0; }
+h1 { font-size: 21px; line-height: 1.25; font-weight: 550; margin: 10px 0; }
+p { line-height: 1.65; font-size: 12px; margin: 10px 0 18px; }
+.muted { color: #849caf; }
+.selection-icon { font-size: 40px; color: #3b7f8d; margin: 20px 0; }
+.selection-heading { justify-content: space-between; margin-top: 15px; }
+.status { font-size: 9px; color: #69d8b3; padding: 4px 5px; border: 1px solid #2a564b; border-radius: 4px; text-transform: uppercase; }
+.status.faulted { color: #ffc175; border-color: #76532c; }
+dl { margin: 22px 0; }
+.value-row { border-top: 1px solid #253440; padding: 10px 0; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+dt { font-size: 11px; color: #8ea5b7; }
+dd { font: 12px ui-monospace, "SFMono-Regular", Consolas, monospace; color: #e3f4f6; margin: 0; text-align: right; }
+.wide { display: block; width: 100%; margin-top: 8px; font-size: 11px; min-height: 34px; }
+.primary { color: #081d24; background: #54d5cc; border-color: #54d5cc; font-weight: 600; }
+.primary:hover { background: #8de8e0; }
+.fault-description { padding: 10px; border-left: 2px solid #e9a33c; background: #32291e; color: #ffd49c; font-size: 11px; }
+.legend { margin-top: auto; padding-top: 20px; display: flex; gap: 12px; color: #8299aa; font-size: 9px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; }
+.legend i { width: 5px; height: 5px; border-radius: 50%; background: #61d5c7; }
+.asset-credit { font-size: 9px; color: #6d8597; }
+.legend .fault { background: #ffb347; }
+.legend .sleep { background: #6d7f92; }
+#viewer-error { position: absolute; z-index: 4; inset: 30% 15% auto; padding: 20px; background: #1f2834; border: 1px solid #b78942; border-radius: 6px; line-height: 1.6; }
+[hidden] { display: none !important; }
+/* A small stage (the vehicle column of the main window): fewer overlays, smaller markers. */
+#stage.compact .scene-heading, #stage.compact .scene-footer { display: none; }
+#stage.compact .flow-state { top: 8px; right: 8px; font-size: 9px; padding: 3px 6px; }
+#stage.compact .view-presets { bottom: 8px; gap: 3px; }
+#stage.compact .view-presets button { min-height: 22px; font-size: 9px; padding: 2px 6px; }
+#stage.compact .vehicle-telemetry { bottom: 36px; font-size: 9px; }
+#stage.compact .marker { min-height: 20px; min-width: 20px; padding: 3px; transform: translate(-7px, -50%); }
+#stage.compact .marker-dot { width: 7px; height: 7px; border-width: 1.5px; }
+#stage.compact .marker-label { font-size: 9px; padding: 2px 5px; }
+@media (max-width: 760px) {
+    main { flex-direction: column; }
+    aside { width: auto; flex: 0 1 auto; max-height: 44%; min-height: 0; border-left: 0; border-top: 1px solid #23323e; padding: 10px 12px; gap: 8px; }
+    header { padding: 9px 12px 8px; }
+    .heading { margin-bottom: 7px; }
+    .toolbar { gap: 5px; }
+    .toolbar button, .toolbar select { font-size: 10px; padding: 3px 7px; min-height: 26px; }
+    .check { font-size: 10px; }
+    #reset, .equipment-strip { display: none; }
+    #stage { min-height: 200px; }
+    #empty-selection .selection-icon, #empty-selection h1, #empty-selection .muted, .legend { display: none; }
+    #empty-selection p { font-size: 11px; margin: 2px 0; line-height: 1.45; }
+    aside select { min-height: 30px; }
+    #selection h1 { font-size: 16px; }
+    .selection-heading { margin-top: 0; }
+    dl { margin: 8px 0; }
+    .value-row { padding: 6px 0; }
+    .scene-heading { top: 12px; left: 12px; }
+    .flow-state { top: 12px; right: 12px; font-size: 9px; }
+    .equipment-strip { margin-top: 7px; }
+}

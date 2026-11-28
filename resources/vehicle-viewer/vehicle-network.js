@@ -1,0 +1,188 @@
+import * as THREE from "./vendor/three.module.min.js";
+import { connectionsFromSnapshot, connectionStatus, harness, routeHarness } from "./vehicle-state.js";
+
+// Schematic harness routing, not an OEM loom or a CAN packet capture. The TPMS paths are radio.
+export function createVehicleNetwork() {
+    const root = new THREE.Group();
+    root.name = "vehicle-signal-network";
+    const records = new Map();
+    const pulseGeometry = new THREE.SphereGeometry(.017, 8, 6);
+    const pulseMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
+    const pulses = new THREE.InstancedMesh(pulseGeometry, pulseMaterial, 256);
+    pulses.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    pulses.frustumCulled = false; pulses.renderOrder = 12; pulses.count = 0;
+    root.add(pulses);
+    const transform = new THREE.Matrix4();
+    const position = new THREE.Vector3();
+    const color = new THREE.Color(), white = new THREE.Color(0xffffff);
+    let topologyKey = "", snapshot = {}, phase = 0, lastCounts = {};
+    let view = { diagnostic: true, wires: true, system: "", selectedId: "", visibleIds: new Set() };
+
+    const looms = new THREE.Group(); looms.name = "looms"; root.add(looms);
+    const loomMaterial = new THREE.MeshStandardMaterial({ color: 0x15191e, roughness: .9, transparent: true, opacity: .9 });
+    // Looms that carry none of the selected component's circuits recede with their wires.
+    const loomDimmed = new THREE.MeshStandardMaterial({ color: 0x15191e, roughness: .9, transparent: true, opacity: .25, depthWrite: false });
+    const loomMeshes = new Map();
+    const hash = text => [...text].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+    // Circuits follow the harness backbone; each wire keeps its own small lane inside the loom.
+    function routeFor(edge) {
+        if (edge.kind === "radio") return { links: [], points: null };
+        const path = routeHarness(edge.from, edge.to);
+        const h = hash(edge.id);
+        const lane = [((h & 15) / 15 - .5) * .016, (((h >> 4) & 15) / 15 - .5) * .016, (((h >> 8) & 15) / 15 - .5) * .016];
+        const nodes = path.map(id => harness.nodes[id].map((v, i) => v + lane[i]));
+        const lift = ([x, y, z], toward) => [x + (toward[0] - x) * .15, y + .05, z + (toward[2] - z) * .15];
+        const points = [edge.from, lift(edge.from, nodes[0]), ...nodes, lift(edge.to, nodes.at(-1)), edge.to];
+        const links = path.slice(1).map((id, i) => [path[i], id].sort().join("|"));
+        return { links, points };
+    }
+
+    function curveFor(edge, route) {
+        const [x, y, z] = edge.from;
+        const [tx, ty, tz] = edge.to;
+        const points = edge.kind === "radio" ? [edge.from, [x * .8, Math.max(y, ty) + .35, z * .65], [tx, ty + .2, tz], edge.to] : route.points;
+        // Coincident consecutive points destabilize the curve's tangent frame.
+        const vectors = points.map(p => new THREE.Vector3(...p)).filter((p, index, all) => index === 0 || p.distanceTo(all[index - 1]) > .015);
+        return new THREE.CatmullRomCurve3(vectors, false, "centripetal", .3);
+    }
+
+    function rebuildLooms() {
+        for (const mesh of loomMeshes.values()) { looms.remove(mesh); mesh.geometry.dispose(); }
+        loomMeshes.clear();
+        for (const record of records.values()) for (const link of record.links) {
+            if (loomMeshes.has(link)) continue;
+            const [a, b] = link.split("|").map(id => new THREE.Vector3(...harness.nodes[id]));
+            const mesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(a, b), 4, .017, 8, false), loomMaterial);
+            mesh.name = "loom:" + link; looms.add(mesh); loomMeshes.set(link, mesh);
+        }
+    }
+
+    function createRecord(edge) {
+        const route = routeFor(edge);
+        const curve = curveFor(edge, route);
+        const group = new THREE.Group(); group.name = edge.id;
+        let line;
+        if (edge.kind === "radio") {
+            const material = new THREE.LineDashedMaterial({ color: 0xc393ff, dashSize: .085, gapSize: .055,
+                transparent: true, opacity: .55, depthTest: false, depthWrite: false });
+            line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(60)), material);
+            line.computeLineDistances();
+        } else {
+            const material = new THREE.MeshBasicMaterial({ color: 0x53ddd0, transparent: true, opacity: .52,
+                depthTest: false, depthWrite: false });
+            line = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, edge.kind === "can" ? .005 : .004, 5, false), material);
+            const sleeve = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, edge.kind === "can" ? .011 : .007, 6, false),
+                new THREE.MeshStandardMaterial({ color: 0x1b2630, roughness: .85, transparent: true, opacity: .8 }));
+            sleeve.name = "loom-sleeve"; group.add(sleeve);
+            if (edge.kind === "can") {
+                const normal = curve.computeFrenetFrames(240, false);
+                for (const strand of [-1, 1]) {
+                    const points = [];
+                    for (let i = 0; i <= 240; i++) {
+                        const point = curve.getPointAt(i / 240), angle = i / 240 * curve.getLength() * 35;
+                        point.addScaledVector(normal.normals[i], Math.cos(angle) * .006 * strand);
+                        point.addScaledVector(normal.binormals[i], Math.sin(angle) * .006 * strand); points.push(point);
+                    }
+                    const twisted = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 360, .0025, 4, false), material);
+                    twisted.renderOrder = 8; group.add(twisted);
+                }
+            }
+        }
+        line.renderOrder = 8; group.add(line); root.add(group);
+        return { edge, curve, group, line, links: route.links, length: curve.getLength(), visible: true, active: false, color: 0x53ddd0, events: [] };
+    }
+
+    function updateVisibility() {
+        root.visible = view.diagnostic && view.wires;
+        for (const record of records.values()) {
+            const edge = record.edge;
+            record.visible = root.visible && view.visibleIds.has(edge.targetId) && (!view.system || view.system === edge.system);
+            record.group.visible = record.visible;
+            const focused = !view.selectedId || edge.targetId === view.selectedId || edge.controllerId === view.selectedId ||
+                (view.selectedId === "can_bus" && edge.kind === "can") || (view.selectedId === "abs_e2e" && edge.system === "ABS");
+            record.focused = focused;
+            record.line.material.opacity = focused ? .76 : .17;
+            const sleeve = record.group.getObjectByName("loom-sleeve");
+            if (sleeve) sleeve.material.opacity = focused ? .8 : .22;
+        }
+        const visible = [...records.values()].filter(record => record.visible);
+        const used = new Set(visible.flatMap(record => record.links));
+        const focusedLinks = new Set(visible.filter(record => record.focused).flatMap(record => record.links));
+        for (const [link, mesh] of loomMeshes) {
+            mesh.visible = used.has(link);
+            mesh.material = !view.selectedId || focusedLinks.has(link) ? loomMaterial : loomDimmed;
+        }
+        updatePulses();
+    }
+
+    function updatePulses() {
+        let index = 0;
+        for (const record of records.values()) {
+            if (!record.visible || !record.active) continue;
+            const { edge, curve, length } = record;
+            const count = edge.kind === "can" ? record.events.length : 2;
+            const offset = edge.targetId.charCodeAt(0) / 255;
+            for (let i = 0; i < count; i++) {
+                const t = edge.kind === "can" ? record.events[i] : (phase * .9 / Math.max(.5, length) + i / count + offset) % 1;
+                curve.getPointAt(edge.direction === "outbound" ? 1 - t : t, position);
+                transform.makeTranslation(position.x, position.y, position.z);
+                pulses.setMatrixAt(index, transform);
+                pulses.setColorAt(index, color.set(record.color).lerp(white, .45));
+                index++;
+            }
+        }
+        pulses.count = index;
+        pulses.instanceMatrix.needsUpdate = true;
+        if (pulses.instanceColor) pulses.instanceColor.needsUpdate = true;
+    }
+
+    function applyState(next) {
+        snapshot = next;
+        const edges = connectionsFromSnapshot(snapshot);
+        const key = edges.map(edge => edge.id).join("|");
+        if (key !== topologyKey) {
+            for (const record of records.values()) {
+                root.remove(record.group);
+                const geometries = new Set(), materials = new Set();
+                record.group.traverse(object => { if (object.isMesh || object.isLine) { geometries.add(object.geometry); materials.add(object.material); } });
+                for (const geometry of geometries) geometry.dispose();
+                for (const material of materials) material.dispose();
+            }
+            records.clear(); topologyKey = key;
+            for (const edge of edges) records.set(edge.id, createRecord(edge));
+            rebuildLooms();
+        }
+        for (const edge of edges) {
+            const record = records.get(edge.id);
+            record.edge = edge;
+            const status = connectionStatus(edge, snapshot);
+            record.active = status.active; record.color = status.color;
+            record.line.material.color.set(status.color);
+            if (edge.kind === "can") {
+                const current = next.vehicle?.transmittedFrames?.[edge.system] ?? 0, previous = lastCounts[edge.system];
+                if (!status.active || previous === undefined || current < previous) record.events = [];
+                else if (current > previous) record.events = [...record.events, 0].slice(-8);
+            }
+        }
+        lastCounts = { ...(next.vehicle?.transmittedFrames ?? {}) };
+        updateVisibility();
+    }
+
+    return {
+        root, records, pulses, applyState,
+        setView(next) { view = { ...view, ...next }; updateVisibility(); },
+        hasActiveFlow() { return root.visible && [...records.values()].some(record => record.visible && record.active && (record.edge.kind !== "can" || record.events.length)); },
+        advance(seconds) {
+            phase += seconds;
+            for (const record of records.values()) record.events = record.events.map(t => t + seconds * 3 / Math.max(.5, record.length)).filter(t => t < 1);
+            updatePulses();
+        },
+        summary() {
+            const visible = [...records.values()].filter(record => record.visible);
+            return { wired: visible.filter(record => record.edge.kind === "signal").length,
+                radio: visible.filter(record => record.edge.kind === "radio").length,
+                can: visible.filter(record => record.edge.kind === "can").length };
+        }
+    };
+}

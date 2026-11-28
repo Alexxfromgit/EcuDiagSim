@@ -4,13 +4,15 @@ Thanks for helping! Bug reports, lesson ideas and pull requests are all welcome.
 
 ## Getting started
 
-You need CMake ≥ 3.24, Ninja, a C++20 compiler and Qt ≥ 6.8 with the *Qt SerialBus* add-on:
+You need CMake ≥ 3.24, Ninja, a C++20 compiler and Qt ≥ 6.8 with *Qt SerialBus*. The optional
+3D viewer also uses *Qt WebEngine*, *Qt WebChannel* and *Qt Positioning*; see
+[the viewer guide](docs/vehicle-3d.md) for a diagram-only build and browser tests.
 
 - **Windows:** Visual Studio 2022 or newer with *Desktop development with C++*, Qt for MSVC 2022 x64.
 - **Linux:** for example `sudo apt-get install -y build-essential cmake ninja-build libgl1-mesa-dev libxkbcommon-dev`,
   Qt for `linux_gcc_64`.
 - **macOS 12+:** Xcode (or its command line tools), `brew install cmake ninja`, Qt for `macos`
-  (`aqt install-qt mac desktop 6.8.3 clang_64 -m qtserialbus qtserialport -O ~/Qt`). Homebrew's Qt
+  (`aqt install-qt mac desktop 6.8.3 clang_64 -m qtserialbus qtserialport qtwebengine qtwebchannel qtpositioning -O ~/Qt`). Homebrew's Qt
   builds and tests fine but cannot be packed: its QML plugins are symlinks into the Homebrew cellar,
   which end up in the `.app` and `vpk` rejects.
 

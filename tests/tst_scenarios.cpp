@@ -187,7 +187,10 @@ void tst_Scenarios::staleSignalsAndBadHexFail()
         { "action": "wait", "ms": 1500 },
         { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1 },
         { "action": "expect", "signal": "VehicleSpeedValid", "op": "==", "value": 1, "maxAgeMs": 5000 },
-        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": "7E GG" } ] })";
+        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": "7E GG" },
+        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": ["7F", "7E 00"] },
+        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": ["7F 3E", "7E 01"] },
+        { "action": "uds", "ecu": "BCM", "request": "3E 00", "expect": ["7E 00", "ZZ"] } ] })";
     QVERIFY(sim.scenario().loadJson(json));
     sim.scenario().start();
     QVERIFY(sim.runUntil([&] { return sim.scenario().finished(); }, 20000));
@@ -196,9 +199,13 @@ void tst_Scenarios::staleSignalsAndBadHexFail()
         if (e.level == ScenarioLogEntry::Level::Fail && !e.text.startsWith(QStringLiteral("Scenario failed")))
             failures << e.text;
     // The cached value from before the ABS went silent must not count, nor a broken hex string.
-    QCOMPARE(failures.size(), 2);
+    // A list of alternatives passes when any one matches, fails when none does, and a broken entry
+    // fails the step even if another entry would match.
+    QCOMPARE(failures.size(), 4);
     QVERIFY2(failures.at(0).contains(QStringLiteral("stale")), qPrintable(failures.join(u'\n')));
     QVERIFY2(failures.at(1).contains(QStringLiteral("Invalid hex")), qPrintable(failures.join(u'\n')));
+    QVERIFY2(failures.at(2).contains(QStringLiteral("Unexpected response")), qPrintable(failures.join(u'\n')));
+    QVERIFY2(failures.at(3).contains(QStringLiteral("Invalid hex")), qPrintable(failures.join(u'\n')));
 }
 
 void tst_Scenarios::endToEndProtection()
