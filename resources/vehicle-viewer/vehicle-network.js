@@ -1,12 +1,12 @@
 import * as THREE from "./vendor/three.module.min.js";
-import { connectionsFromSnapshot, connectionStatus } from "./vehicle-state.js";
+import { connectionsFromSnapshot, connectionStatus, harness, routeHarness } from "./vehicle-state.js";
 
 // Schematic harness routing, not an OEM loom or a CAN packet capture. The TPMS paths are radio.
 export function createVehicleNetwork() {
     const root = new THREE.Group();
     root.name = "vehicle-signal-network";
     const records = new Map();
-    const pulseGeometry = new THREE.SphereGeometry(.026, 8, 6);
+    const pulseGeometry = new THREE.SphereGeometry(.017, 8, 6);
     const pulseMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false, depthWrite: false });
     const pulses = new THREE.InstancedMesh(pulseGeometry, pulseMaterial, 256);
     pulses.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -18,27 +18,47 @@ export function createVehicleNetwork() {
     let topologyKey = "", snapshot = {}, phase = 0, lastCounts = {};
     let view = { diagnostic: true, wires: true, system: "", selectedId: "", visibleIds: new Set() };
 
-    function curveFor(edge) {
+    const looms = new THREE.Group(); looms.name = "looms"; root.add(looms);
+    const loomMaterial = new THREE.MeshStandardMaterial({ color: 0x15191e, roughness: .9, transparent: true, opacity: .9 });
+    const loomMeshes = new Map();
+    const hash = text => [...text].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+    // Circuits follow the harness backbone; each wire keeps its own small lane inside the loom.
+    function routeFor(edge) {
+        if (edge.kind === "radio") return { links: [], points: null };
+        const path = routeHarness(edge.from, edge.to);
+        const h = hash(edge.id);
+        const lane = [((h & 15) / 15 - .5) * .016, (((h >> 4) & 15) / 15 - .5) * .016, (((h >> 8) & 15) / 15 - .5) * .016];
+        const nodes = path.map(id => harness.nodes[id].map((v, i) => v + lane[i]));
+        const lift = ([x, y, z], toward) => [x + (toward[0] - x) * .15, y + .05, z + (toward[2] - z) * .15];
+        const points = [edge.from, lift(edge.from, nodes[0]), ...nodes, lift(edge.to, nodes.at(-1)), edge.to];
+        const links = path.slice(1).map((id, i) => [path[i], id].sort().join("|"));
+        return { links, points };
+    }
+
+    function curveFor(edge, route) {
         const [x, y, z] = edge.from;
         const [tx, ty, tz] = edge.to;
-        let points;
-        if (edge.kind === "radio") {
-            points = [edge.from, [x * .8, Math.max(y, ty) + .35, z * .65], [tx, ty + .2, tz], edge.to];
-        } else if (edge.kind === "can") {
-            points = [edge.from, [x, .51, z + .10], [.10, .51, z + .16], [.10, .51, tz]];
-        } else {
-            const side = x < 0 ? -1 : 1;
-            const lane = .72 + (edge.targetId.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0) % 5) * .016;
-            points = [edge.from, [x, Math.max(.51, y - .12), z + .10],
-                [side * lane, .53, z + .17], [side * lane, .53, tz + .18], [tx, Math.max(.53, ty - .10), tz + .10], edge.to];
-        }
+        const points = edge.kind === "radio" ? [edge.from, [x * .8, Math.max(y, ty) + .35, z * .65], [tx, ty + .2, tz], edge.to] : route.points;
         // Coincident consecutive points destabilize the curve's tangent frame.
         const vectors = points.map(p => new THREE.Vector3(...p)).filter((p, index, all) => index === 0 || p.distanceTo(all[index - 1]) > .015);
-        return new THREE.CatmullRomCurve3(vectors, false, "centripetal");
+        return new THREE.CatmullRomCurve3(vectors, false, "centripetal", .3);
+    }
+
+    function rebuildLooms() {
+        for (const mesh of loomMeshes.values()) { looms.remove(mesh); mesh.geometry.dispose(); }
+        loomMeshes.clear();
+        for (const record of records.values()) for (const link of record.links) {
+            if (loomMeshes.has(link)) continue;
+            const [a, b] = link.split("|").map(id => new THREE.Vector3(...harness.nodes[id]));
+            const mesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(a, b), 4, .017, 8, false), loomMaterial);
+            mesh.name = "loom:" + link; mesh.userData.users = 0; looms.add(mesh); loomMeshes.set(link, mesh);
+        }
     }
 
     function createRecord(edge) {
-        const curve = curveFor(edge);
+        const route = routeFor(edge);
+        const curve = curveFor(edge, route);
         const group = new THREE.Group(); group.name = edge.id;
         let line;
         if (edge.kind === "radio") {
@@ -49,26 +69,26 @@ export function createVehicleNetwork() {
         } else {
             const material = new THREE.MeshBasicMaterial({ color: 0x53ddd0, transparent: true, opacity: .52,
                 depthTest: false, depthWrite: false });
-            line = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, edge.kind === "can" ? .006 : .0045, 5, false), material);
-            const sleeve = new THREE.Mesh(new THREE.TubeGeometry(curve, 64, edge.kind === "can" ? .019 : .010, 6, false),
-                new THREE.MeshStandardMaterial({ color: 0x1b2630, roughness: .85, transparent: true, opacity: .72 }));
+            line = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, edge.kind === "can" ? .005 : .004, 5, false), material);
+            const sleeve = new THREE.Mesh(new THREE.TubeGeometry(curve, 160, edge.kind === "can" ? .011 : .007, 6, false),
+                new THREE.MeshStandardMaterial({ color: 0x1b2630, roughness: .85, transparent: true, opacity: .8 }));
             sleeve.name = "loom-sleeve"; group.add(sleeve);
             if (edge.kind === "can") {
-                const normal = curve.computeFrenetFrames(80, false);
+                const normal = curve.computeFrenetFrames(240, false);
                 for (const strand of [-1, 1]) {
                     const points = [];
-                    for (let i = 0; i <= 80; i++) {
-                        const point = curve.getPointAt(i / 80), angle = i / 80 * curve.getLength() * 35;
-                        point.addScaledVector(normal.normals[i], Math.cos(angle) * .008 * strand);
-                        point.addScaledVector(normal.binormals[i], Math.sin(angle) * .008 * strand); points.push(point);
+                    for (let i = 0; i <= 240; i++) {
+                        const point = curve.getPointAt(i / 240), angle = i / 240 * curve.getLength() * 35;
+                        point.addScaledVector(normal.normals[i], Math.cos(angle) * .006 * strand);
+                        point.addScaledVector(normal.binormals[i], Math.sin(angle) * .006 * strand); points.push(point);
                     }
-                    const twisted = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 100, .003, 4, false), material);
+                    const twisted = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 360, .0025, 4, false), material);
                     twisted.renderOrder = 8; group.add(twisted);
                 }
             }
         }
         line.renderOrder = 8; group.add(line); root.add(group);
-        return { edge, curve, group, line, length: curve.getLength(), visible: true, active: false, color: 0x53ddd0, events: [] };
+        return { edge, curve, group, line, links: route.links, length: curve.getLength(), visible: true, active: false, color: 0x53ddd0, events: [] };
     }
 
     function updateVisibility() {
@@ -81,6 +101,8 @@ export function createVehicleNetwork() {
                 (view.selectedId === "can_bus" && edge.kind === "can") || (view.selectedId === "abs_e2e" && edge.system === "ABS");
             record.line.material.opacity = focused ? .76 : .17;
         }
+        const used = new Set([...records.values()].filter(record => record.visible).flatMap(record => record.links));
+        for (const [link, mesh] of loomMeshes) mesh.visible = used.has(link);
         updatePulses();
     }
 
@@ -119,6 +141,7 @@ export function createVehicleNetwork() {
             }
             records.clear(); topologyKey = key;
             for (const edge of edges) records.set(edge.id, createRecord(edge));
+            rebuildLooms();
         }
         for (const edge of edges) {
             const record = records.get(edge.id);

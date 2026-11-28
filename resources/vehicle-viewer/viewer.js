@@ -42,7 +42,7 @@ class VehicleViewer {
         this.controls.maxDistance = 16;
         this.controls.maxPolarAngle = Math.PI * .49;
         this.controls.addEventListener("change", () => this.invalidate());
-        this.controls.addEventListener("start", () => { this.interacting = true; });
+        this.controls.addEventListener("start", () => { this.interacting = true; this.framed = null; });
         this.controls.addEventListener("end", () => { this.interacting = false; this.invalidate(); });
         // Most light comes from the studio environment; the overhead key adds shape and a soft shadow.
         this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x1b2733, .45));
@@ -109,8 +109,12 @@ class VehicleViewer {
         softbox(12, 5, [0, 13.4, 0], [Math.PI / 2, 0, 0], 4.5);
         softbox(18, 2.2, [-15.8, 4.5, 0], [0, Math.PI / 2, 0], 3.2, 0xe6f2ff);
         softbox(18, 2.2, [15.8, 4.5, 0], [0, -Math.PI / 2, 0], 3.2, 0xe6f2ff);
-        softbox(12, 4, [0, 4, -15.8], [0, 0, 0], 2.2, 0xdcecff);
-        softbox(12, 4, [0, 4, 15.8], [0, Math.PI, 0], 1.8, 0xfff0e2);
+        // Front and rear: pairs of tall strips rather than one broad panel, so flat panels such as
+        // the boot lid show crisp highlight lines instead of a large grey patch.
+        for (const x of [-5, 5]) {
+            softbox(2.4, 6, [x, 4, -15.8], [0, 0, 0], 2.4, 0xdcecff);
+            softbox(2.4, 6, [x, 4, 15.8], [0, Math.PI, 0], 2.0, 0xfff0e2);
+        }
         softbox(32, .6, [0, 1.6, -15.9], [0, 0, 0], 1.6);
         softbox(32, .6, [0, 1.6, 15.9], [0, Math.PI, 0], 1.6);
         softbox(.6, 32, [-15.9, 1.6, 0], [0, Math.PI / 2, Math.PI / 2], 1.2);
@@ -176,6 +180,7 @@ class VehicleViewer {
             if (!target?.position) return;
             const position = new THREE.Vector3(...target.position);
             const direction = this.camera.position.clone().sub(this.controls.target).normalize();
+            this.framed = null;
             this.controls.target.copy(position);
             this.camera.position.copy(position).addScaledVector(direction, 2.8);
             this.controls.update(); this.invalidate();
@@ -206,10 +211,31 @@ class VehicleViewer {
     }
 
     cameraPreset(preset) {
-        this.controls.target.set(0, .64, 0);
-        const positions = { perspective: [-5.4, 2.9, -5.8], top: [0, 9, .001], front: [0, 1.7, -7.6], rear: [4.9, 2.4, 6.3], side: [-8, 1.8, 0] };
-        this.camera.position.set(...(positions[preset] ?? positions.perspective));
+        this.framed = preset;
+        this.controls.target.set(0, .62, 0);
+        const directions = { perspective: [-5.4, 2.9, -5.8], top: [0, 9, .001], front: [0, 1.7, -7.6], rear: [4.9, 2.4, 6.3], side: [-8, 1.8, 0] };
+        const direction = new THREE.Vector3(...(directions[preset] ?? directions.perspective)).normalize();
+        this.camera.position.copy(this.controls.target).addScaledVector(direction, this.fitDistance(direction));
         this.controls.update(); this.invalidate();
+    }
+
+    // Distance at which the whole car fills the panel with a margin, for any aspect ratio.
+    fitDistance(direction) {
+        const corners = [];
+        for (const x of [-.96, .96]) for (const y of [0, 1.42]) for (const z of [-2.5, 2.5]) corners.push(new THREE.Vector3(x, y, z));
+        const camera = this.camera.clone(), target = this.controls.target, point = new THREE.Vector3();
+        let distance = 7;
+        for (let i = 0; i < 5; i++) {
+            camera.position.copy(target).addScaledVector(direction, distance);
+            camera.lookAt(target); camera.updateMatrixWorld();
+            let extent = 0;
+            for (const corner of corners) {
+                point.copy(corner).project(camera);
+                extent = Math.max(extent, Math.abs(point.x), Math.abs(point.y));
+            }
+            distance *= Math.max(.5, Math.min(2, extent / .9));
+        }
+        return THREE.MathUtils.clamp(distance, this.controls.minDistance, this.controls.maxDistance);
     }
 
     resize() {
@@ -217,9 +243,14 @@ class VehicleViewer {
         if (width < 1 || height < 1) return;
         this.renderer.setSize(width, height, false);
         this.camera.aspect = width / height;
-        // Fit the entire car in the narrow overview as well as the expanded workspace.
-        this.camera.fov = width < 550 ? 48 : 34;
-        this.camera.updateProjectionMatrix(); this.invalidate();
+        this.camera.fov = width < 550 ? 40 : 34;
+        // Lift the car above the camera presets and telemetry that overlay the bottom of the stage.
+        this.camera.setViewOffset(width, height, 0, height * .045, width, height);
+        this.camera.updateProjectionMatrix();
+        this.stage.classList.toggle("compact", width < 600 || height < 420);
+        // Until the user moves the camera, keep the preset framed as the panel changes size.
+        if (this.framed) this.cameraPreset(this.framed);
+        this.invalidate();
     }
 
     setState(snapshot) {
@@ -275,7 +306,7 @@ class VehicleViewer {
     }
 
     addMarker(target) {
-        const mesh = new THREE.Mesh(new THREE.SphereGeometry(.045, 12, 8),
+        const mesh = new THREE.Mesh(new THREE.SphereGeometry(.018, 12, 8),
             new THREE.MeshStandardMaterial({ color: 0x61d5c7, emissive: 0x24584d, roughness: .3 }));
         mesh.position.set(...target.position); this.scene.add(mesh);
         const proxy = new THREE.Mesh(new THREE.SphereGeometry(.14, 8, 6),
@@ -402,8 +433,10 @@ class VehicleViewer {
             const flowMotion = shouldAnimateFlow(this.snapshot, this.displayActive, this.flowEnabled) && this.network.hasActiveFlow();
             const wheelMotion = this.vehicle.hasMotion(this.snapshot);
             const animate = flowMotion || wheelMotion;
-            // Cap decorative signal flow at 30 fps. Camera movement still renders on demand.
-            if (!animate || this.interacting || !this.lastFrameTime || time - this.lastFrameTime >= 32) {
+            // Cap decorative signal flow at 30 fps; rolling wheels get 60 fps so their spokes strobe
+            // less before the rim blur takes over. Camera movement still renders on demand.
+            const interval = wheelMotion ? 15 : 32;
+            if (!animate || this.interacting || !this.lastFrameTime || time - this.lastFrameTime >= interval) {
                 if (animate) {
                     const elapsed = this.lastFrameTime ? Math.min(.08, (time - this.lastFrameTime) / 1000) : 0;
                     const simulationStep = elapsed * Math.max(.1, Math.min(3, this.snapshot.speedFactor ?? 1));
@@ -468,6 +501,7 @@ try {
             connections: Object.fromEntries([...viewer.network.records].map(([id, record]) => [id, { active: record.active, visible: record.visible }])),
             controls: { doors: [...viewer.vehicle.doorPivots.values()].map(door => door.rotation.y),
                 steering: viewer.vehicle.wheels.map(wheel => wheel.rotation.y), rolling: viewer.vehicle.wheelSpinners.map(wheel => wheel.rotation.x),
+                rimBlur: viewer.vehicle.blurs.map(disc => disc.visible ? disc.material.opacity : 0),
                 belt: viewer.vehicle.belt.visible, bags: viewer.vehicle.bags.map(bag => bag.visible), fuel: viewer.vehicle.fuel.scale.y,
                 throttle: viewer.vehicle.throttle.rotation.z,
                 lights: Object.fromEntries([...viewer.vehicle.lights].map(([key, meshes]) => [key, meshes.some(mesh => mesh.userData.on)])) } })

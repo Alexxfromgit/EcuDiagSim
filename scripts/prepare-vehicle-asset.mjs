@@ -101,7 +101,7 @@ const fitSlope = y => 1 + lift * ramp(y)[1];
 // [height y, longitudinal z] pairs, z interpolated by height. They keep the fender vent, the
 // B-pillar trim and the rear wheel arch on the body, and cut each panel along its real seam.
 const shutLines = {
-    frontEdge: [[.30, -.95], [.365, -.96], [.48, -.975], [.656, -.99], [.806, -1.0], [.85, -.985], [.90, -.95], [.96, -.89], [1.0, -.85], [1.5, -.85]],
+    frontEdge: [[.30, -.95], [.365, -.96], [.48, -.975], [.656, -.99], [.806, -1.0], [.85, -.985], [.90, -.93], [.96, -.87], [1.0, -.83], [1.5, -.83]],
     frontRear: [[.30, .06], [.612, .06], [.70, .065], [.788, .08], [.851, .10], [.912, .125], [1.141, .17], [1.5, .21]],
     rearFront: [[.30, .06], [.612, .06], [.70, .065], [.788, .08], [.851, .10], [.912, .125], [.92, .15], [1.141, .205], [1.5, .25]],
     rearEdge: [[.30, .765], [.35, .78], [.44, .82], [.52, .86], [.60, .90], [.65, .94], [.70, 1.0], [.77, 1.08], [.829, 1.14],
@@ -201,12 +201,23 @@ for (const part of parts) {
         if (!wheel && !lamp && !whole && Math.abs(centroid[0]) > .45) {
             // Split everything near the flanks so neighbouring triangles share the new edge vertices.
             // Outward-facing skin, plus the upward-facing window sill and the trim strips along it.
-            const outward = Math.abs(averageNormal[0]) > .45 || [2, 4, 8].includes(part.material) || centroid[1] > .82 && Math.abs(centroid[0]) > .68;
-            const doorSkin = Math.abs(centroid[0]) > .57 && outward && centroid[1] < beltline;
-            pieces = regions(polygon).map(([piece, region]) => [piece, doorSkin ? region : ""]);
+            // Near the A-pillar base the normals turn through the threshold; decide by position there
+            // so neighbouring triangles are not alternately torn between the door and the body.
+            const outward = centroid[1] > .86 ? Math.abs(centroid[0]) > .66
+                : Math.abs(averageNormal[0]) > .45 || [2, 4, 8].includes(part.material) || centroid[1] > .82 && Math.abs(centroid[0]) > .68;
+            const doorSkin = Math.abs(centroid[0]) > .57 && outward;
+            // Clip the door skin exactly at the beltline: a per-triangle test would leave a sawtooth
+            // of door and body slivers across the mirror sail.
+            pieces = regions(polygon).flatMap(([piece, region]) => {
+                if (!doorSkin || !region) return [[piece, ""]];
+                const [below, above] = split(piece, v => v.point[1] - beltline);
+                return [...(below ? [[below, region]] : []), ...(above ? [[above, ""]] : [])];
+            });
         }
         const lampSide = lamp ? side : undefined;
-        const lampRole = part.material === 5 ? (mid.y > .675 && extent.y < .04 ? "park" : Math.abs(mid.x) > .48 ? "high" : "low") : undefined;
+        // The artist's high-mounted stop lamp (top of the boot lid) is brake-only, not a tail lamp.
+        const lampRole = part.material === 5 ? (mid.y > .675 && extent.y < .04 ? "park" : Math.abs(mid.x) > .48 ? "high" : "low")
+            : part.material === 6 && mid.y > .9 ? "stop" : undefined;
         const lens = part.material === 3 && (mid.z < -2 || mid.z > 2);
         for (const [piece, region] of pieces) {
             const door = region ? region + side : undefined;

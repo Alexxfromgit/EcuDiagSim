@@ -1,6 +1,7 @@
 import * as THREE from "./vendor/three.module.min.js";
 import sedanAsset from "./assets/sedan-mesh.js";
 import { locations, systemColors } from "./vehicle-state.js";
+import { createKit, createMaterials, buildCabin, buildDoorCard, buildDrivetrain } from "./vehicle-parts.js";
 
 // Artist-authored sedan surfaces, prepared offline from the attributed CC-BY asset.
 const decoded = Uint8Array.from(atob(sedanAsset.binary), c => c.charCodeAt(0)).buffer;
@@ -10,6 +11,9 @@ const PAINT = 0x4a6987;
 const M = { paint: 0, mesh: 1, trim: 2, glass: 3, chrome: 4, head: 5, brake: 6, signal: 7, gloss: 8,
     tyre: 9, disc: 10, rimLight: 11, rimDark: 12, caliper: 13 };
 const lampOff = { head: 0x9aa6b0, tail: 0x4a0710, turn: 0x5c3511, mirror: 0x2a1c12, reverse: 0x1a1f24, stop: 0x3a070d };
+// Targets that are logical (network) or represented by an existing assembly rather than a body.
+const noBody = new Set(["can_bus", "abs_e2e", "tyres", "intake_leak", "cooling", "oil_pump", "throttle_body", "alternator", "ignition_coils"]);
+const controllerIds = ["ecm", "tcm", "abs", "bcm", "ipc", "srs"];
 
 function surface(index, lens) {
     const physical = (options) => new THREE.MeshPhysicalMaterial(options);
@@ -44,19 +48,65 @@ function plateTexture() {
     return texture;
 }
 
+// Soft additive halo used to make lit lamps read as light sources without a bloom pass.
+function glowTexture() {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 128;
+    const context = canvas.getContext("2d");
+    const gradient = context.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gradient.addColorStop(0, "rgba(255,255,255,1)"); gradient.addColorStop(.18, "rgba(255,255,255,.55)");
+    gradient.addColorStop(.5, "rgba(255,255,255,.12)"); gradient.addColorStop(1, "rgba(255,255,255,0)");
+    context.fillStyle = gradient; context.fillRect(0, 0, 128, 128);
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}
+
+// A spinning rim as the eye sees it: spokes averaged into a satin band, the polished lip as a ring.
+function rimBlurTexture() {
+    if (typeof document === "undefined") return null;
+    const canvas = document.createElement("canvas"); canvas.width = canvas.height = 256;
+    const context = canvas.getContext("2d");
+    const gradient = context.createRadialGradient(128, 128, 0, 128, 128, 128);
+    for (const [offset, color] of [[0, "rgba(40,43,46,0)"], [.15, "rgba(40,43,46,0)"], [.17, "rgba(70,74,79,.9)"],
+        [.26, "rgba(150,156,162,.75)"], [.55, "rgba(132,138,145,.62)"], [.82, "rgba(150,156,162,.7)"],
+        [.86, "rgba(205,209,213,.95)"], [.93, "rgba(190,195,200,.95)"], [.96, "rgba(40,42,45,.95)"], [1, "rgba(25,26,28,0)"]])
+        gradient.addColorStop(offset, color);
+    context.fillStyle = gradient; context.fillRect(0, 0, 256, 256);
+    const texture = new THREE.CanvasTexture(canvas); texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+}
+
+// Group a lamp bank's vertices into separate light units (e.g. a turn signal's front and rear lenses).
+function lampUnits(meshes) {
+    const cells = new Map(), point = new THREE.Vector3();
+    for (const mesh of meshes) {
+        mesh.updateWorldMatrix(true, false);
+        const positions = mesh.geometry.attributes.position;
+        for (let i = 0; i < positions.count; i++) {
+            point.fromBufferAttribute(positions, i).applyMatrix4(mesh.matrixWorld);
+            const key = [Math.round(point.x / .25), Math.round(point.y / .25), Math.round(point.z / .25)].join(",");
+            if (!cells.has(key)) cells.set(key, new THREE.Box3());
+            cells.get(key).expandByPoint(point);
+        }
+    }
+    const units = [];
+    for (const box of cells.values()) {
+        const near = units.find(unit => unit.clone().expandByScalar(.12).intersectsBox(box));
+        if (near) near.union(box); else units.push(box.clone());
+    }
+    return units;
+}
+
 export function createVehicle() {
     const root = new THREE.Group(); root.name = "diagnostic-sedan";
     const shell = new THREE.Group(), components = new THREE.Group();
+    components.name = "sensor-bodies";
     root.add(shell, components);
+    const kit = createKit(), m = createMaterials();
     const parts = new Map(), modules = new Map(), wheels = [], doorPivots = new Map();
-    const shellMaterials = new Map(), lights = new Map(), tyres = [], wheelSpinners = [], materials = new Map(), linings = [];
-    const dark = new THREE.MeshStandardMaterial({ color: 0x1c2630, roughness: .65 });
-    const metal = new THREE.MeshStandardMaterial({ color: 0x7a8c99, metalness: .7, roughness: .35 });
-    const black = new THREE.MeshStandardMaterial({ color: 0x101820, roughness: .7 });
-    // Cabin: soft-touch charcoal, darker leather, satin aluminium accents.
-    const cabin = new THREE.MeshStandardMaterial({ color: 0x111316, roughness: .95 });
-    const leather = new THREE.MeshStandardMaterial({ color: 0x24211f, roughness: .68 });
-    const satin = new THREE.MeshStandardMaterial({ color: 0x9da4aa, metalness: .9, roughness: .3 });
+    const shellMaterials = new Map(), lights = new Map(), glows = new Map(), tyres = [], wheelSpinners = [], materials = new Map(), linings = [];
+    const doorSkins = new Map(wheelIds.map(id => [id, []]));
+    const black = m.plastic;
     // Inner faces of the painted shell: what an open door, a shut line or the windows reveal.
     // These, the underbody tray and the plate belong to the solid exterior only (`linings`).
     const lining = new THREE.MeshStandardMaterial({ color: 0x15171a, roughness: .9, side: THREE.BackSide });
@@ -69,37 +119,8 @@ export function createVehicle() {
         geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(decoded, ...part.indices).slice(), 1));
         return geometry;
     };
-    function item(geometry, material, position = [0, 0, 0], parent = root) {
-        const mesh = new THREE.Mesh(geometry, material); mesh.position.set(...position);
-        mesh.castShadow = true; mesh.receiveShadow = true; parent.add(mesh); return mesh;
-    }
-    const box = (size, position, material = dark, parent = root) => item(new THREE.BoxGeometry(...size), material, position, parent);
-    function cushion(size, position, material = dark, parent = root) {
-        const [w, h, d] = size, r = Math.min(w, h, d) * .25;
-        const shape = new THREE.Shape();
-        shape.moveTo(-w / 2 + r, -h / 2);
-        shape.lineTo(w / 2 - r, -h / 2); shape.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + r);
-        shape.lineTo(w / 2, h / 2 - r); shape.quadraticCurveTo(w / 2, h / 2, w / 2 - r, h / 2);
-        shape.lineTo(-w / 2 + r, h / 2); shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
-        shape.lineTo(-w / 2, -h / 2 + r); shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
-        const geometry = new THREE.ExtrudeGeometry(shape, { depth: d - 2 * r, bevelEnabled: true, bevelSize: r, bevelThickness: r, bevelSegments: 3, steps: 1 });
-        geometry.translate(0, 0, -d / 2 + r);
-        return item(geometry, material, position, parent);
-    }
-    // A side profile (z, y) extruded across the car's width, centred on x = 0.
-    function profile(points, width, material, parent = root) {
-        const shape = new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z, y)));
-        const geometry = new THREE.ExtrudeGeometry(shape, { depth: width, bevelEnabled: true, bevelSize: .015, bevelThickness: .015, bevelSegments: 2, curveSegments: 8 });
-        geometry.rotateY(-Math.PI / 2); geometry.translate(width / 2, 0, 0);
-        return item(geometry, material, [0, 0, 0], parent);
-    }
-    const blob = (size, position, material, parent = root) => {
-        const mesh = item(new THREE.SphereGeometry(1, 20, 12), material, position, parent); mesh.scale.set(...size); return mesh;
-    };
-    function line(points, radius, material, parent = root) {
-        const curve = new THREE.CatmullRomCurve3(points.map(p => new THREE.Vector3(...p)));
-        return item(new THREE.TubeGeometry(curve, Math.max(12, points.length * 6), radius, 6, false), material, [0, 0, 0], parent);
-    }
+    const item = (geometry, material, position, parent = root) => kit.item(geometry, material, position, parent);
+    const box = (size, position, material, parent = root) => kit.box(size, position, material, parent);
     for (const [index, id] of wheelIds.entries()) {
         const pivot = new THREE.Group(); pivot.position.set(...sedanAsset.wheels[id]);
         pivot.name = "wheel:" + id; root.add(pivot); wheels[index] = pivot;
@@ -126,6 +147,10 @@ export function createVehicle() {
         material.name = source.name;
         let parent = shell;
         const geometry = geometryFor(part);
+        if (part.door && part.material === M.paint) {
+            const positions = geometry.attributes.position.array;
+            for (let i = 0; i < positions.length; i += 3) doorSkins.get(part.door).push([positions[i], positions[i + 1], positions[i + 2]]);
+        }
         if (part.wheel) {
             const index = wheelIds.indexOf(part.wheel);
             parent = part.node.includes("BrakePad") ? wheels[index] : wheelSpinners[index];
@@ -144,8 +169,8 @@ export function createVehicle() {
         if (!part.wheel && !lamp && !shellMaterials.has(material))
             shellMaterials.set(material, { opacity: material.opacity, transparent: material.transparent, depthWrite: material.depthWrite, side: material.side, lens: part.lens });
         if (lamp) {
-            const role = part.material === M.head ? part.lampRole : part.material === M.brake ? "tail" : "turn";
-            const lampKey = role + ":" + part.lampSide;
+            const role = part.material === M.head ? part.lampRole : part.material === M.brake ? (part.lampRole === "stop" ? "stop" : "tail") : "turn";
+            const lampKey = role === "stop" ? "stop:center" : role + ":" + part.lampSide;
             if (!lights.has(lampKey)) lights.set(lampKey, []);
             lights.get(lampKey).push(mesh);
         }
@@ -154,82 +179,105 @@ export function createVehicle() {
         const material = new THREE.MeshStandardMaterial({ color: 0x000000, emissive: 0x000000, roughness: .45 });
         const mesh = box(size, position, material, parent); mesh.userData.lampColor = color; lights.set(key, [mesh]); return mesh;
     }
-    // Centre high-mounted stop lamp, on the parcel shelf under the rear screen.
-    extraLamp("stop:center", [.34, .022, .03], [0, .975, 1.66], 0xff243d).rotation.x = -.5;
     for (const [side, sign] of [["l", -1], ["r", 1]]) {
         // Reverse lamps sit flush at the ends of the rear light band; repeaters on the mirror caps.
         extraLamp("reverse:" + side, [.11, .02, .008], [sign * .45, .655, 2.396], 0xe7f4ff).rotation.y = sign * .14;
         const mirror = extraLamp("mirror:" + side, [.006, .012, .045], [sign * .936, .972, -.745], 0xffa51f);
         mirror.rotation.y = sign * .4;
-        const door = doorPivots.get("f" + side); door.attach(mirror);
+        doorPivots.get("f" + side).attach(mirror);
+    }
+    // Light halos, one per physical lamp unit, attached where the lamp moves (mirror caps with the door).
+    const halo = glowTexture();
+    for (const [key, meshes] of lights) {
+        const sprites = [];
+        for (const unit of lampUnits(meshes)) {
+            const size = unit.getSize(new THREE.Vector3()), center = unit.getCenter(new THREE.Vector3());
+            const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: halo, color: 0x000000, transparent: true,
+                opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false, fog: false }));
+            const outward = center.z < 0 ? -1 : 1;
+            center.z += outward * .03;
+            sprite.position.copy(center);
+            const extent = Math.max(size.x, size.y, size.z * .4);
+            sprite.userData.size = Math.min(.5, .12 + extent * 1.2);
+            sprite.renderOrder = 6;
+            const parent = meshes[0].parent === shell ? shell : meshes[0].parent;
+            parent.add(sprite); if (parent !== shell) parent.worldToLocal(sprite.position);
+            sprites.push(sprite);
+        }
+        glows.set(key, sprites);
     }
     const plate = item(new THREE.PlaneGeometry(.44, .096), new THREE.MeshStandardMaterial({ color: 0xffffff, map: plateTexture(), roughness: .45 }), [0, .478, 2.474], shell);
     plate.rotation.x = .1; plate.castShadow = false; linings.push(plate);
     const beams = [];
     for (const x of [-.43, .43]) {
-        const beam = new THREE.SpotLight(0xdcefff, 0, 12, .26, .65, 1.4);
+        const beam = new THREE.SpotLight(0xdcefff, 0, 14, .26, .55, 1.2);
         beam.position.set(x, .66, -2.36); beam.target.position.set(x, .02, -8);
         root.add(beam, beam.target); beams.push(beam);
     }
     // Neutral cap covers keep the adapted exterior unbranded.
     for (let i = 0; i < 4; i++) {
-        const cap = item(new THREE.CylinderGeometry(.037, .037, .012, 24), satin,
+        const cap = item(new THREE.CylinderGeometry(.037, .037, .012, 24), m.satin,
             [i % 2 === 0 ? -.115 : .115, 0, 0], wheelSpinners[i]); cap.rotation.z = Math.PI / 2;
     }
+
+    // Motion blur for the rims. About 20 spokes strobe once a frame turns the wheel by more than
+    // half a spoke gap (a few km/h), so at speed a blurred rim face fades in over them, as a camera
+    // shows a fast wheel. It is radially symmetric and steers with the wheel without spinning.
+    const blurTexture = rimBlurTexture();
+    const blurs = wheels.map((pivot, i) => {
+        const side = i % 2 === 0 ? -1 : 1;
+        const disc = item(new THREE.CircleGeometry(.245, 48), new THREE.MeshStandardMaterial({ map: blurTexture,
+            color: 0xffffff, metalness: .6, roughness: .38, transparent: true, opacity: 0, depthWrite: false }), [side * .111, 0, 0], pivot);
+        disc.rotation.y = side * Math.PI / 2; disc.castShadow = false; disc.receiveShadow = false;
+        disc.visible = false; disc.name = "rim-blur:" + wheelIds[i];
+        return disc;
+    });
 
     // The artist's shell is open underneath. This shadow-only tray (never drawn to the screen) stops
     // light leaking through to the floor without being able to protrude from the body.
     const tray = box([1.6, .02, 4.3], [0, .24, -.02], new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false }), shell);
     tray.receiveShadow = false; linings.push(tray);
-    // Engine bay and cabin are additive: the exterior uses the artist's continuous body surfaces.
-    box([1.28, .08, 3.5], [0, .31, 0], dark);
-    blob([.43, .19, .42], [0, .63, -1.50], metal);
-    box([.77, .11, .65], [0, .78, -1.47], dark);
-    for (let i = -2; i <= 2; i++) box([.025, .015, .49], [i * .13, .84, -1.46], metal);
-    box([.40, .20, .55], [.13, .45, -.86], metal);
-    box([1.18, .26, .07], [0, .60, -2.08], dark);
-    box([.27, .15, .32], [.56, .68, -1.76], dark);
-    line([[.56, .75, -1.76], [.61, .80, -1.5], [.38, .76, -1.09]], .045, black);
-    box([.82, .17, .60], [0, .45, 1.34], dark);
-    const fuel = box([.74, .11, .52], [0, .46, 1.34], new THREE.MeshStandardMaterial({ color: 0x4d9c9c, transparent: true, opacity: .6 }));
-    line([[-.25, .37, -1.4], [-.23, .26, -.35], [.2, .26, 1.3], [.45, .30, 2.30]], .03, metal);
-    // Cabin. Seats: cushion, reclined back and headrest; front pair and rear outer places.
-    for (const side of [-1, 1]) for (const z of [.02, .92]) {
-        cushion([.46, .12, .48], [side * .40, .58, z], leather);
-        const back = cushion([.45, .47, .13], [side * .40, .84, z + .19], leather); back.rotation.x = -.18;
-        cushion([.26, .13, .09], [side * .40, 1.14, z + .24], leather);
-    }
-    // Dashboard: a moulded profile across the cabin, with a satin trim inlay and two displays.
-    profile([[-.98, .62], [-.98, .90], [-.80, .95], [-.60, .965], [-.52, .955], [-.49, .90], [-.50, .80], [-.58, .70], [-.70, .62]], 1.44, cabin);
-    box([1.30, .014, .012], [0, .895, -.487], satin);
-    const screen = new THREE.MeshPhysicalMaterial({ color: 0x050709, roughness: .08, clearcoat: 1, emissive: 0x000000 });
-    const cluster = box([.30, .10, .012], [-.40, .975, -.53], screen); cluster.rotation.x = -.35;
-    const display = box([.30, .17, .012], [0, .96, -.50], screen); display.rotation.x = -.25;
-    cushion([.22, .16, .78], [0, .48, -.12], cabin);
-    box([1.30, .02, .40], [0, .955, 1.50], cabin); // parcel shelf
-    const steering = item(new THREE.TorusGeometry(.17, .016, 10, 40), black, [-.40, 1.01, -.42]); steering.rotation.x = -.35;
-    item(new THREE.CylinderGeometry(.05, .05, .05, 20), black, [-.40, 1.01, -.43]).rotation.x = Math.PI / 2 - .35;
-    item(new THREE.CylinderGeometry(.025, .03, .22, 12), black, [-.40, .97, -.53]).rotation.x = Math.PI / 2 - .35;
-    const throttle = item(new THREE.CylinderGeometry(.06, .06, .018, 20), metal, [.38, .78, -1.08]);
-    const belt = line([[-.60, 1.07, .17], [-.27, .67, -.02], [-.60, .61, .2]], .012,
-        new THREE.MeshStandardMaterial({ color: 0x171d24 }));
-    const bags = [blob([.24, .20, .15], [-.40, 1.05, -.36], new THREE.MeshStandardMaterial({ color: 0xe7e3d8, roughness: .95 })),
-        blob([.28, .22, .19], [.40, 1.05, -.49], new THREE.MeshStandardMaterial({ color: 0xe7e3d8, roughness: .95 }))];
-    const pinHeight = { locked: .925, unlocked: .95 };
+    const { cabin, steering, cluster, display } = buildCabin(kit, m, root);
+    const { bay, throttle, fuel } = buildDrivetrain(kit, m, root);
+    // Door cards follow the inside of each skin and swing with the door.
     const pins = wheelIds.map(id => {
-        const door = doorPivots.get(id), hinge = door.position;
-        const pin = box([.014, .025, .014], [hinge.x * .93, pinHeight.unlocked, hinge.z + .85], satin);
-        door.attach(pin); return pin;
+        const door = doorPivots.get(id), side = id.endsWith("l") ? -1 : 1;
+        const card = buildDoorCard(kit, m, doorSkins.get(id), side);
+        root.add(card); door.attach(card);
+        const sill = card.userData.sill ?? { x: side * .70, y: .935 };
+        const pin = box([.012, .03, .012], [sill.x, sill.y, door.position.z + (id.startsWith("f") ? .82 : .62)], m.satin);
+        door.attach(pin); pin.userData.y = sill.y;
+        return pin;
     });
+    // Restraints: shown only when the SRS pack is fitted and the occupant is belted / a bag fired.
+    const belt = kit.tube([[-.66, 1.10, .37], [-.50, 1.00, .33], [-.36, .80, .27], [-.19, .62, .24], [-.40, .63, .21], [-.63, .60, .24]], .012, m.belt, cabin);
+    const bags = [kit.blob([.24, .22, .14], [-.40, .97, -.37], m.airbag, cabin), kit.blob([.30, .24, .20], [.40, 1.05, -.60], m.airbag, cabin)];
+    for (const bag of bags) bag.castShadow = false;
+
+    // Sensor and control-unit bodies at their anchors (diagnostic mode only).
+    const sensorShell = new THREE.MeshStandardMaterial({ color: 0x8b9aab, metalness: .5, roughness: .4 });
     for (const [id, anchor] of Object.entries(locations)) {
-        if (["can_bus", "abs_e2e", "tyres", "intake_leak", "cooling", "oil_pump"].includes(id)) continue;
+        if (noBody.has(id)) continue;
         const group = new THREE.Group(); group.name = "component:" + id; group.position.set(...anchor); components.add(group); parts.set(id, group);
-        const controller = ["ecm", "tcm", "abs", "bcm", "ipc", "srs"].includes(id);
-        const material = new THREE.MeshStandardMaterial({ color: controller ? 0x387b87 : 0x8b9aab, metalness: .6, roughness: .35 });
-        box(controller ? [.22, .10, .20] : [.06, .045, .06], [0, -.025, 0], material, group);
-        box([.035, .025, .04], [controller ? .11 : .04, -.03, .02], black, group);
-        if (controller) modules.set(id, { group, material });
+        if (controllerIds.includes(id)) {
+            const material = new THREE.MeshStandardMaterial({ color: systemColors[id.toUpperCase()] ?? 0x387b87, metalness: .45, roughness: .4 });
+            const size = { ecm: [.20, .045, .16], tcm: [.14, .04, .12], abs: [.13, .06, .10], bcm: [.18, .04, .15], ipc: [.28, .08, .05], srs: [.12, .045, .14] }[id];
+            box(size, [0, 0, 0], material, group);
+            box([size[0] * .7, .022, .03], [0, size[1] / 2 + .011, -size[2] / 2 + .025], black, group);
+            if (id === "abs") {
+                box([.13, .09, .10], [0, -.075, 0], m.alloy, group);
+                for (let i = 0; i < 4; i++) kit.rod([-.045 + i * .03, -.03, .05], [-.045 + i * .03, .01, .10], .005, m.satin, group);
+            }
+            if (id === "ipc") group.visible = false;
+            modules.set(id, { group, material });
+            continue;
+        }
+        const sensorColor = new THREE.MeshStandardMaterial({ color: 0x24303b, roughness: .5 });
+        kit.item(new THREE.CylinderGeometry(.013, .013, .035, 16), sensorShell, [0, 0, 0], group);
+        kit.item(new THREE.CylinderGeometry(.019, .019, .01, 6), sensorShell, [0, .012, 0], group);
+        box([.026, .02, .03], [0, .03, 0], sensorColor, group);
     }
+
     function diagnostic(enabled) {
         diagnosticMode = enabled;
         for (const [material, base] of shellMaterials) {
@@ -241,7 +289,9 @@ export function createVehicle() {
             material.needsUpdate = true;
         }
         for (const mesh of linings) mesh.visible = !enabled;
-        components.visible = enabled; fuel.visible = enabled;
+        components.visible = enabled;
+        m.tank.opacity = enabled ? .45 : 1; m.tank.transparent = enabled; m.tank.depthWrite = !enabled; m.tank.needsUpdate = true;
+        fuel.visible = enabled;
     }
     function setLamp(key, on, color, intensity = 2) {
         const role = key.split(":")[0];
@@ -254,15 +304,21 @@ export function createVehicle() {
             mesh.material.metalness = on || role !== "low" && role !== "high" && role !== "park" ? 0 : .6;
             mesh.userData.on = Boolean(on);
         }
+        for (const sprite of glows.get(key) ?? []) {
+            sprite.visible = Boolean(on) && sprite.material.map !== null;
+            sprite.material.color.set(color);
+            sprite.material.opacity = Math.min(1, .25 + intensity * .18);
+            sprite.scale.setScalar(sprite.userData.size * (.8 + Math.min(intensity, 5) * .12));
+        }
     }
     function applyState(next) {
         snapshot = next;
         const v = next.vehicle ?? {};
         const fitted = new Set((next.targets ?? []).map(target => target.id));
-        for (const [id, group] of parts) group.visible = fitted.has(id);
+        for (const [id, group] of parts) group.visible = fitted.has(id) && id !== "ipc";
         const ecus = new Map((next.ecus ?? []).map(ecu => [ecu.name.toLowerCase(), ecu]));
         for (const [id, { group, material }] of modules) {
-            group.visible = fitted.has(id) && ecus.has(id);
+            group.visible = fitted.has(id) && ecus.has(id) && id !== "ipc";
             material.color.set(["fault", "busoff", "nopower"].includes(ecus.get(id)?.state) ? 0xca8131 : ecus.get(id)?.state === "sleep" ? 0x415260 : systemColors[id.toUpperCase()] ?? 0x387b87);
         }
         for (const [i, side] of ["l", "r"].entries()) {
@@ -271,18 +327,25 @@ export function createVehicle() {
             setLamp("high:" + side, Boolean(v.highBeam), 0xe2f2ff, 5);
             setLamp("park:" + side, Boolean(v.parkLamps), 0xd6eaff, 1.1);
             setLamp("tail:" + side, Boolean(v.parkLamps || v.braking), 0xff0010, v.braking ? 1.6 : .3);
-            setLamp("turn:" + side, side === "l" ? v.turnLeftLamp : v.turnRightLamp, 0xff7500, 1.8);
+            setLamp("turn:" + side, side === "l" ? v.turnLeftLamp : v.turnRightLamp, 0xff7500, 2.2);
             setLamp("mirror:" + side, side === "l" ? v.turnLeftLamp : v.turnRightLamp, 0xff7500, 1.5);
             setLamp("reverse:" + side, Boolean(v.reversing), 0xe7f4ff, 3);
-            beams[i].intensity = v.highBeam ? 36 : low ? 16 : 0;
-            beams[i].angle = v.highBeam ? .18 : .29;
+            // Each headlamp lights the road ahead: a dipped pool, or a longer, narrower main beam.
+            beams[i].intensity = v.highBeam ? 150 : low ? 70 : 0;
+            beams[i].angle = v.highBeam ? .26 : .34;
+            beams[i].target.position.y = v.highBeam ? -.4 : -1.3;
         }
         setLamp("stop:center", Boolean(v.braking), 0xff0010, 1.6);
         for (let i = 0; i < 4; i++) {
             doorPivots.get(wheelIds[i]).rotation.y = v.doors?.[i] ? (i % 2 === 0 ? -1 : 1) * 1.10 : 0;
             wheels[i].rotation.y = i < 2 ? THREE.MathUtils.degToRad(v.roadWheelAngle ?? 0) : 0;
-            pins[i].position.y = ((v.doorsLocked ?? v.locked) ? pinHeight.locked : pinHeight.unlocked) - doorPivots.get(wheelIds[i]).position.y;
+            pins[i].position.y = pins[i].userData.y - ((v.doorsLocked ?? v.locked) ? .018 : 0) - doorPivots.get(wheelIds[i]).position.y;
         }
+        blurs.forEach((disc, i) => {
+            const t = THREE.MathUtils.clamp((Math.abs(v.wheels?.[i] ?? 0) - 5) / 25, 0, 1);
+            disc.material.opacity = t * t * (3 - 2 * t) * .92;
+            disc.visible = disc.material.opacity > .01 && blurTexture !== null;
+        });
         for (const tyre of tyres) tyre.mesh.scale.y = Math.max(.75, Math.min(1, (v.tyres?.[tyre.index] ?? 2.4) / 2.4));
         steering.rotation.z = -THREE.MathUtils.degToRad(v.steering ?? (v.roadWheelAngle ?? 0) * 15);
         throttle.rotation.z = THREE.MathUtils.degToRad((v.throttle ?? 0) * .8);
@@ -297,11 +360,13 @@ export function createVehicle() {
     function advance(seconds) {
         const v = snapshot.vehicle ?? {}, sign = (v.velocity ?? 0) < 0 ? -1 : 1;
         wheelSpinners.forEach((spinner, i) => {
+            // Rolling without slip: angle = distance / radius. Driving forward (towards -Z) turns
+            // the top of the wheel forward, which is a negative rotation about +X.
             const radians = Math.abs(v.wheels?.[i] ?? 0) / 3.6 * seconds / sedanAsset.wheels[wheelIds[i]][1];
-            spinner.rotation.x = (spinner.rotation.x + sign * radians) % (Math.PI * 2);
+            spinner.rotation.x = (spinner.rotation.x - sign * radians) % (Math.PI * 2);
         });
     }
     diagnostic(true); applyState({});
-    return { root, shell, parts, modules, wheels, doorPivots, lights, beams, steering, belt, bags, fuel, throttle,
+    return { root, shell, cabin, bay, parts, modules, wheels, blurs, doorPivots, lights, glows, beams, steering, belt, bags, fuel, throttle,
         wheelSpinners, diagnostic, applyState, advance, hasMotion };
 }

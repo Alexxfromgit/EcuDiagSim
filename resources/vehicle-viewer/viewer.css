@@ -71,17 +71,28 @@ dd { font: 12px ui-monospace, "SFMono-Regular", Consolas, monospace; color: #e3f
 .legend .sleep { background: #6d7f92; }
 #viewer-error { position: absolute; z-index: 4; inset: 30% 15% auto; padding: 20px; background: #1f2834; border: 1px solid #b78942; border-radius: 6px; line-height: 1.6; }
 [hidden] { display: none !important; }
+/* A small stage (the vehicle column of the main window): fewer overlays, smaller markers. */
+#stage.compact .scene-heading, #stage.compact .scene-footer { display: none; }
+#stage.compact .flow-state { top: 8px; right: 8px; font-size: 9px; padding: 3px 6px; }
+#stage.compact .view-presets { bottom: 8px; gap: 3px; }
+#stage.compact .view-presets button { min-height: 22px; font-size: 9px; padding: 2px 6px; }
+#stage.compact .vehicle-telemetry { bottom: 36px; font-size: 9px; }
+#stage.compact .marker { min-height: 20px; min-width: 20px; padding: 3px; transform: translate(-7px, -50%); }
+#stage.compact .marker-dot { width: 7px; height: 7px; border-width: 1.5px; }
+#stage.compact .marker-label { font-size: 9px; padding: 2px 5px; }
 @media (max-width: 760px) {
     main { flex-direction: column; }
-    aside { width: auto; flex: 0 0 215px; border-left: 0; border-top: 1px solid #23323e; padding: 12px; gap: 8px; }
-    header { padding: 12px; }
-    .heading { margin-bottom: 10px; }
+    aside { width: auto; flex: 0 1 auto; max-height: 44%; min-height: 0; border-left: 0; border-top: 1px solid #23323e; padding: 10px 12px; gap: 8px; }
+    header { padding: 9px 12px 8px; }
+    .heading { margin-bottom: 7px; }
     .toolbar { gap: 5px; }
-    .toolbar button, .toolbar select { font-size: 10px; padding: 4px 7px; }
+    .toolbar button, .toolbar select { font-size: 10px; padding: 3px 7px; min-height: 26px; }
+    .check { font-size: 10px; }
+    #reset, .equipment-strip { display: none; }
     #stage { min-height: 200px; }
-    #empty-selection .selection-icon, #empty-selection .muted, .legend, .scene-footer span:last-child { display: none; }
-    #empty-selection h1 { font-size: 15px; }
-    #empty-selection p { font-size: 11px; margin: 8px 0; }
+    #empty-selection .selection-icon, #empty-selection h1, #empty-selection .muted, .legend { display: none; }
+    #empty-selection p { font-size: 11px; margin: 2px 0; line-height: 1.45; }
+    aside select { min-height: 30px; }
     #selection h1 { font-size: 16px; }
     .selection-heading { margin-top: 0; }
     dl { margin: 8px 0; }

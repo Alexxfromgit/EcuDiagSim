@@ -17,7 +17,9 @@ a warning and a diagram-only app. Explicitly disable it with:
 cmake --preset debug -DECUSIM_VEHICLE_3D=OFF
 ```
 
-Choose **3D** / **Diagram** above the vehicle column. **Expand** moves the same viewer into
+Camera presets frame the whole car for the panel's size and keep it framed on resize until the
+camera is moved. In the narrow vehicle column the viewer uses a compact layout (one toolbar row,
+smaller markers, no scene captions). Choose **3D** / **Diagram** above the vehicle column. **Expand** moves the same viewer into
 a larger dialog without resetting its camera or selection. Escape or Close returns it.
 `EcuDiagSim --vehicle-3d` opens the expanded workspace directly. Qt software-rendering sessions
 default to the diagram; WebGL2 is required for the 3D viewer. Startup and renderer errors offer
@@ -27,8 +29,15 @@ a reload or a return to the diagram.
 - Diagnostic: transparent shell, schematic assemblies, harnesses and animated signal pulses.
   Exterior: a modern four-door sedan with clear-coated metallic paint, tinted glazing, two-tone
   alloy wheels, real shut lines and slim lights, lit by a procedural studio environment with a
-  soft contact shadow. Open doors reveal the cabin (dashboard, displays, seats, console) rather
-  than the inside of the shell. Exterior mode hides the internal wiring and unselected markers.
+  soft contact shadow. The artist's model is an exterior shell only; `vehicle-parts.js` adds a
+  procedural cabin (two-tone seats with bolsters and headrests, dashboard with binnacle, displays
+  and vents, three-spoke steering wheel, console, pedals) and door cards that follow the inside of
+  each door skin, so an open door shows a finished panel. Under the hood is a longitudinal
+  inline-six with intake, airbox and throttle body, exhaust manifold, belt drive, radiator and fan,
+  brake servo and suspension struts; behind it the gearbox, propshaft, rear axle, fuel tank,
+  exhaust and a boot-mounted battery. Sensors sit on the part they measure (e.g. coolant sensor in
+  the thermostat housing, MAF in the intake duct). Lit lamps carry soft halos and the headlamps
+  light the floor. Exterior mode hides the internal wiring and unselected markers.
 - System/fault filters apply to markers and the accessible component selector.
 - The inspector shows true/measured sensor values and signal/circuit state. It navigates to
   the existing fault editor or a controller's UDS scanner; selecting alone never injects faults.
@@ -39,13 +48,18 @@ a reload or a return to the diagram.
   and yaw sensors. Their physical bodies, markers and links are removed when the pack is unfitted.
   The equipment strip uses `App.fitted`, including temporary equipment required by a lesson.
 - Doors open independently; the front wheels steer and all four wheels roll at their individual
-  simulated speeds, including reverse and locked-wheel behavior. Low/high/position lamps,
+  simulated speeds (angle = distance / radius), including reverse and locked-wheel behavior.
+  Rolling wheels render at 60 fps; above about 5 km/h a blurred rim face fades in over the ~20 spokes,
+  which would otherwise strobe (appear slow, frozen or reversed) at display frame rates. Low/high/position lamps,
   indicators and mirror repeaters use the actual BCM outputs and blink phase. The left dipped
   bulb fault affects only that bulb. Rear brake/center stop and reverse lights follow the
   hardwired brake/ignition/selector inputs, including when BCM power is lost. Locks, seat belt,
   deployed/replaced airbags, throttle and fuel are reflected physically. A live readout shows
   speed, RPM, selector, fuel, parking brake and surface; the ground reflects dry/wet/snow/ice.
-- **Wiring** shows routed loom sleeves, twisted CAN pairs and colored circuit overlays; **Data flow** controls moving pulses. Colours group
+- **Wiring** routes every circuit along a harness backbone (engine-bay rails, bulkhead, behind the
+  dash, kick panels, sills, tunnel), so wires run in shared loom sleeves rather than straight
+  through the cabin. CAN branches run from each controller to a hub behind the dash as twisted
+  pairs. Circuits use colored overlays; **Data flow** controls moving pulses. Colours group
   circuits by their owning ECU. A selected component highlights its route. Dashed violet paths
   are TPMS radio links, not physical wheel wiring. Solid paths are circuits or controller CAN links.
 - Sensor pulses run toward the ECU; lamp, throttle and ignition commands run toward the component.
@@ -70,11 +84,15 @@ a reload or a return to the diagram.
   greenhouse is lifted (a smooth ramp above 0.80 m), so the wheel arches keep their artist shape.
   Doors are cut along the shut-line grooves modelled in the source, traced as height→length
   polylines; small islands (mirrors, handles, window frames, side glass) move whole with their door,
-  and each door's hinge is exported with the geometry. Inspect the split with an orthographic,
+  and each door's hinge is exported with the geometry. The door skin is clipped exactly at the
+  beltline and, near the A-pillar, assigned by position, so no sawtooth of slivers is left on the
+  mirror sail. The artist's high-mounted stop lamp is separated from the tail lamps (brake only). Inspect the split with an orthographic,
   colour-by-door render before changing those lines.
   Only the prepared geometry is embedded. The raw GLB and meshoptimizer decoder are tool inputs.
-- `vehicle-state.js`: stable simulation ID → illustrative 3D anchor mapping, filters, click/drag logic.
-- `vehicle-network.js`: fitted circuit/CAN/radio topology, routed harness geometry and instanced pulses.
+- `vehicle-parts.js`: procedural cabin, door cards, engine bay and drivetrain.
+- `vehicle-state.js`: stable simulation ID → illustrative 3D anchor mapping, harness graph and
+  shortest-route lookup, filters, click/drag logic.
+- `vehicle-network.js`: fitted circuit/CAN/radio topology, loom routing and instanced pulses.
 - `viewer.js`: rendering, camera, markers, live inspector and bridge connection.
 - `vendor`: unmodified pinned Three.js 0.180.0 and its full MIT license.
 
@@ -108,7 +126,9 @@ changes, and switching/expansion/navigation/fallback. Only the 3D QML component 
 in this test, so it needs neither WebEngine nor a GPU. View operations must leave the simulation
 clock and complete vehicle state unchanged. Real WebGL and native WebChannel checks are separate.
 
-`tst_app legacyBehaviorSnapshots` verifies that display reads leave the app unchanged, and can
+`tst_app lessonsPassThroughTheApp` runs every bundled lesson through the app controller twice:
+with only the lesson's equipment, and with every optional system fitted (lessons run on the
+user's equipment plus their own). `tst_app legacyBehaviorSnapshots` verifies that display reads leave the app unchanged, and can
 export deterministic original vehicle, cluster, sensor, ECU, fault, scanner and CAN trace state
 with `ECUSIM_LEGACY_SNAPSHOTS=/absolute/path/snapshots.json`. The same test compiles against the
 pre-3D app for comparison; only additive 3D snapshot fields are excluded from its export.

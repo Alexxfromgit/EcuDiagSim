@@ -44,7 +44,9 @@ test("live state uses simulation IDs and never invents unfitted equipment", () =
     const targets = targetsFromSnapshot(snapshot);
     assert.equal(targets.length, 3);
     assert.equal(targets.some(target => target.id === "srs" || target.id.startsWith("tpms")), false);
-    assert.deepEqual(targets[0].position, [-.90, .36, -1.60]);
+    assert.deepEqual(targets[0].position, locations.wss_fl);
+    const [x, , z] = targets[0].position, hub = sedanAsset.wheels.fl;
+    assert.ok(x < 0 && Math.abs(z - hub[2]) < .2 && Math.abs(x) < Math.abs(hub[0]), "front-left sensor sits inboard at its hub");
     assert.equal(targets[0].sensor.trueValue, 50);
     assert.equal(targets[0].sensor.value, 0);
     assert.equal(targets[2].controller.diagIndex, 2);
@@ -215,7 +217,7 @@ test("sedan actuators reflect the outputs, without coupling high beam to a faile
     assert.equal(car.fuel.scale.y, 12 / 55);
     assert.equal(car.hasMotion(state), true); assert.equal(car.hasMotion({ ...state, running: false }), false);
     car.advance(.01);
-    assert.ok(car.wheelSpinners[0].rotation.x < 0, "reverse motion must reverse the wheel rotation");
+    assert.ok(car.wheelSpinners[0].rotation.x > 0, "reversing turns the top of the wheel rearwards (+X rotation)");
     assert.equal(car.wheelSpinners[2].rotation.x, 0, "a locked wheel must not roll");
     car.applyState({ ...state, targets: [], vehicle: {} });
     assert.equal(car.belt.visible, false); assert.deepEqual(car.bags.map(b => b.visible), [false, false]);
@@ -245,4 +247,29 @@ test("prepared sedan keeps real proportions and splits whole doors along the mod
     assert.equal(sedanAsset.parts.filter(part => !part.door && !part.wheel && mirror(part)).length, 0);
     // The rear wheel arch trim stays on the body.
     assert.ok(parts("rl").concat(parts("rr")).every(part => part.material !== 2 || part.bounds[5] < 1.0));
+});
+
+test("wheels roll forwards at exactly the simulated speed, independently per wheel", () => {
+    const car = createVehicle();
+    const radius = sedanAsset.wheels.fl[1];
+    const roll = (wheels, velocity, seconds) => {
+        car.applyState({ running: true, vehicle: { wheels, velocity } });
+        const before = car.wheelSpinners.map(spinner => spinner.rotation.x);
+        car.advance(seconds);
+        return car.wheelSpinners.map((spinner, i) => spinner.rotation.x - before[i]);
+    };
+    // 36 km/h = 10 m/s: 0.1 s rolls 1 m, i.e. 1 / radius radians.
+    const forward = roll([36, 36, 36, 36], 36, .1);
+    const radii = ["fl", "fr", "rl", "rr"].map(id => sedanAsset.wheels[id][1]);
+    forward.forEach((delta, i) => assert.ok(Math.abs(delta + 1 / radii[i]) < 1e-9, "forward is a negative X rotation of distance / radius"));
+    // The top of a forward-rolling wheel moves towards the front of the car (-Z).
+    const top = new THREE.Vector3(0, radius, 0).applyAxisAngle(new THREE.Vector3(1, 0, 0), forward[0] * .01);
+    assert.ok(top.z < 0, "the top of the wheel moves forwards");
+    // Twice the speed turns twice as far; each wheel uses its own speed; a locked wheel stays still.
+    const mixed = roll([72, 36, 0, 18], 40, .05);
+    assert.ok(Math.abs(mixed[0] / mixed[1] - 2) < 1e-6 && Math.abs(mixed[3] / mixed[1] - .5) < 1e-6);
+    assert.equal(mixed[2], 0);
+    // Reversing at the same speed turns the other way by the same amount.
+    const reverse = roll([36, 36, 36, 36], -36, .1);
+    reverse.forEach((delta, i) => assert.ok(Math.abs(delta - 1 / radii[i]) < 1e-9));
 });

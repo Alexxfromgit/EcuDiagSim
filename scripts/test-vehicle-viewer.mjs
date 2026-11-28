@@ -200,6 +200,24 @@ try {
         const before = await page.evaluate(() => window.vehicleViewer.getRenderState().controls.rolling);
         await page.waitForTimeout(180);
         assert.notDeepEqual(await page.evaluate(() => window.vehicleViewer.getRenderState().controls.rolling), before, "wheels must roll in exterior mode");
+        // At speed the strobing spokes are covered by the rim blur; at walking pace they are not.
+        assert.ok((await page.evaluate(() => window.vehicleViewer.getRenderState().controls.rimBlur)).every(value => value > .85), "rim blur at 100 km/h");
+        // Direction and rate, measured in real time at 3 km/h (slow enough to never wrap or strobe).
+        const slow = structuredClone(driving);
+        Object.assign(slow, { running: true, reducedMotion: false, speedFactor: 1 });
+        Object.assign(slow.vehicle, { wheels: [3, 3, 3, 3], velocity: 3 });
+        await page.evaluate(state => window.vehicleViewer.setState(state), slow);
+        await page.waitForTimeout(100);
+        const start = await page.evaluate(() => ({ t: performance.now(), r: window.vehicleViewer.getRenderState().controls }));
+        await page.waitForTimeout(500);
+        const end = await page.evaluate(() => ({ t: performance.now(), r: window.vehicleViewer.getRenderState().controls }));
+        assert.deepEqual(end.r.rimBlur, [0, 0, 0, 0], "no rim blur at 3 km/h");
+        const expected = 3 / 3.6 / .3294 * (end.t - start.t) / 1000;
+        for (let i = 0; i < 4; i++) {
+            const delta = Math.atan2(Math.sin(end.r.rolling[i] - start.r.rolling[i]), Math.cos(end.r.rolling[i] - start.r.rolling[i]));
+            assert.ok(delta < 0, `wheel ${i} must roll forwards (negative X rotation) when driving forwards`);
+            assert.ok(-delta / expected > .6 && -delta / expected < 1.25, `wheel ${i} rate ${(-delta / expected).toFixed(2)}× the simulated speed`);
+        }
         await page.evaluate(state => window.vehicleViewer.setState(state), cases[0]);
         for (const view of ["side", "rear", "front", "perspective"]) {
             await page.locator(`[data-view="${view}"]`).click();
