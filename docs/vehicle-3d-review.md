@@ -62,3 +62,21 @@ These results establish local macOS behavior for the tested scenarios. The QML w
 uses the real 2D diagram and a fake 3D component for lifecycle checks; it does not replace native
 WebEngine testing. Windows/Linux packaged graphics and release dependency/source-distribution
 obligations still need their platform release checks. No proven packaging regression was found.
+
+## Addendum: second review (2026-11-28)
+
+The record above describes the branch as of `bdb4c62`. Later work changed things it states:
+
+- **2D QML is no longer untouched.** `Cluster.qml` now lays the tell-tales out as a wrapping grid
+  (17 lamps no longer squeeze into one row or push the speedometer off the panel), and `Lamp.qml`
+  gained a `haloSpread` property. The 2D vehicle diagram itself is unchanged.
+- **Lessons.** Lesson 16 failed when TPMS was fitted in Settings (the BCM is then delivered with
+  coding `09`). It now accepts exactly `01` or `09`, using a new list form of the scenario
+  runner's UDS `expect`. `tst_app lessonsPassThroughTheApp` runs every lesson through the app with
+  only its own equipment and with all systems fitted.
+- **Viewer.** Procedural cabin, engine bay and drivetrain; harness-graph wire routing; door-split,
+  stop-lamp, headlamp and wheel-direction fixes; rim blur against spoke strobing. A second,
+  independent review then fixed oversized procedural parts, sensors hidden inside parts, interior
+  shadow casters and per-frame allocations, and added a GPU-resource leak check.
+- **Test counts** have grown since: 14 JS unit cases, and the browser suite additionally checks
+  wheel direction and rate, rim blur and GPU resources across repeated equipment changes.
