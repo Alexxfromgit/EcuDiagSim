@@ -9,11 +9,11 @@
     { "action": "startEngine" },
     { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
     { "action": "wait", "ms": 1000 },
-    { "action": "uds", "ecu": "BCM", "request": "22 01 00", "expect": "62 01 00 01", "note": "1. Coding as delivered: 01 = lamp monitoring only" },
+    { "action": "uds", "ecu": "BCM", "request": "22 01 00", "expect": "62 01 00", "note": "1. Coding as delivered: 01 = lamp monitoring only (09 when the car has TPMS: bit 3 runs the tyre-pressure monitor)" },
     { "action": "uds", "ecu": "BCM", "request": "22 40 02", "expect": "62 40 02 00", "note": "Exterior lamps (DID 0x4002): all off" },
 
     { "action": "unlock", "ecu": "BCM", "note": "2. Coding needs the extended session and security access" },
-    { "action": "uds", "ecu": "BCM", "request": "2E 01 00 08", "expect": "7F 2E 31", "note": "Bit 3 means nothing to this BCM: requestOutOfRange" },
+    { "action": "uds", "ecu": "BCM", "request": "2E 01 00 10", "expect": "7F 2E 31", "note": "Bit 4 means nothing to this BCM: requestOutOfRange" },
     { "action": "uds", "ecu": "BCM", "request": "2E 01 00 07", "expect": "6E 01 00", "note": "07 = lamp monitoring + auto-lock + daytime running lights" },
     { "action": "wait", "ms": 300 },
     { "action": "uds", "ecu": "BCM", "request": "22 40 02", "expect": "62 40 02 04", "note": "3. Position lamps on while the engine runs (bit 2 of DID 0x4002)" },

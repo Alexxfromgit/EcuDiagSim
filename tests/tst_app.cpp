@@ -5,6 +5,7 @@
 #include <QAbstractItemModelTester>
 #include <QCryptographicHash>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -67,6 +68,8 @@ private slots:
     void updatesInADevelopmentBuild();
     void swappedFaultRefreshesViews();
     void windowFitsTheScreen();
+    void lessonsPassThroughTheApp_data();
+    void lessonsPassThroughTheApp();
 };
 
 // Settings go to an INI file in a temporary folder, never to the user's real settings.
@@ -715,6 +718,45 @@ void tst_App::windowFitsTheScreen()
         QVERIFY2(avail.contains(fit.geometry), qPrintable(QStringLiteral("%1x%2").arg(avail.width()).arg(avail.height())));
         QVERIFY(fit.geometry.width() >= fit.minimum.width() && fit.geometry.height() >= fit.minimum.height());
     }
+}
+
+// Lessons run on the user's equipment plus what the lesson needs, so every lesson must also pass
+// when all optional systems are fitted, and must pass through the app (not only the bare simulator).
+void tst_App::lessonsPassThroughTheApp_data()
+{
+    QTest::addColumn<QString>("path");
+    QTest::addColumn<QStringList>("equipment");
+    AppController app;
+    QStringList all;
+    for (const QVariant &item : app.equipmentCatalog())
+        if (item.toMap().value(QStringLiteral("implemented")).toBool())
+            all << item.toMap().value(QStringLiteral("id")).toString();
+    QVERIFY(all.size() >= 4);
+    for (const QVariant &lesson : app.scenarios()) {
+        const QVariantMap map = lesson.toMap();
+        const QString path = map.value(QStringLiteral("path")).toString();
+        const QString name = QFileInfo(path).fileName();
+        QTest::newRow(qPrintable(name + QStringLiteral(" / lesson equipment"))) << path << QStringList();
+        QTest::newRow(qPrintable(name + QStringLiteral(" / everything fitted"))) << path << all;
+    }
+}
+
+void tst_App::lessonsPassThroughTheApp()
+{
+    QFETCH(QString, path);
+    QFETCH(QStringList, equipment);
+    AppController app;
+    app.setEquipment(equipment);
+    app.runScenario(path);
+    QCOMPARE(app.scenarioState(), QStringLiteral("running"));
+    for (int ms = 0; ms < 300'000 && app.scenarioState() == QStringLiteral("running"); ms += 500)
+        app.step(500);
+    QStringList failures;
+    for (const QVariant &entry : app.scenarioLog())
+        if (entry.toMap().value(QStringLiteral("level")).toString() == QStringLiteral("fail"))
+            failures << entry.toMap().value(QStringLiteral("text")).toString();
+    QVERIFY2(app.scenarioState() == QStringLiteral("passed"), qPrintable(app.scenarioState() + QStringLiteral(": ") + failures.join(u'\n')));
+    app.setEquipment({});
 }
 
 void tst_App::updatesInADevelopmentBuild()
