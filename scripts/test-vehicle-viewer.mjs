@@ -111,6 +111,13 @@ try {
             assert.match(await page.locator("#connection-summary").textContent(), new RegExp(`${state.fitted.includes("tpms") ? 4 : 0} radio`));
             for (const target of state.targets) assert.equal(await page.locator(`[data-target="${target.id}"]`).count(), 1, target.id);
         }
+        // Equipment changes must release what they built: GPU geometry/texture counts return to the
+        // same values after every combination has been shown repeatedly.
+        const resources = async () => page.evaluate(() => { const { geometries, textures } = window.vehicleViewer.getRenderState(); return { geometries, textures }; });
+        const settled = async () => { await page.evaluate(state => window.vehicleViewer.setState(state), cases.at(-1)); await page.waitForTimeout(80); return resources(); };
+        const baseline = await settled();
+        for (let round = 0; round < 3; round++) for (const state of cases) await page.evaluate(snapshot => window.vehicleViewer.setState(snapshot), state);
+        assert.deepEqual(await settled(), baseline, "equipment changes must not leak GPU geometry or textures");
         const full = structuredClone(cases.at(-1));
         full.running = true; full.reducedMotion = false;
         await page.evaluate(state => window.vehicleViewer.setState(state), full);

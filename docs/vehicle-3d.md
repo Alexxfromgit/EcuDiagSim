@@ -165,10 +165,12 @@ ECUSIM_VIEWER_CONTROL_FIXTURES="$PWD/build/debug/control-snapshots.json" \
 The control fixtures also verify actual C++ lamp outputs against every rendered lamp bank,
 both hazard phases, ignition-off hazards, failed dipped bulb with working high beam, BCM power
 loss with hardwired stop/reverse lamps, four doors, steering, restraints, fuel and wheel motion.
+The equipment fixtures are also cycled repeatedly to check that GPU geometry and texture counts
+return to the same values (paths, markers and bodies of removed equipment are released).
 
 `ECUSIM_VIEWER_SCREENSHOT_DIR` optionally captures front, side, rear, diagnostic and control previews. The offline
 browser development API exposes `setState`, `setDisplayActive` and read-only `getRenderState`
-measurements; none of these exposes the native App singleton or injects simulation faults.
+measurements (including draw calls and GPU geometry/texture counts); none of these exposes the native App singleton or injects simulation faults.
 
 Native smoke test (adjust the executable path on Windows/macOS):
 
