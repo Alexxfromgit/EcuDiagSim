@@ -12,7 +12,8 @@ export function createKit() {
         mesh.castShadow = true; mesh.receiveShadow = true; parent?.add(mesh); return mesh;
     }
     const box = (size, position, material, parent) => item(new THREE.BoxGeometry(...size), material, position, parent);
-    // A box with rounded edges (upholstery, covers, housings).
+    // A box with rounded edges (upholstery, covers, housings), exactly `size` overall: the bevel
+    // starts inside the outline (bevelOffset) instead of growing the shape by its radius.
     function rounded(size, position, material, parent, roundness = .25) {
         const [w, h, d] = size, r = Math.min(w, h, d) * roundness;
         const shape = new THREE.Shape();
@@ -22,15 +23,15 @@ export function createKit() {
         shape.lineTo(-w / 2 + r, h / 2); shape.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - r);
         shape.lineTo(-w / 2, -h / 2 + r); shape.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + r, -h / 2);
         const geometry = new THREE.ExtrudeGeometry(shape, { depth: Math.max(.001, d - 2 * r), bevelEnabled: true,
-            bevelSize: r, bevelThickness: r, bevelSegments: 3, steps: 1, curveSegments: 4 });
+            bevelSize: r, bevelOffset: -r, bevelThickness: r, bevelSegments: 3, steps: 1, curveSegments: 4 });
         geometry.translate(0, 0, -(d - 2 * r) / 2);
         return item(geometry, material, position, parent);
     }
-    // A side profile (z, y) extruded across `width`, centred on `x`.
+    // A side profile (z, y) extruded across `width`, centred on `x`; the bevel stays inside the outline.
     function profile(points, width, material, parent, x = 0, bevel = .012) {
         const shape = new THREE.Shape(points.map(([z, y]) => new THREE.Vector2(z, y)));
         const geometry = new THREE.ExtrudeGeometry(shape, { depth: width - 2 * bevel, bevelEnabled: bevel > 0,
-            bevelSize: bevel, bevelThickness: bevel, bevelSegments: 2, curveSegments: 8 });
+            bevelSize: bevel, bevelOffset: -bevel, bevelThickness: bevel, bevelSegments: 2, curveSegments: 8 });
         geometry.rotateY(-Math.PI / 2); geometry.translate(x + width / 2 - bevel, 0, 0);
         return item(geometry, material, [0, 0, 0], parent);
     }

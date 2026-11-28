@@ -4,6 +4,7 @@ import { targetsFromSnapshot, visibleTargets, connectionsFromSnapshot, connectio
     shouldAnimateFlow, locations, SelectionGesture } from "../resources/vehicle-viewer/vehicle-state.js";
 import { createVehicleNetwork } from "../resources/vehicle-viewer/vehicle-network.js";
 import { createVehicle } from "../resources/vehicle-viewer/vehicle-model.js";
+import { createKit } from "../resources/vehicle-viewer/vehicle-parts.js";
 import * as THREE from "../resources/vehicle-viewer/vendor/three.module.min.js";
 import sedanAsset from "../resources/vehicle-viewer/assets/sedan-mesh.js";
 
@@ -272,4 +273,14 @@ test("wheels roll forwards at exactly the simulated speed, independently per whe
     // Reversing at the same speed turns the other way by the same amount.
     const reverse = roll([36, 36, 36, 36], -36, .1);
     reverse.forEach((delta, i) => assert.ok(Math.abs(delta - 1 / radii[i]) < 1e-9));
+});
+
+test("procedural parts are built at their stated size, so placements and sensor anchors stay true", () => {
+    const kit = createKit(), material = new THREE.MeshBasicMaterial();
+    const size = mesh => new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3()).toArray();
+    // The bevel must not grow a rounded box by its radius (a 10 cm bolster was 17 cm wide).
+    for (const [dimensions, roundness] of [[[.5, .09, .52], .3], [[.10, .08, .48], .45], [[.34, .27, .66], .12]])
+        size(kit.rounded(dimensions, [0, 0, 0], material, undefined, roundness)).forEach((value, i) => assert.ok(Math.abs(value - dimensions[i]) < 1e-6, `${dimensions} axis ${i}: ${value}`));
+    const profile = new THREE.Box3().setFromObject(kit.profile([[0, 0], [1, 0], [1, .5], [0, .5]], .3, material));
+    assert.deepEqual([profile.min, profile.max].map(v => v.toArray().map(x => Math.round(x * 1e6) / 1e6)), [[-.15, 0, 0], [.15, .5, 1]]);
 });

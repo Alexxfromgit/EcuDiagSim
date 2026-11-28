@@ -10,16 +10,16 @@ export const locations = Object.freeze({
     // Engine: crank sensor at the flywheel, coolant sensor in the thermostat housing, throttle
     // position on the throttle body, oil pressure switch on the block, MAF in the intake duct,
     // pre-catalyst oxygen sensor in the downpipe; gearbox fluid sensor in the gearbox sump.
-    ckp: [-.14, .34, -1.28], ect: [.06, .72, -1.99], tps: [.29, .785, -1.42],
-    tft: [.08, .25, -.76], eop: [-.19, .42, -1.55], fls: [.20, .37, .80],
-    maf: [.39, .79, -1.62], o2: [-.23, .30, -1.12],
-    sas: [-.40, .87, -.66], yaw: [0, .50, .08],
+    ckp: [-.18, .32, -1.27], ect: [.06, .72, -1.99], tps: [.29, .785, -1.42],
+    tft: [.13, .27, -.76], eop: [-.19, .42, -1.55], fls: [.20, .37, .80],
+    maf: [.39, .79, -1.62], o2: [-.27, .32, -1.12],
+    sas: [-.40, .86, -.51], yaw: [0, .50, .08],
     alternator: [.24, .55, -1.88], cooling: [0, .58, -2.0],
     bulb_low_left: [-.43, .66, -2.30], oil_pump: [0, .29, -1.85],
     park_brake_switch: [.07, .64, -.30], intake_leak: [.36, .79, -1.50],
     ignition_coils: [0, .82, -1.62], throttle_body: [.26, .79, -1.42],
     airbag_driver: [-.40, .94, -.44], airbag_passenger: [.40, .97, -.70],
-    belt_switch: [-.17, .58, .22], tyres: [.87, .50, -1.60],
+    belt_switch: [-.17, .64, .22], tyres: [.87, .50, -1.60],
     // ECM in the cowl e-box, ABS modulator by the brake servo, TCM and BCM behind the kick panels,
     // the cluster in its binnacle, the airbag module under the centre console.
     ecm: [.50, .79, -1.10], tcm: [.58, .50, -.86], abs: [-.46, .70, -1.46],
