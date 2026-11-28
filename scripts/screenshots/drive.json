@@ -1,0 +1,17 @@
+{
+  "name": "README showcase - driving with low beams",
+  "description": "A repeatable presentation scene using the real simulation and vehicle lighting.",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+    { "action": "headlamps", "value": "low" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 50, "timeout": 40000 },
+    { "action": "throttle", "value": 15 },
+    { "action": "wait", "ms": 600000 }
+  ]
+}
