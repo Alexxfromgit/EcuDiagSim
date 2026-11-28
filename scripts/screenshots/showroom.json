@@ -1,0 +1,15 @@
+{
+  "name": "README showcase - 3D vehicle explorer",
+  "description": "A stationary, running vehicle with all optional systems fitted and dipped headlamps on.",
+  "equipment": ["engine_obd", "tpms", "srs", "esc"],
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+    { "action": "headlamps", "value": "low" },
+    { "action": "input", "name": "seatBelt", "value": true },
+    { "action": "wait", "ms": 600000 }
+  ]
+}

@@ -4,6 +4,8 @@
 [![Release](https://img.shields.io/github/v/release/Alexxfromgit/EcuDiagSim?sort=semver)](https://github.com/Alexxfromgit/EcuDiagSim/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
+![ECU Diagnostics Simulator — explore the 3D car and trace faults through CAN, OBD-II and UDS](docs/assets/hero.png)
+
 A virtual car for learning automotive electronics. Five control units (ECM, TCM, ABS, BCM and the
 instrument cluster) talk over a simulated 500 kbit/s CAN bus. You break a component — unplug a wheel
 speed sensor, short a temperature sensor, pull a fuse — and follow the consequences through the
@@ -11,9 +13,44 @@ whole chain:
 
 **sensor → CAN frame → plausibility check → DTC → warning lamp → scan tool (OBD-II and UDS)**
 
-![Lesson 1 running: front-left wheel speed sensor unplugged, ABS lamp on, scan tool reading C0035-13](docs/screenshot.png)
-
 No hardware needed. Built with C++20 and Qt 6 (Qt Quick for the UI, Qt SerialBus for CAN frames and DBC).
+
+## Explore the vehicle in 3D
+
+Orbit a four-door sedan, inspect its sensors and controllers, and follow their state as the
+simulation runs. **Exterior** shows the body, cabin, wheels and live lighting. **Diagnostic**
+reveals the assemblies, sensor circuits, CAN connections and TPMS radio paths.
+
+[![Expanded 3D vehicle explorer in Exterior mode, showing the sedan with dipped headlamps and all optional equipment fitted](docs/assets/vehicle-exterior.png)](docs/assets/vehicle-exterior.png)
+
+**The current 3D vehicle explorer.** Choose **3D → Expand** in the vehicle column. Drag to orbit,
+scroll to zoom, or use the perspective, side, rear, top and front camera presets.
+
+| Diagnostic view | Inspect a fault |
+|---|---|
+| [![Transparent sedan with controllers, routed wiring and fitted equipment in Diagnostic mode](docs/assets/vehicle-diagnostic.png)](docs/assets/vehicle-diagnostic.png) | [![3D explorer with the front-left wheel speed sensor selected and its open-circuit fault shown in the inspector](docs/assets/vehicle-fault.png)](docs/assets/vehicle-fault.png) |
+| Solid paths show circuits and CAN; dashed paths show TPMS radio links. | Select a component to compare its true and measured values, then open its fault controls or ECU scanner. |
+
+The 3D view runs offline with bundled Three.js in Qt WebEngine. Component positions, harness routes
+and signal travel are illustrative. The sedan exterior adapts *Gourami - Luxury Saloon* by
+**Fishboe / ministephen**, via **sevnworks**, under **CC BY 4.0**; see the
+[model attribution](resources/vehicle-viewer/assets/ATTRIBUTION.md).
+
+## The diagnostic workspace
+
+[![Current application workspace with the compact 3D vehicle, instrument cluster, driver controls and fault editor](docs/assets/overview.png)](docs/assets/overview.png)
+
+**One simulation, connected tools.** Drive the vehicle, inject a component fault, and observe its
+effect on the cluster, CAN traffic and diagnostic memory.
+
+| Decoded CAN trace | UDS scan tool |
+|---|---|
+| [![Live CAN trace with decoded vehicle messages during a wheel speed sensor fault](docs/assets/can-trace.png)](docs/assets/can-trace.png) | [![ABS scan tool displaying the confirmed C0035-13 wheel speed sensor fault and diagnostic communication](docs/assets/diagnostics.png)](docs/assets/diagnostics.png) |
+| Follow signals from the simulated bus to their receiving controllers. | Read fault memory, inspect snapshots and run guided diagnostic functions. |
+
+Explore the [guided lessons](#lessons) or open the [Lessons workspace screenshot](docs/assets/lessons.png).
+Full-resolution captures, a social preview and refresh instructions are in the
+[documentation asset guide](docs/assets/README.md).
 
 ## What is in it
 
@@ -101,7 +138,7 @@ python3 -m venv ~/.venv/aqt && ~/.venv/aqt/bin/pip install aqtinstall
 
 `build.sh` finds Qt under `~/Qt` or `/opt/Qt` (or `CMAKE_PREFIX_PATH` / `QT_ROOT_DIR`).
 
-### 3D vehicle MVP
+### 3D vehicle explorer
 
 Use **3D** in the vehicle column, then **Expand** for a larger workspace. Hold the left mouse
 button and drag to orbit, scroll to zoom, and click markers to inspect sensors or controllers.

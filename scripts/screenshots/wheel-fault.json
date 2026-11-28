@@ -1,0 +1,23 @@
+{
+  "name": "README showcase - wheel speed sensor diagnosis",
+  "description": "Hold a front-left wheel speed sensor fault for screenshots; the ABS lamp and DTC come from the simulation.",
+  "steps": [
+    { "action": "ignition", "value": "on" },
+    { "action": "warmUp" },
+    { "action": "startEngine" },
+    { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
+    { "action": "wait", "ms": 3500 },
+    { "action": "headlamps", "value": "low" },
+    { "action": "selector", "value": "D" },
+    { "action": "throttle", "value": 40 },
+    { "action": "waitFor", "signal": "VehicleSpeed", "op": ">=", "value": 50, "timeout": 40000 },
+    { "action": "throttle", "value": 15 },
+    { "action": "inject", "target": "wss_fl", "fault": "open" },
+    { "action": "wait", "ms": 1000 },
+    { "action": "expect", "signal": "WheelSpeed_FL_Valid", "op": "==", "value": 0 },
+    { "action": "expect", "dtc": "C0035-13", "ecu": "ABS", "status": "confirmed" },
+    { "action": "expect", "lamp": "abs", "value": true },
+    { "action": "uds", "ecu": "ABS", "request": "19 02 08", "expectContains": "40 35 13" },
+    { "action": "wait", "ms": 600000 }
+  ]
+}
