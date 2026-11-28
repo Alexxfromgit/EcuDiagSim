@@ -215,6 +215,7 @@ Panel {
                         required property var modelData
                         objectName: "telltale:" + modelData.key
                         width: lamps.cell; height: lamps.lampHeight
+                        haloSpread: Math.floor(lamps.gap / 2)
                         on: root.c[modelData.key] === true
                         label: modelData.label
                         tone: modelData.tone ?? Theme.warn

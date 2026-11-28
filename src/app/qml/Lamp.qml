@@ -10,6 +10,8 @@ Rectangle {
     property string label: ""
     property string tip: ""
     property color tone: Theme.warn
+    // How far the glow reaches past the lamp; a tight grid passes half its gap so glows don't overlap.
+    property real haloSpread: 4
 
     implicitWidth: Math.max(24, metrics.advanceWidth + 10)
     TextMetrics { id: metrics; text: root.label; font.pixelSize: 9; font.bold: true }
@@ -26,8 +28,8 @@ Rectangle {
     Rectangle {
         z: -1
         anchors.centerIn: parent
-        width: parent.width + 8; height: parent.height + 8
-        radius: parent.radius + 4
+        width: parent.width + 2 * root.haloSpread; height: parent.height + 2 * root.haloSpread
+        radius: parent.radius + root.haloSpread
         color: Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.16)
         border.color: Qt.rgba(root.tone.r, root.tone.g, root.tone.b, 0.12)
         opacity: root.on ? 1 : 0

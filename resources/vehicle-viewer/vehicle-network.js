@@ -20,6 +20,8 @@ export function createVehicleNetwork() {
 
     const looms = new THREE.Group(); looms.name = "looms"; root.add(looms);
     const loomMaterial = new THREE.MeshStandardMaterial({ color: 0x15191e, roughness: .9, transparent: true, opacity: .9 });
+    // Looms that carry none of the selected component's circuits recede with their wires.
+    const loomDimmed = new THREE.MeshStandardMaterial({ color: 0x15191e, roughness: .9, transparent: true, opacity: .25, depthWrite: false });
     const loomMeshes = new Map();
     const hash = text => [...text].reduce((sum, c) => (sum * 31 + c.charCodeAt(0)) >>> 0, 7);
 
@@ -52,7 +54,7 @@ export function createVehicleNetwork() {
             if (loomMeshes.has(link)) continue;
             const [a, b] = link.split("|").map(id => new THREE.Vector3(...harness.nodes[id]));
             const mesh = new THREE.Mesh(new THREE.TubeGeometry(new THREE.LineCurve3(a, b), 4, .017, 8, false), loomMaterial);
-            mesh.name = "loom:" + link; mesh.userData.users = 0; looms.add(mesh); loomMeshes.set(link, mesh);
+            mesh.name = "loom:" + link; looms.add(mesh); loomMeshes.set(link, mesh);
         }
     }
 
@@ -99,10 +101,18 @@ export function createVehicleNetwork() {
             record.group.visible = record.visible;
             const focused = !view.selectedId || edge.targetId === view.selectedId || edge.controllerId === view.selectedId ||
                 (view.selectedId === "can_bus" && edge.kind === "can") || (view.selectedId === "abs_e2e" && edge.system === "ABS");
+            record.focused = focused;
             record.line.material.opacity = focused ? .76 : .17;
+            const sleeve = record.group.getObjectByName("loom-sleeve");
+            if (sleeve) sleeve.material.opacity = focused ? .8 : .22;
         }
-        const used = new Set([...records.values()].filter(record => record.visible).flatMap(record => record.links));
-        for (const [link, mesh] of loomMeshes) mesh.visible = used.has(link);
+        const visible = [...records.values()].filter(record => record.visible);
+        const used = new Set(visible.flatMap(record => record.links));
+        const focusedLinks = new Set(visible.filter(record => record.focused).flatMap(record => record.links));
+        for (const [link, mesh] of loomMeshes) {
+            mesh.visible = used.has(link);
+            mesh.material = !view.selectedId || focusedLinks.has(link) ? loomMaterial : loomDimmed;
+        }
         updatePulses();
     }
 
