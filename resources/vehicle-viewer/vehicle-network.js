@@ -25,12 +25,12 @@ export function createVehicleNetwork() {
         if (edge.kind === "radio") {
             points = [edge.from, [x * .8, Math.max(y, ty) + .35, z * .65], [tx, ty + .2, tz], edge.to];
         } else if (edge.kind === "can") {
-            points = [edge.from, [x, .53, z + .10], [.10, .53, z + .16], [.10, .53, tz]];
+            points = [edge.from, [x, .51, z + .10], [.10, .51, z + .16], [.10, .51, tz]];
         } else {
             const side = x < 0 ? -1 : 1;
             const lane = .72 + (edge.targetId.split("").reduce((sum, c) => sum + c.charCodeAt(0), 0) % 5) * .016;
-            points = [edge.from, [x, Math.max(.53, y - .12), z + .10],
-                [side * lane, .56, z + .17], [side * lane, .56, tz + .18], [tx, Math.max(.56, ty - .10), tz + .10], edge.to];
+            points = [edge.from, [x, Math.max(.51, y - .12), z + .10],
+                [side * lane, .53, z + .17], [side * lane, .53, tz + .18], [tx, Math.max(.53, ty - .10), tz + .10], edge.to];
         }
         // Coincident consecutive points destabilize the curve's tangent frame.
         const vectors = points.map(p => new THREE.Vector3(...p)).filter((p, index, all) => index === 0 || p.distanceTo(all[index - 1]) > .015);

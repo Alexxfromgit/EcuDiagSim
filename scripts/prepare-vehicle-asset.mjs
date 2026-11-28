@@ -88,23 +88,87 @@ const chunks = [], manifest = [];
 let offset = 0;
 const append = array => { const buffer = Buffer.from(array.buffer, array.byteOffset, array.byteLength); chunks.push(buffer); const result = [offset, array.length]; offset += buffer.length; return result; };
 const grouped = new Map();
-// Cut across triangles at the door jambs instead of moving triangles by their centroid.
-// Interpolated normals preserve the artist's shading and leave straight, closed panel edges.
-function clip(vertices, z, less) {
-    const output = [];
+
+// Proportions. The artist's body is 1.33 m high; a uniform vertical stretch would make the wheel
+// arches oval and the flanks slab-sided. Instead only the greenhouse is lifted, with a smooth
+// (C1) ramp so reflections stay continuous. Everything below the beltline keeps its exact shape.
+const nativeRoof = size.y * scale, lift = .08, liftStart = .80;
+const ramp = y => { const t = Math.min(1, Math.max(0, (y - liftStart) / (nativeRoof - liftStart))); return [t * t * (3 - 2 * t), 6 * t * (1 - t) / (nativeRoof - liftStart)]; };
+const fitHeight = y => y + lift * ramp(y)[0];
+const fitSlope = y => 1 + lift * ramp(y)[1];
+
+// Door shut lines traced from the grooves the artist modelled, in the native side profile:
+// [height y, longitudinal z] pairs, z interpolated by height. They keep the fender vent, the
+// B-pillar trim and the rear wheel arch on the body, and cut each panel along its real seam.
+const shutLines = {
+    frontEdge: [[.30, -.95], [.365, -.96], [.48, -.975], [.656, -.99], [.806, -1.0], [.85, -.985], [.90, -.95], [.96, -.89], [1.0, -.85], [1.5, -.85]],
+    frontRear: [[.30, .06], [.612, .06], [.70, .065], [.788, .08], [.851, .10], [.912, .125], [1.141, .17], [1.5, .21]],
+    rearFront: [[.30, .06], [.612, .06], [.70, .065], [.788, .08], [.851, .10], [.912, .125], [.92, .15], [1.141, .205], [1.5, .25]],
+    rearEdge: [[.30, .765], [.35, .78], [.44, .82], [.52, .86], [.60, .90], [.65, .94], [.70, 1.0], [.77, 1.08], [.829, 1.14],
+        [.884, 1.20], [.912, 1.215], [.934, 1.23], [.991, 1.29], [1.044, 1.305], [1.079, 1.30], [1.193, 1.21], [1.5, 1.21]]
+};
+// Door paint ends at the beltline; frames, glass and mirrors above it are attached as islands.
+const doorBottom = .335, doorTop = 1.27, beltline = .97;
+const lineZ = (line, y) => {
+    if (y <= line[0][0]) return line[0][1];
+    for (let i = 1; i < line.length; i++) if (y <= line[i][0]) {
+        const [y0, z0] = line[i - 1], [y1, z1] = line[i];
+        return z0 + (y - y0) / (y1 - y0) * (z1 - z0);
+    }
+    return line.at(-1)[1];
+};
+// Signed distance-like field: negative in front of (or below) the boundary.
+const fields = {
+    bottom: v => v.point[1] - doorBottom,
+    frontEdge: v => v.point[2] - lineZ(shutLines.frontEdge, v.point[1]),
+    frontRear: v => v.point[2] - lineZ(shutLines.frontRear, v.point[1]),
+    rearFront: v => v.point[2] - lineZ(shutLines.rearFront, v.point[1]),
+    rearEdge: v => v.point[2] - lineZ(shutLines.rearEdge, v.point[1])
+};
+// Split a polygon by a scalar field. Interpolated normals preserve the artist's shading and
+// produce closed, clean panel edges rather than triangle-stepped ones.
+function split(vertices, field) {
+    const below = [], above = [];
     for (let i = 0; i < vertices.length; i++) {
         const a = vertices[i], b = vertices[(i + 1) % vertices.length];
-        const insideA = less ? a.point[2] <= z : a.point[2] >= z;
-        const insideB = less ? b.point[2] <= z : b.point[2] >= z;
-        if (insideA) output.push(a);
-        if (insideA !== insideB) {
-            const t = (z - a.point[2]) / (b.point[2] - a.point[2]);
-            output.push({ point: a.point.map((v, c) => v + t * (b.point[c] - v)),
-                normal: a.normal.map((v, c) => v + t * (b.normal[c] - v)) });
+        const fa = field(a), fb = field(b);
+        if (fa <= 0) below.push(a); else above.push(a);
+        if ((fa <= 0) !== (fb <= 0)) {
+            const t = fa / (fa - fb);
+            const vertex = { point: a.point.map((v, c) => v + t * (b.point[c] - v)), normal: a.normal.map((v, c) => v + t * (b.normal[c] - v)) };
+            below.push(vertex); above.push(vertex);
         }
     }
-    return output;
+    return [below, above].map(polygon => polygon.length >= 3 ? polygon : null);
 }
+// Returns [polygon, region] pieces, region "f", "r" (front/rear door on this side) or "".
+function regions(polygon) {
+    const result = [];
+    const [low, high] = split(polygon, fields.bottom);
+    if (low) result.push([low, ""]);
+    if (!high) return result;
+    const [ahead, behindFront] = split(high, fields.frontEdge);
+    if (ahead) result.push([ahead, ""]);
+    if (!behindFront) return result;
+    const [front, afterFront] = split(behindFront, fields.frontRear);
+    if (front) result.push([front, "f"]);
+    if (!afterFront) return result;
+    const [pillar, afterPillar] = split(afterFront, fields.rearFront);
+    if (pillar) result.push([pillar, ""]);
+    if (!afterPillar) return result;
+    const [rear, behind] = split(afterPillar, fields.rearEdge);
+    if (rear) result.push([rear, "r"]);
+    if (behind) result.push([behind, ""]);
+    return result;
+}
+const regionAt = (x, y, z) => {
+    const v = { point: [x, y, z] };
+    if (Math.abs(x) < .55 || fields.bottom(v) <= 0 || y > doorTop || fields.frontEdge(v) <= 0) return "";
+    if (fields.frontRear(v) <= 0) return "f";
+    if (fields.rearFront(v) > 0 && fields.rearEdge(v) <= 0) return "r";
+    return "";
+};
+
 for (const part of parts) {
     const box = new THREE.Box3();
     for (let i = 0; i < part.position.length; i += 3) {
@@ -113,35 +177,46 @@ for (const part of parts) {
         part.position[i + 2] = (part.position[i + 2] - center.z) * scale;
         box.expandByPoint(p.fromArray(part.position, i));
     }
-    const mid = box.getCenter(new THREE.Vector3());
+    const mid = box.getCenter(new THREE.Vector3()), extent = box.getSize(new THREE.Vector3());
     const wheel = Object.keys(wheels).find(id => part.node.startsWith(Object.keys(wheelNodes).find(name => wheelNodes[name] === id)));
     // Remove the decorative hood badge and wheel-cap lettering; attribution stays in the asset metadata.
-    if (!wheel && [2, 4, 8].includes(part.material) && Math.abs(mid.x) < .10 && mid.z < -1.9 && mid.y > .85 && box.getSize(p).x < .16) continue;
+    if (!wheel && [2, 4, 8].includes(part.material) && Math.abs(mid.x) < .10 && mid.z < -1.9 && mid.y > .85 && extent.x < .16) continue;
+    const lamp = [5, 6, 7].includes(part.material);
+    // Small separate islands (mirrors, handles, window frames, side glass) move as one piece.
+    const whole = !wheel && !lamp && extent.z <= 1.45 && extent.y <= .7 && part.indices.length / 3 < 3000;
+    const islandDoor = whole ? regionAt(mid.x, mid.y, mid.z) : "";
     for (let i = 0; i < part.indices.length; i += 3) {
-        const triangle = part.indices.slice(i, i + 3);
+        let triangle = part.indices.slice(i, i + 3);
         const centroid = [0, 0, 0], averageNormal = [0, 0, 0];
         for (const index of triangle) for (let c = 0; c < 3; c++) {
             centroid[c] += part.position[index * 3 + c] / 3;
             averageNormal[c] += part.normal[index * 3 + c] / 3;
         }
+        // A handful of source triangles wind against their normals; they would vanish when single-sided.
+        const [a, b, c] = triangle.map(index => p.fromArray(part.position, index * 3).clone());
+        if (b.clone().sub(a).cross(c.clone().sub(a)).dot(new THREE.Vector3(...averageNormal)) < 0) triangle = [triangle[0], triangle[2], triangle[1]];
         const side = centroid[0] < 0 ? "l" : "r";
-        let polygons = [triangle.map(index => ({ point: part.position.slice(index * 3, index * 3 + 3), normal: part.normal.slice(index * 3, index * 3 + 3) }))];
-        const doorSurface = !wheel && Math.abs(centroid[0]) > .57 && Math.abs(averageNormal[0]) > .45 && centroid[1] > .36 && centroid[1] < 1.27;
-        if (doorSurface) for (const cut of [-.98, .14, .20, 1.21])
-            polygons = polygons.flatMap(vertices => [clip(vertices, cut, true), clip(vertices, cut, false)]).filter(vertices => vertices.length >= 3);
-        const lampSide = [5, 6, 7].includes(part.material) ? side : undefined;
-        const lampRole = part.material === 5 ? (mid.y > .675 && box.getSize(p).y < .04 ? "park" : Math.abs(mid.x) > .48 ? "high" : "low") : undefined;
+        const polygon = triangle.map(index => ({ point: part.position.slice(index * 3, index * 3 + 3), normal: part.normal.slice(index * 3, index * 3 + 3) }));
+        let pieces = [[polygon, islandDoor]];
+        if (!wheel && !lamp && !whole && Math.abs(centroid[0]) > .45) {
+            // Split everything near the flanks so neighbouring triangles share the new edge vertices.
+            // Outward-facing skin, plus the upward-facing window sill and the trim strips along it.
+            const outward = Math.abs(averageNormal[0]) > .45 || [2, 4, 8].includes(part.material) || centroid[1] > .82 && Math.abs(centroid[0]) > .68;
+            const doorSkin = Math.abs(centroid[0]) > .57 && outward && centroid[1] < beltline;
+            pieces = regions(polygon).map(([piece, region]) => [piece, doorSkin ? region : ""]);
+        }
+        const lampSide = lamp ? side : undefined;
+        const lampRole = part.material === 5 ? (mid.y > .675 && extent.y < .04 ? "park" : Math.abs(mid.x) > .48 ? "high" : "low") : undefined;
         const lens = part.material === 3 && (mid.z < -2 || mid.z > 2);
-        for (const polygon of polygons) {
-            const z = polygon.reduce((sum, vertex) => sum + vertex.point[2], 0) / polygon.length;
-            const door = doorSurface ? z > -.98 && z < .14 ? "f" + side : z > .20 && z < 1.21 ? "r" + side : undefined : undefined;
+        for (const [piece, region] of pieces) {
+            const door = region ? region + side : undefined;
             const key = [part.material, wheel ?? "body", door ?? "fixed", lampSide ?? "", lampRole ?? "", lens ? "lens" : ""].join(":");
             if (!grouped.has(key)) grouped.set(key, { node: wheel ? part.node : "Body", material: part.material, wheel, door, lampSide, lampRole, lens,
                 positions: [], normals: [], indices: [], remap: new Map(), box: new THREE.Box3() });
             const group = grouped.get(key);
-            for (let corner = 1; corner < polygon.length - 1; corner++) for (const vertex of [polygon[0], polygon[corner], polygon[corner + 1]]) {
+            for (let corner = 1; corner < piece.length - 1; corner++) for (const vertex of [piece[0], piece[corner], piece[corner + 1]]) {
                 const point = [...vertex.point], n = [...vertex.normal];
-                if (!wheel) { point[1] = .329 + (point[1] - .329) * ((1.46 - .329) / (size.y * scale - .329)); n[1] /= ((1.46 - .329) / (size.y * scale - .329)); }
+                if (!wheel) { n[1] /= fitSlope(point[1]); point[1] = fitHeight(point[1]); }
                 normal.fromArray(n).normalize();
                 const vertexKey = [...point, ...normal.toArray()].map(v => Math.round(v * 1000000)).join(",");
                 if (!group.remap.has(vertexKey)) {
@@ -153,17 +228,26 @@ for (const part of parts) {
         }
     }
 }
+// Hinges sit on the leading edge of each door's outer skin (not its mirror), at mid-door height.
+const doors = {};
+for (const group of grouped.values()) if (group.door && group.material === 0) {
+    let x = 0;
+    for (let i = 0; i < group.positions.length; i += 3)
+        if (group.positions[i + 2] < group.box.min.z + .06 && group.positions[i + 1] < .9) x = Math.max(x, Math.abs(group.positions[i]));
+    doors[group.door] = [group.door.endsWith("l") ? -x : x, .62, group.box.min.z];
+}
 for (const group of grouped.values()) manifest.push({ node: group.node, material: group.material, wheel: group.wheel,
     door: group.door, lampSide: group.lampSide, bounds: [...group.box.min.toArray(), ...group.box.max.toArray()],
     lampRole: group.lampRole, lens: group.lens,
     position: append(new Float32Array(group.positions)), normal: append(new Float32Array(group.normals)), indices: append(new Uint32Array(group.indices)) });
+const height = fitHeight(nativeRoof);
 const payload = { author: gltf.asset.extras, sourceSha256: createHash("sha256").update(bytes).digest("hex"),
-    dimensions: [size.x * scale, 1.46, 4.96], wheels, materials: gltf.materials,
+    dimensions: [size.x * scale, height, 4.96], wheels, doors, materials: gltf.materials,
     parts: manifest, binary: Buffer.concat(chunks).toString("base64") };
 await writeFile(new URL("../resources/vehicle-viewer/assets/sedan-mesh.js", import.meta.url),
     "// Gourami - Luxury Saloon by Fishboe/ministephen, CC BY 4.0. See ATTRIBUTION.md. Generated; do not edit.\nexport default " + JSON.stringify(payload) + ";\n");
-console.log({ dimensions: payload.dimensions, wheels, parts: manifest.length, bytes: offset });
-for (let i = 0; i < payload.materials.length; i++) {
+console.log({ dimensions: payload.dimensions, wheels, doors, parts: manifest.length, bytes: offset });
+if (process.argv.includes("--verbose")) for (let i = 0; i < payload.materials.length; i++) {
     const matches = manifest.filter(part => part.material === i && !part.wheel);
-    console.log(payload.materials[i].name, matches.length, matches.map(part => ({door:part.door,side:part.lampSide,bounds:part.bounds.map(v => +v.toFixed(2))})));
+    console.log(payload.materials[i].name, matches.map(part => ({ door: part.door, side: part.lampSide, bounds: part.bounds.map(v => +v.toFixed(2)) })));
 }

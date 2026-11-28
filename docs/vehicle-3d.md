@@ -25,8 +25,10 @@ a reload or a return to the diagram.
 
 - Left drag: orbit. Scroll: zoom. Click a marker: inspect it. Camera presets and reset are available.
 - Diagnostic: transparent shell, schematic assemblies, harnesses and animated signal pulses.
-  Exterior: a modern four-door sedan with a painted body, glazing, wheel openings, alloy wheels,
-  door seams and slim lights. Exterior mode hides the internal wiring and unselected markers.
+  Exterior: a modern four-door sedan with clear-coated metallic paint, tinted glazing, two-tone
+  alloy wheels, real shut lines and slim lights, lit by a procedural studio environment with a
+  soft contact shadow. Open doors reveal the cabin (dashboard, displays, seats, console) rather
+  than the inside of the shell. Exterior mode hides the internal wiring and unselected markers.
 - System/fault filters apply to markers and the accessible component selector.
 - The inspector shows true/measured sensor values and signal/circuit state. It navigates to
   the existing fault editor or a controller's UDS scanner; selecting alone never injects faults.
@@ -62,9 +64,14 @@ a reload or a return to the diagram.
   target/ECU navigation methods are published; the App singleton is never exposed to JavaScript.
 - `resources/vehicle-viewer/vehicle-model.js`: adapted exterior, additive internals and actuator mapping.
 - `assets/sedan-source.glb`: attributed CC BY source; `assets/sedan-mesh.js`: prepared geometry.
-- `scripts/prepare-vehicle-asset.mjs`: offline conversion, proportions, door cuts and lamp separation.
+- `scripts/prepare-vehicle-asset.mjs`: offline conversion, proportions, door segmentation and lamp separation.
   Run `node scripts/prepare-vehicle-asset.mjs` to regenerate the geometry deterministically.
-  The adapted body is 4.96 m long, 1.89 m wide and 1.46 m high; wheelbase is 2.84 m.
+  The adapted body is 4.96 m long, 1.89 m wide and 1.41 m high; wheelbase is 2.84 m. Only the
+  greenhouse is lifted (a smooth ramp above 0.80 m), so the wheel arches keep their artist shape.
+  Doors are cut along the shut-line grooves modelled in the source, traced as height→length
+  polylines; small islands (mirrors, handles, window frames, side glass) move whole with their door,
+  and each door's hinge is exported with the geometry. Inspect the split with an orthographic,
+  colour-by-door render before changing those lines.
   Only the prepared geometry is embedded. The raw GLB and meshoptimizer decoder are tool inputs.
 - `vehicle-state.js`: stable simulation ID → illustrative 3D anchor mapping, filters, click/drag logic.
 - `vehicle-network.js`: fitted circuit/CAN/radio topology, routed harness geometry and instanced pulses.
@@ -152,9 +159,9 @@ EcuDiagSim --vehicle-3d --scenario 1 --size 1440x900 --after 8000 --screenshot v
 ## MVP limitations and production follow-up
 
 The exterior is a licensed artist model adapted for this generic simulator. Its material shading,
-interior, door segmentation and component locations are approximations. Door cuts follow geometric
-regions rather than a supplied production rig; opening them does not expose a detailed factory
-interior. This is not a manufacturer-specific digital twin or a photorealistic configurator.
+interior and component locations are approximations. Doors follow the artist's modelled shut
+lines rather than a supplied production rig; opening them shows a simplified cabin, not a detailed
+factory interior. The source shell has no underbody; a shadow-only tray closes it for lighting. This is not a manufacturer-specific digital twin or a photorealistic configurator.
 OEM pinouts, exact harness routes and automated performance budgets remain follow-up work.
 Labels prioritize selected/faulted targets and suppress overlaps; the selector retains all targets.
 Arbitrary user-supplied GLB import is not implemented. The renderer must be

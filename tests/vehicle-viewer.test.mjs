@@ -5,6 +5,7 @@ import { targetsFromSnapshot, visibleTargets, connectionsFromSnapshot, connectio
 import { createVehicleNetwork } from "../resources/vehicle-viewer/vehicle-network.js";
 import { createVehicle } from "../resources/vehicle-viewer/vehicle-model.js";
 import * as THREE from "../resources/vehicle-viewer/vendor/three.module.min.js";
+import sedanAsset from "../resources/vehicle-viewer/assets/sedan-mesh.js";
 
 const pointer = (x, y, id = 1) => ({ clientX: x, clientY: y, pointerId: id, button: 0, isPrimary: true });
 
@@ -219,4 +220,29 @@ test("sedan actuators reflect the outputs, without coupling high beam to a faile
     car.applyState({ ...state, targets: [], vehicle: {} });
     assert.equal(car.belt.visible, false); assert.deepEqual(car.bags.map(b => b.visible), [false, false]);
     assert.ok([...car.lights.values()].flat().every(mesh => !mesh.userData.on));
+});
+
+test("prepared sedan keeps real proportions and splits whole doors along the modelled shut lines", () => {
+    const [width, height, length] = sedanAsset.dimensions;
+    assert.ok(Math.abs(length - 4.96) < 1e-6 && width > 1.8 && width < 1.95);
+    assert.ok(height > 1.38 && height < 1.44, "greenhouse lift only; no uniform vertical stretch");
+    const parts = door => sedanAsset.parts.filter(part => part.door === door);
+    const names = door => new Set(parts(door).map(part => sedanAsset.materials[part.material].name));
+    for (const door of ["fl", "fr", "rl", "rr"]) {
+        // Skin, glass, frame and handle/beltline trim all travel with the door.
+        for (const material of ["Paint 1 Base", "Glass", "GlossBlack", "Chrome"]) assert.ok(names(door).has(material), door + " " + material);
+        const bounds = parts(door).reduce((box, part) => box.union(new THREE.Box3().setFromArray(part.bounds)), new THREE.Box3());
+        // The front window frame carries the B-pillar trim; the rear door ends at the C-pillar.
+        const [zMin, zMax] = door.startsWith("f") ? [-1.02, .25] : [.05, 1.32];
+        assert.ok(bounds.min.z >= zMin && bounds.max.z <= zMax, `${door} must stay between its shut lines`);
+        assert.ok(bounds.min.y > .3, `${door} must not take the sill`);
+        const hinge = sedanAsset.doors[door];
+        const skin = parts(door).find(part => part.material === 0);
+        assert.ok(Math.abs(hinge[2] - skin.bounds[2]) < 1e-6 && Math.sign(hinge[0]) === (door.endsWith("l") ? -1 : 1), `${door} hinge on its leading edge`);
+    }
+    // The side mirror is one island and must not be torn between the front door and the body.
+    const mirror = part => part.material === 0 && part.bounds[1] > .88 && part.bounds[4] < 1.08 && Math.abs(part.bounds[0]) > .7;
+    assert.equal(sedanAsset.parts.filter(part => !part.door && !part.wheel && mirror(part)).length, 0);
+    // The rear wheel arch trim stays on the body.
+    assert.ok(parts("rl").concat(parts("rr")).every(part => part.material !== 2 || part.bounds[5] < 1.0));
 });

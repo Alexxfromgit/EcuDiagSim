@@ -19,14 +19,15 @@ class VehicleViewer {
     constructor() {
         this.stage = byId("stage");
         this.scene = new THREE.Scene();
-        this.scene.background = new THREE.Color(0x0c1823);
-        this.scene.fog = new THREE.FogExp2(0x0c1823, .04);
+        // The stage's CSS gradient shows through; the floor fades into it rather than ending.
+        this.scene.fog = new THREE.FogExp2(0x0b1520, .035);
         this.camera = new THREE.PerspectiveCamera(34, 1, .05, 80);
         this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "low-power" });
         this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
         this.renderer.setClearColor(0x000000, 0);
-        this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-        this.renderer.toneMappingExposure = 1.25;
+        // Neutral tone mapping keeps the paint's hue and the studio highlights true to colour.
+        this.renderer.toneMapping = THREE.NeutralToneMapping;
+        this.renderer.toneMappingExposure = 1.05;
         this.renderer.shadowMap.enabled = true;
         this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         this.stage.prepend(this.renderer.domElement);
@@ -43,26 +44,33 @@ class VehicleViewer {
         this.controls.addEventListener("change", () => this.invalidate());
         this.controls.addEventListener("start", () => { this.interacting = true; });
         this.controls.addEventListener("end", () => { this.interacting = false; this.invalidate(); });
-        this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x263645, 1.6));
-        const key = new THREE.DirectionalLight(0xe4f4ff, 3);
-        key.position.set(-3, 7, -4); key.castShadow = true;
+        // Most light comes from the studio environment; the overhead key adds shape and a soft shadow.
+        this.scene.add(new THREE.HemisphereLight(0xc8eaff, 0x1b2733, .45));
+        const key = new THREE.DirectionalLight(0xf2f7ff, 2.2);
+        key.position.set(-1.6, 9, -2.4); key.castShadow = true;
         key.shadow.mapSize.set(2048, 2048);
-        Object.assign(key.shadow.camera, { left: -4, right: 4, top: 4, bottom: -4, near: .5, far: 20 });
-        key.shadow.bias = -.0002;
-        key.shadow.radius = 2;
+        Object.assign(key.shadow.camera, { left: -3.4, right: 3.4, top: 3.4, bottom: -3.4, near: 3, far: 16 });
+        // Normal offset removes self-shadowing stripes ("acne") on the curved, glossy panels.
+        key.shadow.bias = -.0004;
+        key.shadow.normalBias = .025;
         this.scene.add(key);
-        const rim = new THREE.DirectionalLight(0x99c6db, 1.6);
-        rim.position.set(4, 2, 3); this.scene.add(rim);
+        const rim = new THREE.DirectionalLight(0xa9d2e6, .7);
+        rim.position.set(4, 2.5, 4); this.scene.add(rim);
         this.addEnvironment();
         this.vehicle = createVehicle();
         this.scene.add(this.vehicle.root);
         this.network = createVehicleNetwork();
         this.scene.add(this.network.root);
-        const floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200),
-            new THREE.MeshStandardMaterial({ color: 0x020406, roughness: .8, metalness: 0, envMapIntensity: 0 }));
-        floor.rotation.x = -Math.PI / 2; floor.position.y = .012; floor.receiveShadow = true;
+        const floor = new THREE.Mesh(new THREE.CircleGeometry(9, 96), new THREE.MeshStandardMaterial({ color: 0x131a21, roughness: .85,
+            metalness: 0, envMapIntensity: .55, transparent: true, depthWrite: false, alphaMap: this.radialTexture(256, [[0, 1], [.55, .9], [1, 0]]) }));
+        floor.rotation.x = -Math.PI / 2; floor.position.y = .002; floor.receiveShadow = true; floor.renderOrder = -2;
         this.scene.add(floor);
         this.floor = floor;
+        // Soft contact shadow: grounds the tyres and sills independently of the shadow map's resolution.
+        const contact = new THREE.Mesh(new THREE.PlaneGeometry(2.9, 5.9), new THREE.MeshBasicMaterial({ map: this.contactShadowTexture(),
+            transparent: true, depthWrite: false, toneMapped: false, fog: false }));
+        contact.rotation.x = -Math.PI / 2; contact.position.y = .004; contact.renderOrder = -1;
+        this.scene.add(contact);
         const grid = new THREE.GridHelper(12, 24, 0x234e61, 0x163143);
         grid.material.transparent = true; grid.material.opacity = .28;
         this.scene.add(grid);
@@ -85,21 +93,53 @@ class VehicleViewer {
         this.cameraPreset("perspective");
     }
 
+    // A procedural photo studio: a dark room with large soft boxes. Its prefiltered reflections give
+    // the clear coat, glass and chrome their highlight lines without shipping an HDR image.
     addEnvironment() {
-        const canvas = document.createElement("canvas");
-        canvas.width = 512; canvas.height = 256;
-        const context = canvas.getContext("2d");
-        const gradient = context.createLinearGradient(0, 0, 0, 256);
-        gradient.addColorStop(0, "#a9d6ee"); gradient.addColorStop(.5, "#263e51"); gradient.addColorStop(1, "#0c1721");
-        context.fillStyle = gradient; context.fillRect(0, 0, 512, 256);
-        context.fillStyle = "#e0f6ff"; context.fillRect(45, 45, 65, 130); context.fillRect(320, 55, 110, 70);
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.mapping = THREE.EquirectangularReflectionMapping;
-        texture.colorSpace = THREE.SRGBColorSpace;
+        const room = new THREE.Scene();
+        const shell = new THREE.Mesh(new THREE.BoxGeometry(32, 14, 32), new THREE.MeshBasicMaterial({ color: 0x262d35, side: THREE.BackSide }));
+        shell.position.y = 6.5; room.add(shell);
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), new THREE.MeshBasicMaterial({ color: 0x14181c }));
+        ground.rotation.x = -Math.PI / 2; ground.position.y = -.4; room.add(ground);
+        const softbox = (width, height, position, rotation, intensity, color = 0xffffff) => {
+            const panel = new THREE.Mesh(new THREE.PlaneGeometry(width, height),
+                new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity), side: THREE.DoubleSide }));
+            panel.position.set(...position); panel.rotation.set(...rotation); room.add(panel);
+        };
+        softbox(12, 5, [0, 13.4, 0], [Math.PI / 2, 0, 0], 4.5);
+        softbox(18, 2.2, [-15.8, 4.5, 0], [0, Math.PI / 2, 0], 3.2, 0xe6f2ff);
+        softbox(18, 2.2, [15.8, 4.5, 0], [0, -Math.PI / 2, 0], 3.2, 0xe6f2ff);
+        softbox(12, 4, [0, 4, -15.8], [0, 0, 0], 2.2, 0xdcecff);
+        softbox(12, 4, [0, 4, 15.8], [0, Math.PI, 0], 1.8, 0xfff0e2);
+        softbox(32, .6, [0, 1.6, -15.9], [0, 0, 0], 1.6);
+        softbox(32, .6, [0, 1.6, 15.9], [0, Math.PI, 0], 1.6);
+        softbox(.6, 32, [-15.9, 1.6, 0], [0, Math.PI / 2, Math.PI / 2], 1.2);
+        softbox(.6, 32, [15.9, 1.6, 0], [0, -Math.PI / 2, Math.PI / 2], 1.2);
         const generator = new THREE.PMREMGenerator(this.renderer);
-        this.environment = generator.fromEquirectangular(texture);
+        this.environment = generator.fromScene(room, .03);
         this.scene.environment = this.environment.texture;
-        texture.dispose(); generator.dispose();
+        generator.dispose();
+        room.traverse(object => { object.geometry?.dispose(); object.material?.dispose(); });
+    }
+
+    radialTexture(size, stops) {
+        const canvas = document.createElement("canvas"); canvas.width = canvas.height = size;
+        const context = canvas.getContext("2d");
+        const gradient = context.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+        for (const [offset, value] of stops) gradient.addColorStop(offset, `rgb(${value * 255},${value * 255},${value * 255})`);
+        context.fillStyle = gradient; context.fillRect(0, 0, size, size);
+        return new THREE.CanvasTexture(canvas);
+    }
+
+    contactShadowTexture() {
+        const canvas = document.createElement("canvas"); canvas.width = 256; canvas.height = 512;
+        const context = canvas.getContext("2d");
+        context.filter = "blur(22px)";
+        context.fillStyle = "rgba(0, 0, 0, .78)";
+        context.beginPath(); context.roundRect(48, 52, 160, 408, 60); context.fill();
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        return texture;
     }
 
     listen() {
@@ -186,8 +226,10 @@ class VehicleViewer {
         this.snapshot = snapshot;
         this.targets = targetsFromSnapshot(snapshot);
         this.vehicle.applyState(snapshot);
-        this.floor.material.roughness = snapshot.vehicle?.surface === 1 ? .25 : .8;
-        this.floor.material.color.set(snapshot.vehicle?.surface === 2 ? 0x52616d : snapshot.vehicle?.surface === 3 ? 0x14222d : 0x020406);
+        // Dry, wet, snow and ice read from the floor's colour and sheen.
+        const surface = [[0x131a21, .85], [0x0b1117, .16], [0x5d6a76, .95], [0x1d3444, .07]][snapshot.vehicle?.surface ?? 0] ?? [0x131a21, .85];
+        this.floor.material.color.set(surface[0]);
+        this.floor.material.roughness = surface[1];
         const v = snapshot.vehicle ?? {};
         byId("vehicle-telemetry").textContent = `${Number(v.speed ?? 0).toFixed(0)} km/h · ${Number(v.rpm ?? 0).toFixed(0)} rpm · ${["P", "R", "N", "D"][v.selector ?? 0]} · Fuel ${Number(v.fuel ?? 0).toFixed(0)} L · ${v.parkBrake ? "Parking brake on" : "Parking brake off"} · ${["Dry", "Wet", "Snow", "Ice"][v.surface ?? 0]}`;
         this.network.applyState(snapshot);

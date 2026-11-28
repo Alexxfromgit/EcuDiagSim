@@ -20,9 +20,10 @@ https://html-classic.itch.zone/html/20750825/models/raijin_hi.glb.txt
 `643e658811c646144e2a7c69b18e7f36ff7888d3991639e9e361c7423fd2c905`
 
 EcuDiagSim modifications: decode compressed geometry offline; reorient and normalize to a
-4.96 m body length; restore body height to 1.46 m while retaining round wheels; separate lamp
-surfaces and four door regions for interaction; remove the hood ornament; cover fictional
-wheel badges; replace materials and add lamps, interior, diagnostic assemblies and animations.
+4.96 m body length; smoothly lift the greenhouse to a 1.41 m roof while leaving the lower body
+and wheel arches unchanged; separate lamp surfaces; split four doors along the modelled shut
+lines; remove the hood ornament; cover fictional wheel badges; replace materials and add lamps,
+a plate, interior, diagnostic assemblies and animations.
 The prepared exterior in `sedan-mesh.js` remains **CC BY 4.0**, not the repository's MIT license.
 No endorsement by the original artist or intermediate contributor is implied.
 

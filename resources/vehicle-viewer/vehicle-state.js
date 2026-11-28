@@ -2,21 +2,21 @@
 export const locations = Object.freeze({
     wss_fl: [-.90, .36, -1.60], wss_fr: [.90, .36, -1.60],
     wss_rl: [-.90, .36, 1.24], wss_rr: [.90, .36, 1.24],
-    tpms_fl: [-.88, .22, -1.46], tpms_fr: [.88, .22, -1.46],
-    tpms_rl: [-.88, .22, 1.38], tpms_rr: [.88, .22, 1.38],
-    ckp: [-0.30, 0.69, -1.50], ect: [0.22, 1.02, -1.55], tps: [0.45, 1.02, -1.12],
-    tft: [0.32, 0.58, -0.75], eop: [-0.48, 0.72, -1.24], fls: [0.14, 0.66, 1.43],
-    maf: [0.63, 0.92, -1.67], o2: [-0.22, 0.43, -0.43],
-    sas: [-0.43, 1.04, -0.45], yaw: [0, 0.57, 0.35],
-    alternator: [-0.55, 0.76, -1.80], cooling: [0.22, 0.75, -2.04],
-    bulb_low_left: [-0.73, 0.83, -2.27], oil_pump: [-0.28, 0.44, -1.47],
-    park_brake_switch: [0.18, 0.97, 0.35], intake_leak: [0.57, 0.93, -1.37],
-    ignition_coils: [-0.18, 0.97, -1.35], throttle_body: [0.38, 0.87, -1.05],
-    airbag_driver: [-0.43, 1.15, -0.45], airbag_passenger: [0.49, 1.13, -0.66],
-    belt_switch: [-0.24, 0.69, 0.31], tyres: [-1.13, 0.52, 1.78],
-    ecm: [-0.68, 0.91, -0.95], tcm: [0.56, 0.65, -0.85], abs: [0.70, 0.87, -1.85],
-    bcm: [0.68, 0.90, -0.15], ipc: [-0.44, 1.10, -0.65], srs: [0, 0.61, 0.25],
-    abs_e2e: [0.65, 0.61, -0.15], can_bus: [0.10, 0.65, 0.78]
+    tpms_fl: [-.88, .23, -1.46], tpms_fr: [.88, .23, -1.46],
+    tpms_rl: [-.88, .23, 1.38], tpms_rr: [.88, .23, 1.38],
+    ckp: [-0.30, 0.65, -1.50], ect: [0.22, 0.95, -1.55], tps: [0.45, 0.95, -1.12],
+    tft: [0.32, 0.55, -0.75], eop: [-0.48, 0.67, -1.24], fls: [0.14, 0.62, 1.43],
+    maf: [0.63, 0.85, -1.67], o2: [-0.22, 0.42, -0.43],
+    sas: [-0.43, 0.97, -0.45], yaw: [0, 0.54, 0.35],
+    alternator: [-0.55, 0.71, -1.80], cooling: [0.22, 0.70, -2.04],
+    bulb_low_left: [-0.73, 0.77, -2.27], oil_pump: [-0.28, 0.43, -1.47],
+    park_brake_switch: [0.18, 0.90, 0.35], intake_leak: [0.57, 0.86, -1.37],
+    ignition_coils: [-0.18, 0.90, -1.35], throttle_body: [0.38, 0.81, -1.05],
+    airbag_driver: [-0.43, 1.09, -0.45], airbag_passenger: [0.49, 1.07, -0.66],
+    belt_switch: [-0.24, 0.65, 0.31], tyres: [-1.13, 0.50, 1.78],
+    ecm: [-0.68, 0.84, -0.95], tcm: [0.56, 0.61, -0.85], abs: [0.70, 0.81, -1.85],
+    bcm: [0.68, 0.83, -0.15], ipc: [-0.44, 1.04, -0.65], srs: [0, 0.58, 0.25],
+    abs_e2e: [0.65, 0.58, -0.15], can_bus: [0.10, 0.61, 0.78]
 });
 
 export const systemColors = Object.freeze({ ECM: 0x53ddd0, TCM: 0x71aaff, ABS: 0xf6c268,
@@ -46,7 +46,7 @@ export function connectionsFromSnapshot(snapshot) {
     for (const controller of controllers.values()) {
         connections.push({ id: `can:${controller.id}`, targetId: controller.id,
             controllerId: controller.id, system: controller.ecu, kind: "can",
-            from: controller.position, to: [.10, .53, 1.20], controller: controller.controller });
+            from: controller.position, to: [.10, .51, 1.20], controller: controller.controller });
     }
     return connections;
 }
