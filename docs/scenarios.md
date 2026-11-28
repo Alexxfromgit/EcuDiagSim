@@ -105,7 +105,7 @@ completed); `clearFault` instead puts the old, configured part back.
 
 | Action | Fields |
 |---|---|
-| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM`, `SRS` (airbag system) or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes), `expectContains`, `expectNotContains`, `expectNoResponse`. A check that is not valid hex fails the step. |
+| `uds` | `ecu`: `ECM`, `TCM`, `ABS`, `BCM`, `SRS` (airbag system) or `ALL` (functional, 0x7DF); `request`: hex bytes. Checks, all optional: `expect` (a response starts with these bytes; a list such as `["62 01 00 01", "62 01 00 09"]` accepts any one of them), `expectContains`, `expectNotContains`, `expectNoResponse`. A check that is not valid hex fails the step. |
 | `unlock` | `ecu` — extended session plus security access with the correct key |
 
 OBD-II modes go through `uds` as well: `{ "action": "uds", "ecu": "ALL", "request": "03" }`.

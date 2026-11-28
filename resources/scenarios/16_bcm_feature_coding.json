@@ -9,7 +9,7 @@
     { "action": "startEngine" },
     { "action": "waitFor", "signal": "EngineRunning", "op": "==", "value": 1, "timeout": 5000 },
     { "action": "wait", "ms": 1000 },
-    { "action": "uds", "ecu": "BCM", "request": "22 01 00", "expect": "62 01 00", "note": "1. Coding as delivered: 01 = lamp monitoring only (09 when the car has TPMS: bit 3 runs the tyre-pressure monitor)" },
+    { "action": "uds", "ecu": "BCM", "request": "22 01 00", "expect": ["62 01 00 01", "62 01 00 09"], "note": "1. Coding as delivered: 01 = lamp monitoring only (09 when the car has TPMS: bit 3 runs the tyre-pressure monitor)" },
     { "action": "uds", "ecu": "BCM", "request": "22 40 02", "expect": "62 40 02 00", "note": "Exterior lamps (DID 0x4002): all off" },
 
     { "action": "unlock", "ecu": "BCM", "note": "2. Coding needs the extended session and security access" },
