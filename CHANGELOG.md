@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.3.1...v0.4.0) (2026-11-28)
+
+
+### Features
+
+* add offline 3D vehicle explorer with live controls and wiring ([#14](https://github.com/Alexxfromgit/EcuDiagSim/issues/14)) ([9a44c3f](https://github.com/Alexxfromgit/EcuDiagSim/commit/9a44c3f621fccfd5558558233d057fc7b07fa302))
+
 ## [0.3.1](https://github.com/Alexxfromgit/EcuDiagSim/compare/v0.3.0...v0.3.1) (2026-11-26)
 
 
