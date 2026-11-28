@@ -320,7 +320,7 @@ class VehicleViewer {
         button.append(dot, label);
         button.addEventListener("click", event => { if (event.detail === 0) this.select(target.id); });
         byId("labels").append(button);
-        this.markers.set(target.id, { mesh, proxy, button, visible: true });
+        this.markers.set(target.id, { mesh, proxy, button, visible: true, labelWidth: label.textContent.length * 6 + 26 });
     }
 
     filter() {
@@ -447,6 +447,7 @@ class VehicleViewer {
                 this.renderer.render(this.scene, this.camera);
                 const bounds = this.stage.getBoundingClientRect();
                 const occupied = [];
+                const position = this.projected ??= new THREE.Vector3();
                 const markers = [...this.markers.values()].sort((a, b) => {
                     const priority = marker => marker.button.classList.contains("selected") ? 3 :
                         marker.button.classList.contains("faulted") ? 2 : marker.button.classList.contains("ecu") ? 1 : 0;
@@ -454,12 +455,12 @@ class VehicleViewer {
                 });
                 for (const marker of markers) {
                     if (!marker.visible) continue;
-                    const position = marker.mesh.position.clone().project(this.camera);
+                    position.copy(marker.mesh.position).project(this.camera);
                     marker.button.hidden = position.z < -1 || position.z > 1 || Math.abs(position.x) > 1 || Math.abs(position.y) > 1;
                     marker.button.style.left = `${(position.x + 1) * bounds.width / 2}px`;
                     marker.button.style.top = `${(1 - position.y) * bounds.height / 2}px`;
                     const x = (position.x + 1) * bounds.width / 2, y = (1 - position.y) * bounds.height / 2;
-                    const labelWidth = marker.button.querySelector(".marker-label").textContent.length * 6 + 26;
+                    const labelWidth = marker.labelWidth;
                     const collides = occupied.some(box => x < box.x + box.width && x + labelWidth > box.x && Math.abs(y - box.y) < 24);
                     const label = marker.button.classList.contains("selected") || marker.button.classList.contains("faulted") || marker.button.classList.contains("ecu");
                     marker.button.classList.toggle("label-hidden", collides && !marker.button.classList.contains("selected"));
@@ -497,6 +498,8 @@ try {
         setState: snapshot => viewer.setState(snapshot),
         setDisplayActive: active => viewer.setDisplayActive(active),
         getRenderState: () => ({ frames: viewer.renderer.info.render.frame, pulses: viewer.network.pulses.count,
+            drawCalls: viewer.renderer.info.render.calls, geometries: viewer.renderer.info.memory.geometries,
+            textures: viewer.renderer.info.memory.textures,
             firstPulse: Array.from(viewer.network.pulses.instanceMatrix.array.slice(0, 16)),
             connections: Object.fromEntries([...viewer.network.records].map(([id, record]) => [id, { active: record.active, visible: record.visible }])),
             controls: { doors: [...viewer.vehicle.doorPivots.values()].map(door => door.rotation.y),

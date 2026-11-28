@@ -14,7 +14,7 @@ export function createVehicleNetwork() {
     root.add(pulses);
     const transform = new THREE.Matrix4();
     const position = new THREE.Vector3();
-    const color = new THREE.Color();
+    const color = new THREE.Color(), white = new THREE.Color(0xffffff);
     let topologyKey = "", snapshot = {}, phase = 0, lastCounts = {};
     let view = { diagnostic: true, wires: true, system: "", selectedId: "", visibleIds: new Set() };
 
@@ -118,7 +118,7 @@ export function createVehicleNetwork() {
                 curve.getPointAt(edge.direction === "outbound" ? 1 - t : t, position);
                 transform.makeTranslation(position.x, position.y, position.z);
                 pulses.setMatrixAt(index, transform);
-                pulses.setColorAt(index, color.set(record.color).lerp(new THREE.Color(0xffffff), .45));
+                pulses.setColorAt(index, color.set(record.color).lerp(white, .45));
                 index++;
             }
         }

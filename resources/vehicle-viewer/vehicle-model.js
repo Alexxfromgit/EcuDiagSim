@@ -239,6 +239,9 @@ export function createVehicle() {
     tray.receiveShadow = false; linings.push(tray);
     const { cabin, steering, cluster, display } = buildCabin(kit, m, root);
     const { bay, throttle, fuel } = buildDrivetrain(kit, m, root);
+    // Inside the body the roof and bonnet already shade everything; ~150 small interior casters
+    // would only double their draw calls in the shadow pass.
+    for (const group of [cabin, bay]) group.traverse(object => { object.castShadow = false; });
     // Door cards follow the inside of each skin and swing with the door.
     const pins = wheelIds.map(id => {
         const door = doorPivots.get(id), side = id.endsWith("l") ? -1 : 1;
